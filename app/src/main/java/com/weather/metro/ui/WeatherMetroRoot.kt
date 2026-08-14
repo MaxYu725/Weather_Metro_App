@@ -159,6 +159,9 @@ fun WeatherMetroRoot(
                                 isActive = pageIndex == index,
                                 onRefreshPoint = rainViewModel::refreshPointForecast,
                                 onCancelPointRefresh = rainViewModel::cancelPointRefresh,
+                                onRefreshForecast = rainViewModel::refreshForecast,
+                                onLoadForecastFrame = rainViewModel::loadForecastFrame,
+                                onCancelForecastRequests = rainViewModel::cancelForecastRequests,
                             )
                             PageColourSlot.SETTINGS -> SettingsScreen(
                                 settings = settings,
