@@ -166,7 +166,7 @@ private fun StormTopBar(
             fontSize = 16.sp,
             modifier = Modifier
                 .clickable(onClick = onBack)
-                .padding(vertical = 12.dp, end = 14.dp),
+                .padding(top = 12.dp, end = 14.dp, bottom = 12.dp),
         )
         Text(
             text = "熱帶氣旋",
@@ -181,7 +181,7 @@ private fun StormTopBar(
             fontSize = 14.sp,
             modifier = Modifier
                 .clickable(enabled = !refreshing, onClick = onRefresh)
-                .padding(vertical = 12.dp, start = 14.dp),
+                .padding(start = 14.dp, top = 12.dp, bottom = 12.dp),
         )
     }
 }
