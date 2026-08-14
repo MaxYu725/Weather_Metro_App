@@ -12,7 +12,7 @@ import org.junit.Test
 
 class StormPointInteractionTest {
     @Test
-    fun mapPointGeoJsonCarriesStableSelectionReference() {
+    fun mapPointGeoJsonCarriesStableSelectionReferenceAndIntensityColour() {
         val track = sampleTrack()
         val data = buildStormAgencyMapData(listOf(track))
         val analysis = JSONObject(data.analysisPoints)
@@ -28,24 +28,30 @@ class StormPointInteractionTest {
         assertEquals("CMA:202608", analysis.getString("storm"))
         assertEquals("analysis", analysis.getString("kind"))
         assertEquals("0", analysis.getString("index"))
+        assertEquals("#FA6800", analysis.getString("color"))
         assertEquals("forecast", forecast.getString("kind"))
         assertEquals("0", forecast.getString("index"))
+        assertEquals("#FA6800", forecast.getString("color"))
     }
 
     @Test
-    fun selectionResolvesAgainstCurrentSnapshot() {
+    fun selectionResolvesAgainstCurrentSnapshotAndKeepsPopupAnchor() {
         val track = sampleTrack()
         val ref = StormMapPointRef(
             agency = StormAgency.CMA,
             stableKey = track.stableKey,
             pointType = StormPointType.FORECAST,
             pointIndex = 0,
+            anchorXPx = 320f,
+            anchorYPx = 640f,
         )
 
         val selected = resolveStormPointSelection(ref, mapOf(StormAgency.CMA to listOf(track)))
 
         assertEquals(track, selected?.track)
         assertEquals(track.forecastPoints.first(), selected?.point)
+        assertEquals(320f, selected?.ref?.anchorXPx)
+        assertEquals(640f, selected?.ref?.anchorYPx)
     }
 
     @Test
