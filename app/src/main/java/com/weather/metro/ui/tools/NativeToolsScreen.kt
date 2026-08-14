@@ -66,7 +66,7 @@ fun NativeToolsScreen(
     onSelectRadarMode: (RainRadarMode) -> Unit,
     onRadarOpacityChange: (Float) -> Unit,
     onRadarPlaybackSpeedChange: (RainRadarPlaybackSpeed) -> Unit,
-    onJumpToLatestRadar: () -> Unit,
+    onJumpRadarToLatest: () -> Unit,
     onCancelRadarRequests: () -> Unit,
     onRefreshForecast: () -> Unit,
     onLoadForecastFrame: (Int) -> Unit,
@@ -151,7 +151,7 @@ fun NativeToolsScreen(
             onSelectMode = onSelectRadarMode,
             onOpacityChange = onRadarOpacityChange,
             onPlaybackSpeedChange = onRadarPlaybackSpeedChange,
-            onJumpToLatest = onJumpToLatestRadar,
+            onJumpToLatest = onJumpRadarToLatest,
             onBack = {
                 onCancelRadarRequests()
                 destination = DESTINATION_HOME
