@@ -29,6 +29,7 @@ import androidx.compose.ui.unit.sp
 import androidx.core.net.toUri
 import com.weather.metro.ui.components.MetroSectionLabel
 import com.weather.metro.ui.components.MetroTile
+import com.weather.metro.ui.rain.RainForecastPanel
 import com.weather.metro.ui.rain.RainHostState
 import com.weather.metro.ui.rain.RainHostViewModel
 import com.weather.metro.ui.rain.RainPointPanel
@@ -37,6 +38,7 @@ import com.weather.metro.ui.theme.LocalMetroSubText
 
 private const val DESTINATION_HOME = "home"
 private const val DESTINATION_POINT = "point"
+private const val DESTINATION_FORECAST = "forecast"
 
 @Composable
 fun NativeToolsScreen(
@@ -45,30 +47,52 @@ fun NativeToolsScreen(
     isActive: Boolean,
     onRefreshPoint: (Int) -> Unit,
     onCancelPointRefresh: () -> Unit,
+    onRefreshForecast: () -> Unit,
+    onLoadForecastFrame: (Int) -> Unit,
+    onCancelForecastRequests: () -> Unit,
 ) {
     var destination by rememberSaveable { mutableStateOf(DESTINATION_HOME) }
     var selectedRadiusKm by rememberSaveable {
         mutableIntStateOf(rainState.pointRequest?.radiusKm ?: RainHostViewModel.DEFAULT_POINT_RADIUS_KM)
     }
 
-    BackHandler(enabled = destination != DESTINATION_HOME) {
-        onCancelPointRefresh()
-        destination = DESTINATION_HOME
-    }
-
-    LaunchedEffect(isActive, destination) {
-        if (
-            isActive &&
-            destination == DESTINATION_POINT &&
-            rainState.location != null &&
-            rainState.pointForecast.status == RainResourceStatus.IDLE
-        ) {
-            onRefreshPoint(selectedRadiusKm)
+    fun cancelDestinationRequests() {
+        when (destination) {
+            DESTINATION_POINT -> onCancelPointRefresh()
+            DESTINATION_FORECAST -> onCancelForecastRequests()
         }
     }
 
-    if (destination == DESTINATION_POINT) {
-        PointToolScreen(
+    BackHandler(enabled = destination != DESTINATION_HOME) {
+        cancelDestinationRequests()
+        destination = DESTINATION_HOME
+    }
+
+    LaunchedEffect(
+        isActive,
+        destination,
+        rainState.pointForecast.status,
+        rainState.forecast.status,
+    ) {
+        if (!isActive) {
+            cancelDestinationRequests()
+            return@LaunchedEffect
+        }
+        when (destination) {
+            DESTINATION_POINT -> if (
+                rainState.location != null &&
+                rainState.pointForecast.status == RainResourceStatus.IDLE
+            ) {
+                onRefreshPoint(selectedRadiusKm)
+            }
+            DESTINATION_FORECAST -> if (rainState.forecast.status == RainResourceStatus.IDLE) {
+                onRefreshForecast()
+            }
+        }
+    }
+
+    when (destination) {
+        DESTINATION_POINT -> PointToolScreen(
             pageColour = pageColour,
             rainState = rainState,
             selectedRadiusKm = selectedRadiusKm,
@@ -82,13 +106,21 @@ fun NativeToolsScreen(
                 destination = DESTINATION_HOME
             },
         )
-    } else {
-        ToolsHome(
+        DESTINATION_FORECAST -> ForecastToolScreen(
             pageColour = pageColour,
-            onOpenPoint = {
-                destination = DESTINATION_POINT
-                onRefreshPoint(selectedRadiusKm)
+            rainState = rainState,
+            isActive = isActive,
+            onRefresh = onRefreshForecast,
+            onSelectFrame = onLoadForecastFrame,
+            onBack = {
+                onCancelForecastRequests()
+                destination = DESTINATION_HOME
             },
+        )
+        else -> ToolsHome(
+            pageColour = pageColour,
+            onOpenPoint = { destination = DESTINATION_POINT },
+            onOpenForecast = { destination = DESTINATION_FORECAST },
         )
     }
 }
@@ -97,6 +129,7 @@ fun NativeToolsScreen(
 private fun ToolsHome(
     pageColour: Color,
     onOpenPoint: () -> Unit,
+    onOpenForecast: () -> Unit,
 ) {
     val context = LocalContext.current
     LazyColumn(
@@ -137,9 +170,10 @@ private fun ToolsHome(
                     seed = "native-forecast-map",
                     title = "2小時預報",
                     description = "6分鐘步進",
-                    status = "data ready",
+                    status = "native",
                     background = pageColour,
                     modifier = Modifier.weight(1f).height(132.dp),
+                    onClick = onOpenForecast,
                 )
             }
         }
@@ -193,16 +227,7 @@ private fun PointToolScreen(
         contentPadding = androidx.compose.foundation.layout.PaddingValues(start = 22.dp, end = 16.dp, bottom = 48.dp),
         verticalArrangement = Arrangement.spacedBy(9.dp),
     ) {
-        item {
-            Text(
-                "‹ tools",
-                color = pageColour,
-                fontSize = 16.sp,
-                modifier = Modifier
-                    .clickable(onClick = onBack)
-                    .padding(start = 0.dp, top = 8.dp, end = 16.dp, bottom = 8.dp),
-            )
-        }
+        item { ToolBackButton(pageColour, onBack) }
         item {
             RainPointPanel(
                 state = rainState,
@@ -213,6 +238,45 @@ private fun PointToolScreen(
             )
         }
     }
+}
+
+@Composable
+private fun ForecastToolScreen(
+    pageColour: Color,
+    rainState: RainHostState,
+    isActive: Boolean,
+    onRefresh: () -> Unit,
+    onSelectFrame: (Int) -> Unit,
+    onBack: () -> Unit,
+) {
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = androidx.compose.foundation.layout.PaddingValues(start = 22.dp, end = 16.dp, bottom = 48.dp),
+        verticalArrangement = Arrangement.spacedBy(9.dp),
+    ) {
+        item { ToolBackButton(pageColour, onBack) }
+        item {
+            RainForecastPanel(
+                state = rainState,
+                pageColour = pageColour,
+                isActive = isActive,
+                onRefresh = onRefresh,
+                onSelectFrame = onSelectFrame,
+            )
+        }
+    }
+}
+
+@Composable
+private fun ToolBackButton(pageColour: Color, onBack: () -> Unit) {
+    Text(
+        "‹ tools",
+        color = pageColour,
+        fontSize = 16.sp,
+        modifier = Modifier
+            .clickable(onClick = onBack)
+            .padding(start = 0.dp, top = 8.dp, end = 16.dp, bottom = 8.dp),
+    )
 }
 
 @Composable
