@@ -1,5 +1,6 @@
 package com.weather.metro.data.rain
 
+import com.weather.metro.data.tools.RainRadarMode
 import com.weather.metro.domain.rain.RainCapabilities
 import com.weather.metro.domain.rain.RainForecastFrame
 import com.weather.metro.domain.rain.RainForecastRunChangedException
@@ -7,12 +8,15 @@ import com.weather.metro.domain.rain.RainForecastSource
 import com.weather.metro.domain.rain.RainForecastTimeline
 import com.weather.metro.domain.rain.RainLoadResult
 import com.weather.metro.domain.rain.RainPointForecast
+import com.weather.metro.domain.rain.RainRadarContract
+import com.weather.metro.domain.rain.RainRadarTimeline
 import kotlinx.coroutines.CancellationException
 
 class RainRepository(
     private val client: RainTrackClient,
     private val cache: RainCache,
     private val forecastClient: RainForecastClient = RainForecastClient(),
+    private val radarClient: RainRadarClient = RainRadarClient(),
 ) {
     private val forecastLock = Any()
     private var activeSwirlsRun: String? = null
@@ -62,6 +66,22 @@ class RainRepository(
             networkError = error.message ?: "Rain point forecast unavailable",
         )
     }
+
+    suspend fun loadRadarContract(): RainLoadResult<RainRadarContract> {
+        val network = radarClient.loadContract()
+        return RainLoadResult(network.value, isStale = false)
+    }
+
+    suspend fun loadRadarTimeline(
+        rangeKm: Int,
+        heightKm: Int,
+        mode: RainRadarMode = RainRadarMode.LIVE,
+    ): RainLoadResult<RainRadarTimeline> {
+        val network = radarClient.loadFrames(rangeKm, heightKm, mode)
+        return RainLoadResult(network.value, isStale = false)
+    }
+
+    suspend fun loadRadarImage(relativePath: String): ByteArray = radarClient.loadImage(relativePath)
 
     suspend fun loadForecastTimeline(): RainLoadResult<RainForecastTimeline> {
         try {

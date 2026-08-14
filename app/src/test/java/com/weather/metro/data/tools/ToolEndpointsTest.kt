@@ -40,6 +40,10 @@ class ToolEndpointsTest {
             "https://radar.max-yu.workers.dev/api/radar/image?id=test",
             ToolEndpoints.rainRadarImage("/api/radar/image?id=test"),
         )
+        assertEquals(
+            "https://radar.max-yu.workers.dev/api/radar/test-image?range=64&frame=0",
+            ToolEndpoints.rainRadarImage("/api/radar/test-image?range=64&frame=0"),
+        )
     }
 
     @Test
@@ -52,6 +56,9 @@ class ToolEndpointsTest {
         }
         assertThrows(IllegalArgumentException::class.java) {
             ToolEndpoints.rainRadarImage("https://example.com/radar.png")
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            ToolEndpoints.rainRadarImage("/api/rain/nowcast")
         }
     }
 
