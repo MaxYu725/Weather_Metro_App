@@ -11,8 +11,13 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -26,8 +31,12 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.Lifecycle
@@ -42,13 +51,23 @@ import com.weather.metro.ui.theme.LocalMetroSubText
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
+import kotlin.math.asin
+import kotlin.math.cos
+import kotlin.math.roundToInt
+import kotlin.math.sin
+import kotlin.math.sqrt
 
 private val STORM_PANEL = Color(0xEB090909)
 private val STORM_MUTED_PANEL = Color(0xE6111111)
+private val STORM_POPUP_PANEL = Color(0xF20D0D0D)
+private const val HONG_KONG_LAT = 22.3023
+private const val HONG_KONG_LON = 114.1746
+private const val EARTH_RADIUS_KM = 6371.0088
 
 internal data class StormPointSelection(
     val track: StormTrack,
     val point: StormPoint,
+    val ref: StormMapPointRef,
 )
 
 @Composable
@@ -76,6 +95,7 @@ internal fun StormLivePanel(
     var cwaEnabled by rememberSaveable { mutableStateOf(true) }
     var fitToken by rememberSaveable { mutableIntStateOf(0) }
     var selectedPointRef by remember { mutableStateOf<StormMapPointRef?>(null) }
+    var containerSize by remember { mutableStateOf(IntSize.Zero) }
 
     val enabledAgencies = buildSet {
         if (hkoEnabled) add(StormAgency.HKO)
@@ -101,7 +121,8 @@ internal fun StormLivePanel(
     Box(
         modifier = modifier
             .fillMaxSize()
-            .background(Color.Black),
+            .background(Color.Black)
+            .onSizeChanged { containerSize = it },
     ) {
         StormMapLibreSurface(
             tracksByAgency = tracksByAgency,
@@ -138,9 +159,7 @@ internal fun StormLivePanel(
             state = state,
             visibleTracks = visibleTracks,
             enabledAgencyCount = enabledAgencies.size,
-            selectedPoint = selectedPoint,
             pageColour = pageColour,
-            onDismissPoint = { selectedPointRef = null },
             onFit = {
                 selectedPointRef = null
                 fitToken += 1
@@ -149,6 +168,15 @@ internal fun StormLivePanel(
                 .align(Alignment.BottomCenter)
                 .padding(start = 10.dp, end = 10.dp, bottom = 10.dp),
         )
+
+        selectedPoint?.let { selected ->
+            StormPointPopup(
+                selected = selected,
+                containerSize = containerSize,
+                pageColour = pageColour,
+                onDismiss = { selectedPointRef = null },
+            )
+        }
     }
 }
 
@@ -298,9 +326,7 @@ private fun StormBottomHud(
     state: StormHostState,
     visibleTracks: List<StormTrack>,
     enabledAgencyCount: Int,
-    selectedPoint: StormPointSelection?,
     pageColour: Color,
-    onDismissPoint: () -> Unit,
     onFit: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -313,129 +339,225 @@ private fun StormBottomHud(
             .background(STORM_MUTED_PANEL)
             .padding(horizontal = 12.dp, vertical = 10.dp),
     ) {
-        if (selectedPoint != null) {
-            StormSelectedPointContent(
-                selected = selectedPoint,
-                pageColour = pageColour,
-                onDismiss = onDismissPoint,
-            )
-        } else {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Column(Modifier.weight(1f)) {
-                    Text(
-                        text = when {
-                            enabledAgencyCount == 0 -> "未選擇來源"
-                            state.isRefreshing -> "正在同步四機構官方資料…"
-                            visibleTracks.isEmpty() -> "目前沒有可顯示的活躍路徑"
-                            else -> "顯示 ${visibleTracks.size} 條機構路徑 · $enabledAgencyCount/4 來源"
-                        },
-                        color = Color.White,
-                        fontSize = 13.sp,
-                        fontWeight = FontWeight.Medium,
-                    )
-                    Text(
-                        text = if (state.cacheRestored) {
-                            "點擊路徑點查看資料 · 分析實線 · 預測虛線 · 預報圓 / 風圈"
-                        } else {
-                            "正在讀取 Storm 裝置快取…"
-                        },
-                        color = LocalMetroSubText.current,
-                        fontSize = 10.sp,
-                        lineHeight = 14.sp,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
                 Text(
-                    text = "全景",
-                    color = pageColour,
-                    fontSize = 13.sp,
-                    modifier = Modifier
-                        .clickable(onClick = onFit)
-                        .padding(start = 14.dp, top = 8.dp, bottom = 8.dp),
-                )
-            }
-
-            if (visibleTracks.isNotEmpty()) {
-                Spacer(Modifier.height(5.dp))
-                Text(
-                    text = visibleTracks.take(4).joinToString(" · ") { track ->
-                        "${track.agency.name} ${trackDisplayName(track)}"
+                    text = when {
+                        enabledAgencyCount == 0 -> "未選擇來源"
+                        state.isRefreshing -> "正在同步四機構官方資料…"
+                        visibleTracks.isEmpty() -> "目前沒有可顯示的活躍路徑"
+                        else -> "顯示 ${visibleTracks.size} 條機構路徑 · $enabledAgencyCount/4 來源"
                     },
-                    color = Color.White.copy(alpha = 0.78f),
-                    fontSize = 10.sp,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
-            sourceError?.let { message ->
-                Spacer(Modifier.height(4.dp))
-                Text(
-                    text = message,
-                    color = Color(0xFFFF9E9E),
-                    fontSize = 9.sp,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun StormSelectedPointContent(
-    selected: StormPointSelection,
-    pageColour: Color,
-    onDismiss: () -> Unit,
-) {
-    val track = selected.track
-    val point = selected.point
-    val accent = agencyColour(track.agency)
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        Column(Modifier.weight(1f)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    text = track.agency.name,
-                    color = accent,
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.Medium,
-                )
-                Spacer(Modifier.width(7.dp))
-                Text(
-                    text = trackDisplayName(track),
                     color = Color.White,
                     fontSize = 13.sp,
                     fontWeight = FontWeight.Medium,
+                )
+                Text(
+                    text = if (state.cacheRestored) {
+                        "點擊路徑點查看完整資料 · 路徑線按機構色 · 路徑點按強度色"
+                    } else {
+                        "正在讀取 Storm 裝置快取…"
+                    },
+                    color = LocalMetroSubText.current,
+                    fontSize = 10.sp,
+                    lineHeight = 14.sp,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
             }
             Text(
-                text = "${if (point.pointType == StormPointType.ANALYSIS) "分析" else "預測"} · ${formatStormPointTime(point.validAt)} · ${"%.1f".format(point.latitude)}°, ${"%.1f".format(point.longitude)}°",
-                color = LocalMetroSubText.current,
+                text = "全景",
+                color = pageColour,
+                fontSize = 13.sp,
+                modifier = Modifier
+                    .clickable(onClick = onFit)
+                    .padding(start = 14.dp, top = 8.dp, bottom = 8.dp),
+            )
+        }
+
+        if (visibleTracks.isNotEmpty()) {
+            Spacer(Modifier.height(5.dp))
+            Text(
+                text = visibleTracks.take(4).joinToString(" · ") { track ->
+                    "${track.agency.name} ${trackDisplayName(track)}"
+                },
+                color = Color.White.copy(alpha = 0.78f),
                 fontSize = 10.sp,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
         }
+        sourceError?.let { message ->
+            Spacer(Modifier.height(4.dp))
+            Text(
+                text = message,
+                color = Color(0xFFFF9E9E),
+                fontSize = 9.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+    }
+}
+
+@Composable
+private fun StormPointPopup(
+    selected: StormPointSelection,
+    containerSize: IntSize,
+    pageColour: Color,
+    onDismiss: () -> Unit,
+) {
+    val density = LocalDensity.current
+    var popupSize by remember(selected.ref) { mutableStateOf(IntSize.Zero) }
+    val marginPx = with(density) { 10.dp.toPx() }
+    val gapPx = with(density) { 14.dp.toPx() }
+    val safeTopPx = with(density) { 138.dp.toPx() }
+    val safeBottomPx = with(density) { 92.dp.toPx() }
+    val anchorX = selected.ref.anchorXPx ?: containerSize.width / 2f
+    val anchorY = selected.ref.anchorYPx ?: containerSize.height / 2f
+    val popupWidth = popupSize.width.toFloat()
+    val popupHeight = popupSize.height.toFloat()
+    val maxX = (containerSize.width - popupWidth - marginPx).coerceAtLeast(marginPx)
+    val centeredX = anchorX - popupWidth / 2f
+    val x = centeredX.coerceIn(marginPx, maxX)
+    val preferredAbove = anchorY - popupHeight - gapPx
+    val preferredBelow = anchorY + gapPx
+    val maxY = (containerSize.height - popupHeight - safeBottomPx).coerceAtLeast(safeTopPx)
+    val y = if (preferredAbove >= safeTopPx) preferredAbove else preferredBelow.coerceAtMost(maxY)
+
+    val track = selected.track
+    val point = selected.point
+    val sourceAccent = agencyColour(track.agency)
+    val typeLabel = stormPointTypeLabel(selected)
+    val rows = stormPopupRows(selected)
+
+    Column(
+        modifier = Modifier
+            .offset { IntOffset(x.roundToInt(), y.coerceIn(safeTopPx, maxY).roundToInt()) }
+            .widthIn(min = 240.dp, max = 310.dp)
+            .heightIn(max = 350.dp)
+            .onSizeChanged { popupSize = it }
+            .border(1.dp, Color(0xFF3A3A3A))
+            .background(STORM_POPUP_PANEL)
+            .verticalScroll(rememberScrollState())
+            .padding(horizontal = 12.dp, vertical = 11.dp),
+    ) {
+        Row(verticalAlignment = Alignment.Top) {
+            Text(
+                text = "${trackDisplayName(track)} · ${track.agency.name} $typeLabel",
+                color = sourceAccent,
+                fontSize = 14.sp,
+                fontWeight = FontWeight.Bold,
+                lineHeight = 18.sp,
+                modifier = Modifier.weight(1f),
+            )
+            Text(
+                text = "×",
+                color = pageColour,
+                fontSize = 17.sp,
+                modifier = Modifier
+                    .clickable(onClick = onDismiss)
+                    .padding(start = 10.dp, bottom = 4.dp),
+            )
+        }
+        Spacer(Modifier.height(6.dp))
+        Box(Modifier.fillMaxWidth().height(1.dp).background(Color(0xFF333333)))
+        Spacer(Modifier.height(7.dp))
+        rows.forEach { (label, value) ->
+            StormPopupRow(label = label, value = value)
+        }
+    }
+}
+
+@Composable
+private fun StormPopupRow(label: String, value: String) {
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(vertical = 1.dp),
+        verticalAlignment = Alignment.Top,
+    ) {
         Text(
-            text = "關閉",
-            color = pageColour,
-            fontSize = 12.sp,
-            modifier = Modifier
-                .clickable(onClick = onDismiss)
-                .padding(start = 12.dp, top = 7.dp, bottom = 7.dp),
+            text = "$label：",
+            color = LocalMetroSubText.current,
+            fontSize = 11.sp,
+            lineHeight = 16.sp,
+        )
+        Text(
+            text = value,
+            color = Color.White,
+            fontSize = 11.sp,
+            lineHeight = 16.sp,
+            modifier = Modifier.weight(1f),
         )
     }
-    Spacer(Modifier.height(5.dp))
-    Text(
-        text = stormPointMetrics(point),
-        color = Color.White.copy(alpha = 0.82f),
-        fontSize = 10.sp,
-        lineHeight = 14.sp,
-        maxLines = 2,
-        overflow = TextOverflow.Ellipsis,
-    )
+}
+
+private fun stormPopupRows(selected: StormPointSelection): List<Pair<String, String>> {
+    val point = selected.point
+    val track = selected.track
+    return buildList {
+        add("時間" to formatStormPointTime(point.validAt))
+        add("位置" to formatStormLatLon(point.latitude, point.longitude))
+        add("強度" to stormIntensityDisplayLabel(point))
+        add("最高持續風速" to point.windSpeedMs?.let { "${formatNumber(it)} m/s" }.orNotProvided())
+        add("中心氣壓" to point.pressureHpa?.let { "${formatNumber(it)} hPa" }.orNotProvided())
+        point.forecastHour?.let { add("預報時效" to "+$it 小時") }
+        point.maximumGustMs?.let { add("最大陣風" to "${formatNumber(it)} m/s") }
+        val movement = listOfNotNull(
+            point.movingDirection?.takeIf { it.isNotBlank() },
+            point.movingSpeedKmh?.let { "${formatNumber(it)} km/h" },
+        ).joinToString(" ")
+        if (movement.isNotBlank()) add("移動" to movement)
+        point.movementPrediction?.takeIf { it.isNotBlank() }?.let { add("移動預測" to it) }
+        point.stateTransfer?.takeIf { it.isNotBlank() }?.let { add("強度趨勢" to it) }
+        point.probabilityRadiusKm?.let {
+            add("${track.agency.name} 70% 預報圓半徑" to "約 ${formatNumber(it)} 公里")
+        }
+        if (point.windRadii.isNotEmpty()) add("風圈" to formatStormWindRadii(point))
+        add("距離香港" to "約 ${stormDistanceToHongKongKm(point).roundToInt()} 公里")
+        add("來源" to stormAgencySourceName(track.agency))
+    }
+}
+
+private fun String?.orNotProvided(): String = this ?: "未提供"
+
+private fun stormPointTypeLabel(selected: StormPointSelection): String = when {
+    selected.point.pointType == StormPointType.FORECAST -> "預測"
+    selected.ref.pointIndex == selected.track.analysisPoints.lastIndex -> "最新分析"
+    else -> "實測 / 分析"
+}
+
+private fun formatStormWindRadii(point: StormPoint): String = point.windRadii.joinToString("；") { radii ->
+    val max = maxOf(radii.northEastKm, radii.southEastKm, radii.southWestKm, radii.northWestKm)
+    "${radii.level ?: "風圈"} 最大約 ${formatNumber(max)} km"
+}
+
+private fun stormAgencySourceName(agency: StormAgency): String = when (agency) {
+    StormAgency.HKO -> "香港天文台"
+    StormAgency.CMA -> "中央氣象台"
+    StormAgency.JMA -> "日本氣象廳"
+    StormAgency.CWA -> "中央氣象署"
+}
+
+private fun formatStormLatLon(latitude: Double, longitude: Double): String {
+    val latDirection = if (latitude >= 0) "N" else "S"
+    val lonDirection = if (longitude >= 0) "E" else "W"
+    return "${"%.1f".format(kotlin.math.abs(latitude))}°$latDirection, ${"%.1f".format(kotlin.math.abs(longitude))}°$lonDirection"
+}
+
+private fun formatNumber(value: Double): String = if (value % 1.0 == 0.0) {
+    "%.0f".format(value)
+} else {
+    "%.1f".format(value)
+}
+
+internal fun stormDistanceToHongKongKm(point: StormPoint): Double {
+    val lat1 = Math.toRadians(HONG_KONG_LAT)
+    val lat2 = Math.toRadians(point.latitude)
+    val dLat = lat2 - lat1
+    val dLon = Math.toRadians(point.longitude - HONG_KONG_LON)
+    val a = sin(dLat / 2.0) * sin(dLat / 2.0) +
+        cos(lat1) * cos(lat2) * sin(dLon / 2.0) * sin(dLon / 2.0)
+    return 2.0 * EARTH_RADIUS_KM * asin(sqrt(a.coerceIn(0.0, 1.0)))
 }
 
 internal fun resolveStormPointSelection(
@@ -452,19 +574,19 @@ internal fun resolveStormPointSelection(
         StormPointType.FORECAST -> track.forecastPoints
     }
     val point = points.getOrNull(ref.pointIndex) ?: return null
-    return StormPointSelection(track = track, point = point)
+    return StormPointSelection(track = track, point = point, ref = ref)
 }
 
 internal fun stormPointMetrics(point: StormPoint): String {
     val metrics = buildList {
-        point.intensityLabel?.takeIf { it.isNotBlank() }?.let(::add)
-        point.windSpeedMs?.let { add("最大風速 ${"%.0f".format(it)} m/s") }
-        point.maximumGustMs?.let { add("陣風 ${"%.0f".format(it)} m/s") }
-        point.pressureHpa?.let { add("${"%.0f".format(it)} hPa") }
+        add(stormIntensityDisplayLabel(point))
+        point.windSpeedMs?.let { add("最大風速 ${formatNumber(it)} m/s") }
+        point.maximumGustMs?.let { add("陣風 ${formatNumber(it)} m/s") }
+        point.pressureHpa?.let { add("${formatNumber(it)} hPa") }
         point.forecastHour?.let { add("+$it h") }
-        point.probabilityRadiusKm?.let { add("預報圓 ${"%.0f".format(it)} km") }
+        point.probabilityRadiusKm?.let { add("預報圓 ${formatNumber(it)} km") }
         point.movingDirection?.takeIf { it.isNotBlank() }?.let { direction ->
-            point.movingSpeedKmh?.let { speed -> add("$direction ${"%.0f".format(speed)} km/h") } ?: add(direction)
+            point.movingSpeedKmh?.let { speed -> add("$direction ${formatNumber(speed)} km/h") } ?: add(direction)
         }
     }
     return metrics.ifEmpty { listOf("此資料點沒有額外強度資料") }.joinToString(" · ")
