@@ -70,9 +70,12 @@ private val MAPLIBRE_MUTED = Color(0xFF8E8E8E)
 private val MAPLIBRE_PANEL = Color(0xF20A0A0A)
 private const val MAPLIBRE_RAIN_SOURCE = "weather-metro-rain-image"
 private const val MAPLIBRE_RAIN_LAYER = "weather-metro-rain-layer"
-private const val MAPLIBRE_DEFAULT_ZOOM = 15.5
-private const val MAPLIBRE_MIN_ZOOM = 10.0
-private const val MAPLIBRE_MAX_ZOOM = 18.0
+// MapLibre Native uses a 512 px world-tile scale while the Canvas renderer uses 256 px.
+// Offset MapLibre camera zoom by -1 so the A/B views cover the same geographic extent.
+private const val MAPLIBRE_ZOOM_OFFSET_FROM_CANVAS = -1.0
+private const val MAPLIBRE_DEFAULT_ZOOM = FORECAST_DEFAULT_MAP_ZOOM + MAPLIBRE_ZOOM_OFFSET_FROM_CANVAS
+private const val MAPLIBRE_MIN_ZOOM = FORECAST_MIN_MAP_ZOOM + MAPLIBRE_ZOOM_OFFSET_FROM_CANVAS
+private const val MAPLIBRE_MAX_ZOOM = FORECAST_MAX_MAP_ZOOM + MAPLIBRE_ZOOM_OFFSET_FROM_CANVAS
 private const val MAPLIBRE_LOCATION_EPSILON = 0.000001
 
 private val MAPLIBRE_BASE_STYLE = """
@@ -389,15 +392,7 @@ private fun RainForecastFrame.mapLibreQuad(): LatLngQuad {
 
 private fun RainForecastFrame.toAndroidRainBitmap(): Bitmap {
     require(values.size == grid.rows * grid.cols) { "Rain raster shape does not match grid" }
-    val pixels = IntArray(values.size)
-    for (targetRow in 0 until grid.rows) {
-        val sourceRow = grid.rows - 1 - targetRow
-        for (column in 0 until grid.cols) {
-            val targetIndex = targetRow * grid.cols + column
-            val sourceIndex = sourceRow * grid.cols + column
-            pixels[targetIndex] = rainfallArgb(values[sourceIndex])
-        }
-    }
+    val pixels = IntArray(values.size) { index -> rainfallArgb(values[index]) }
     return Bitmap.createBitmap(pixels, grid.cols, grid.rows, Bitmap.Config.ARGB_8888)
 }
 
