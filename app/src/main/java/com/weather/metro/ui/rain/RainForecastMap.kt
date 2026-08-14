@@ -145,12 +145,12 @@ fun RainForecastPanel(
                 markerColour = pageColour,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(390.dp),
+                    .height(300.dp),
             )
             ForecastLegend()
             ForecastTimeline(
                 timeline = timeline,
-                selectedIndex = state.forecastFrameIndex ?: 0,
+                selectedIndex = state.forecastFrameIndex ?: frame.frameIndex,
                 frameLoading = state.forecastFrame.status == RainResourceStatus.LOADING,
                 playing = playing,
                 pageColour = pageColour,
@@ -174,8 +174,16 @@ private fun ForecastStatusLine(timeline: RainForecastTimeline, state: RainHostSt
         RainForecastSource.NOWCAST -> "HKO nowcast fallback"
     }
     val stale = if (state.forecast.isStale || state.forecastFrame.isStale) " · 舊資料" else ""
+    val preload = if (
+        timeline.source == RainForecastSource.SWIRLS &&
+        timeline.loadedFrameCount < timeline.frames.size
+    ) {
+        " · 背景預載中"
+    } else {
+        ""
+    }
     Text(
-        text = "$source · 已載入 ${timeline.loadedFrameCount}/${timeline.frames.size}$stale",
+        text = "$source · 已載入 ${timeline.loadedFrameCount}/${timeline.frames.size}$preload$stale",
         color = if (stale.isNotEmpty()) Color(0xFFFFC107) else LocalMetroSubText.current,
         fontSize = 10.sp,
     )
@@ -193,19 +201,25 @@ private fun ForecastMapCanvas(
 ) {
     val rainImage = remember(frame) { frame.toRainImageBitmap() }
     val renderBounds = remember(frame.grid) { forecastRenderBounds(frame.grid) }
-    val viewport = remember(renderBounds) { paddedForecastBounds(renderBounds) }
+    var viewScale by rememberSaveable { mutableStateOf(FORECAST_DEFAULT_VIEW_SCALE) }
+    val viewport = remember(renderBounds, viewScale) {
+        forecastViewportBounds(renderBounds, viewScale)
+    }
     val tileSpecs = remember(viewport) { forecastBasemapTiles(viewport) }
-    var tileImages by remember(viewport) { mutableStateOf<Map<String, ImageBitmap>>(emptyMap()) }
+    var tileImages by remember { mutableStateOf<Map<String, ImageBitmap>>(emptyMap()) }
 
     LaunchedEffect(tileSpecs) {
-        tileImages = coroutineScope {
-            tileSpecs.map { spec ->
+        val missingTiles = tileSpecs.filterNot { tileImages.containsKey(it.key) }
+        if (missingTiles.isEmpty()) return@LaunchedEffect
+        val loadedTiles = coroutineScope {
+            missingTiles.map { spec ->
                 async {
                     val bitmap = ForecastTileLoader.load(spec)
                     spec.key to bitmap?.asImageBitmap()
                 }
             }.awaitAll().mapNotNull { (key, image) -> image?.let { key to it } }.toMap()
         }
+        if (loadedTiles.isNotEmpty()) tileImages = tileImages + loadedTiles
     }
 
     Box(modifier = modifier.background(Color(0xFF101010))) {
@@ -285,6 +299,19 @@ private fun ForecastMapCanvas(
                 .background(Color.Black.copy(alpha = 0.72f))
                 .padding(horizontal = 8.dp, vertical = 5.dp),
         )
+        ForecastMapZoomControls(
+            viewScale = viewScale,
+            onZoomOut = {
+                viewScale = (viewScale - 0.12).coerceAtLeast(FORECAST_MIN_VIEW_SCALE)
+            },
+            onReset = { viewScale = FORECAST_DEFAULT_VIEW_SCALE },
+            onZoomIn = {
+                viewScale = (viewScale + 0.12).coerceAtMost(FORECAST_MAX_VIEW_SCALE)
+            },
+            modifier = Modifier
+                .align(Alignment.TopEnd)
+                .padding(7.dp),
+        )
         Text(
             text = "© OpenStreetMap © CARTO",
             color = Color.White.copy(alpha = 0.70f),
@@ -293,6 +320,50 @@ private fun ForecastMapCanvas(
                 .align(Alignment.BottomEnd)
                 .background(Color.Black.copy(alpha = 0.56f))
                 .padding(horizontal = 5.dp, vertical = 3.dp),
+        )
+    }
+}
+
+@Composable
+private fun ForecastMapZoomControls(
+    viewScale: Double,
+    onZoomOut: () -> Unit,
+    onReset: () -> Unit,
+    onZoomIn: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(3.dp)) {
+        ForecastMapControl(
+            label = "+",
+            enabled = viewScale < FORECAST_MAX_VIEW_SCALE - 0.001,
+            onClick = onZoomIn,
+        )
+        ForecastMapControl(label = "fit", enabled = true, onClick = onReset)
+        ForecastMapControl(
+            label = "−",
+            enabled = viewScale > FORECAST_MIN_VIEW_SCALE + 0.001,
+            onClick = onZoomOut,
+        )
+    }
+}
+
+@Composable
+private fun ForecastMapControl(
+    label: String,
+    enabled: Boolean,
+    onClick: () -> Unit,
+) {
+    Box(
+        modifier = Modifier
+            .size(34.dp)
+            .background(Color.Black.copy(alpha = if (enabled) 0.78f else 0.42f))
+            .clickable(enabled = enabled, onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            text = label,
+            color = Color.White.copy(alpha = if (enabled) 1f else 0.45f),
+            fontSize = if (label == "fit") 9.sp else 17.sp,
         )
     }
 }
@@ -327,7 +398,7 @@ private fun ForecastTimeline(
                 Column(
                     modifier = Modifier
                         .background(if (selected) pageColour else Color(0xFF202020))
-                        .clickable(enabled = !frameLoading || selected) { onSelectFrame(index) }
+                        .clickable { onSelectFrame(index) }
                         .padding(horizontal = 10.dp, vertical = 7.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
@@ -338,7 +409,7 @@ private fun ForecastTimeline(
         }
     }
     if (frameLoading) {
-        Text("正在載入選定預報格…", color = LocalMetroSubText.current, fontSize = 10.sp)
+        Text("正在準備選定預報格，地圖保持目前畫面…", color = LocalMetroSubText.current, fontSize = 10.sp)
     }
 }
 
@@ -377,7 +448,7 @@ private fun ForecastLoadTile(pageColour: Color, onRefresh: () -> Unit) {
     ) {
         Column {
             Text("載入兩小時預報", color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Light)
-            Text("SWIRLS 16-frame · 按需要才下載", color = LocalMetroSubText.current, fontSize = 11.sp)
+            Text("SWIRLS 16-frame · 首格顯示後背景預載其餘時段", color = LocalMetroSubText.current, fontSize = 11.sp)
             Spacer(Modifier.height(7.dp))
             Text("load", color = pageColour, fontSize = 13.sp)
         }
@@ -408,7 +479,7 @@ private fun RainForecastFrame.toRainImageBitmap(): ImageBitmap {
 }
 
 private object ForecastTileLoader {
-    private val cache = LruCache<String, Bitmap>(48)
+    private val cache = LruCache<String, Bitmap>(72)
 
     suspend fun load(spec: ForecastTileSpec): Bitmap? = withContext(Dispatchers.IO) {
         synchronized(cache) { cache.get(spec.key) }?.let { return@withContext it }
