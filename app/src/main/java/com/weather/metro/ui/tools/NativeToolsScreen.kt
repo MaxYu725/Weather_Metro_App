@@ -15,10 +15,12 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -30,12 +32,12 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.net.toUri
 import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.repeatOnLifecycle
 import com.weather.metro.data.tools.RainRadarMode
 import com.weather.metro.ui.components.MetroSectionLabel
 import com.weather.metro.ui.components.MetroTile
-import com.weather.metro.ui.rain.RainForecastMapLibrePanel
 import com.weather.metro.ui.rain.RainForecastPanel
 import com.weather.metro.ui.rain.RainHostState
 import com.weather.metro.ui.rain.RainHostViewModel
@@ -55,7 +57,6 @@ private const val DESTINATION_HOME = "home"
 private const val DESTINATION_POINT = "point"
 private const val DESTINATION_RADAR = "radar"
 private const val DESTINATION_FORECAST = "forecast"
-private const val DESTINATION_FORECAST_MAPLIBRE = "forecast-maplibre"
 private const val DESTINATION_STORM = "storm"
 
 @Composable
@@ -84,18 +85,31 @@ fun NativeToolsScreen(
     onEnsureStormFresh: () -> Unit,
     onCancelStormRequests: () -> Unit,
 ) {
+    val lifecycleOwner = LocalLifecycleOwner.current
+    var lifecycleResumed by remember(lifecycleOwner) {
+        mutableStateOf(lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED))
+    }
     var destination by rememberSaveable { mutableStateOf(DESTINATION_HOME) }
     var selectedRadiusKm by rememberSaveable {
         mutableIntStateOf(rainState.pointRequest?.radiusKm ?: RainHostViewModel.DEFAULT_POINT_RADIUS_KM)
+    }
+    val effectiveActive = toolHostIsActive(isActive, lifecycleResumed)
+
+    DisposableEffect(lifecycleOwner) {
+        val lifecycle = lifecycleOwner.lifecycle
+        val observer = LifecycleEventObserver { _, _ ->
+            lifecycleResumed = lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)
+        }
+        lifecycle.addObserver(observer)
+        lifecycleResumed = lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)
+        onDispose { lifecycle.removeObserver(observer) }
     }
 
     fun cancelDestinationRequests() {
         when (destination) {
             DESTINATION_POINT -> onCancelPointRefresh()
             DESTINATION_RADAR -> onCancelRadarRequests()
-            DESTINATION_FORECAST,
-            DESTINATION_FORECAST_MAPLIBRE,
-            -> onCancelForecastRequests()
+            DESTINATION_FORECAST -> onCancelForecastRequests()
             DESTINATION_STORM -> onCancelStormRequests()
         }
     }
@@ -110,13 +124,13 @@ fun NativeToolsScreen(
     }
 
     LaunchedEffect(
-        isActive,
+        effectiveActive,
         destination,
         rainState.pointForecast.status,
         radarState.timeline.status,
         rainState.forecast.status,
     ) {
-        if (!isActive) {
+        if (!effectiveActive) {
             cancelDestinationRequests()
             return@LaunchedEffect
         }
@@ -130,9 +144,7 @@ fun NativeToolsScreen(
             DESTINATION_RADAR -> if (radarState.timeline.status == RainResourceStatus.IDLE) {
                 onRefreshRadar()
             }
-            DESTINATION_FORECAST,
-            DESTINATION_FORECAST_MAPLIBRE,
-            -> if (rainState.forecast.status == RainResourceStatus.IDLE) {
+            DESTINATION_FORECAST -> if (rainState.forecast.status == RainResourceStatus.IDLE) {
                 onRefreshForecast()
             }
         }
@@ -156,7 +168,7 @@ fun NativeToolsScreen(
         DESTINATION_RADAR -> RadarMapLibreToolScreen(
             pageColour = pageColour,
             radarState = radarState,
-            isActive = isActive,
+            isActive = effectiveActive,
             onRefresh = onRefreshRadar,
             onSelectFrame = onSelectRadarFrame,
             onSelectRange = onSelectRadarRange,
@@ -173,18 +185,7 @@ fun NativeToolsScreen(
         DESTINATION_FORECAST -> ForecastToolScreen(
             pageColour = pageColour,
             rainState = rainState,
-            isActive = isActive,
-            onRefresh = onRefreshForecast,
-            onSelectFrame = onLoadForecastFrame,
-            onBack = {
-                onCancelForecastRequests()
-                destination = DESTINATION_HOME
-            },
-        )
-        DESTINATION_FORECAST_MAPLIBRE -> ForecastMapLibreToolScreen(
-            pageColour = pageColour,
-            rainState = rainState,
-            isActive = isActive,
+            isActive = effectiveActive,
             onRefresh = onRefreshForecast,
             onSelectFrame = onLoadForecastFrame,
             onBack = {
@@ -195,7 +196,7 @@ fun NativeToolsScreen(
         DESTINATION_STORM -> StormLiveToolScreen(
             pageColour = pageColour,
             stormState = stormState,
-            isActive = isActive,
+            isActive = effectiveActive,
             onRefresh = onRefreshStorm,
             onEnsureFresh = onEnsureStormFresh,
             onCancelRequests = onCancelStormRequests,
@@ -209,7 +210,6 @@ fun NativeToolsScreen(
             onOpenPoint = { destination = DESTINATION_POINT },
             onOpenRadar = { destination = DESTINATION_RADAR },
             onOpenForecast = { destination = DESTINATION_FORECAST },
-            onOpenMapLibreForecast = { destination = DESTINATION_FORECAST_MAPLIBRE },
             onOpenStorm = { destination = DESTINATION_STORM },
         )
     }
@@ -221,7 +221,6 @@ private fun ToolsHome(
     onOpenPoint: () -> Unit,
     onOpenRadar: () -> Unit,
     onOpenForecast: () -> Unit,
-    onOpenMapLibreForecast: () -> Unit,
     onOpenStorm: () -> Unit,
 ) {
     val context = LocalContext.current
@@ -230,21 +229,13 @@ private fun ToolsHome(
         contentPadding = androidx.compose.foundation.layout.PaddingValues(start = 22.dp, end = 16.dp, bottom = 48.dp),
         verticalArrangement = Arrangement.spacedBy(9.dp),
     ) {
-        item {
-            Text(
-                "Rain / Storm 功能會直接在 Weather App 內開啟，不需要先進入獨立 Rain-Track 介面。",
-                color = LocalMetroSubText.current,
-                fontSize = 12.sp,
-                lineHeight = 17.sp,
-            )
-        }
         item { MetroSectionLabel("rain") }
         item {
             ToolTile(
                 seed = "native-point-rain",
                 title = "定點降雨",
-                description = "目前位置 · 未來兩小時 · 附近雨勢",
-                status = "native",
+                description = "目前位置 · 附近雨勢",
+                status = "降雨",
                 background = pageColour,
                 onClick = onOpenPoint,
             )
@@ -254,8 +245,8 @@ private fun ToolsHome(
                 ToolTile(
                     seed = "native-radar",
                     title = "雷達",
-                    description = "MapLibre · 即時觀測",
-                    status = "M1D",
+                    description = "即時觀測 · 64 / 256 km",
+                    status = "觀測",
                     background = pageColour,
                     modifier = Modifier.weight(1f).height(132.dp),
                     onClick = onOpenRadar,
@@ -263,24 +254,13 @@ private fun ToolsHome(
                 ToolTile(
                     seed = "native-forecast-map",
                     title = "2小時預報",
-                    description = "6分鐘步進",
-                    status = "native",
+                    description = "未來兩小時 · 6分鐘步進",
+                    status = "預報",
                     background = pageColour,
                     modifier = Modifier.weight(1f).height(132.dp),
                     onClick = onOpenForecast,
                 )
             }
-        }
-        item {
-            ToolTile(
-                seed = "maplibre-forecast-spike",
-                title = "2小時預報 · MapLibre 試驗",
-                description = "A/B 地圖引擎 · 同一 SWIRLS / HUD / timeline",
-                status = "M0 experimental",
-                background = pageColour,
-                modifier = Modifier.fillMaxWidth().height(126.dp),
-                onClick = onOpenMapLibreForecast,
-            )
         }
 
         item { MetroSectionLabel("storm") }
@@ -288,8 +268,8 @@ private fun ToolsHome(
             ToolTile(
                 seed = "native-storm",
                 title = "熱帶氣旋",
-                description = "HKO · CMA · JMA · CWA Live",
-                status = "S1F native",
+                description = "HKO · CMA · JMA · CWA",
+                status = "live",
                 background = pageColour,
                 onClick = onOpenStorm,
             )
@@ -412,28 +392,6 @@ private fun ForecastToolScreen(
 }
 
 @Composable
-private fun ForecastMapLibreToolScreen(
-    pageColour: Color,
-    rainState: RainHostState,
-    isActive: Boolean,
-    onRefresh: () -> Unit,
-    onSelectFrame: (Int) -> Unit,
-    onBack: () -> Unit,
-) {
-    Box(modifier = Modifier.fillMaxSize()) {
-        RainForecastMapLibrePanel(
-            state = rainState,
-            pageColour = pageColour,
-            isActive = isActive,
-            onRefresh = onRefresh,
-            onSelectFrame = onSelectFrame,
-            onBack = onBack,
-            modifier = Modifier.fillMaxSize(),
-        )
-    }
-}
-
-@Composable
 private fun StormLiveToolScreen(
     pageColour: Color,
     stormState: StormHostState,
@@ -514,3 +472,6 @@ private fun OfficialLink(title: String, onClick: () -> Unit) {
             .padding(vertical = 10.dp),
     )
 }
+
+internal fun toolHostIsActive(pageActive: Boolean, lifecycleResumed: Boolean): Boolean =
+    pageActive && lifecycleResumed
