@@ -30,6 +30,7 @@ import androidx.compose.ui.unit.sp
 import androidx.core.net.toUri
 import com.weather.metro.ui.components.MetroSectionLabel
 import com.weather.metro.ui.components.MetroTile
+import com.weather.metro.ui.rain.RainForecastMapLibrePanel
 import com.weather.metro.ui.rain.RainForecastPanel
 import com.weather.metro.ui.rain.RainHostState
 import com.weather.metro.ui.rain.RainHostViewModel
@@ -40,6 +41,7 @@ import com.weather.metro.ui.theme.LocalMetroSubText
 private const val DESTINATION_HOME = "home"
 private const val DESTINATION_POINT = "point"
 private const val DESTINATION_FORECAST = "forecast"
+private const val DESTINATION_FORECAST_MAPLIBRE = "forecast-maplibre"
 
 @Composable
 fun NativeToolsScreen(
@@ -61,7 +63,9 @@ fun NativeToolsScreen(
     fun cancelDestinationRequests() {
         when (destination) {
             DESTINATION_POINT -> onCancelPointRefresh()
-            DESTINATION_FORECAST -> onCancelForecastRequests()
+            DESTINATION_FORECAST,
+            DESTINATION_FORECAST_MAPLIBRE,
+            -> onCancelForecastRequests()
         }
     }
 
@@ -91,7 +95,9 @@ fun NativeToolsScreen(
             ) {
                 onRefreshPoint(selectedRadiusKm)
             }
-            DESTINATION_FORECAST -> if (rainState.forecast.status == RainResourceStatus.IDLE) {
+            DESTINATION_FORECAST,
+            DESTINATION_FORECAST_MAPLIBRE,
+            -> if (rainState.forecast.status == RainResourceStatus.IDLE) {
                 onRefreshForecast()
             }
         }
@@ -123,10 +129,22 @@ fun NativeToolsScreen(
                 destination = DESTINATION_HOME
             },
         )
+        DESTINATION_FORECAST_MAPLIBRE -> ForecastMapLibreToolScreen(
+            pageColour = pageColour,
+            rainState = rainState,
+            isActive = isActive,
+            onRefresh = onRefreshForecast,
+            onSelectFrame = onLoadForecastFrame,
+            onBack = {
+                onCancelForecastRequests()
+                destination = DESTINATION_HOME
+            },
+        )
         else -> ToolsHome(
             pageColour = pageColour,
             onOpenPoint = { destination = DESTINATION_POINT },
             onOpenForecast = { destination = DESTINATION_FORECAST },
+            onOpenMapLibreForecast = { destination = DESTINATION_FORECAST_MAPLIBRE },
         )
     }
 }
@@ -136,6 +154,7 @@ private fun ToolsHome(
     pageColour: Color,
     onOpenPoint: () -> Unit,
     onOpenForecast: () -> Unit,
+    onOpenMapLibreForecast: () -> Unit,
 ) {
     val context = LocalContext.current
     LazyColumn(
@@ -182,6 +201,17 @@ private fun ToolsHome(
                     onClick = onOpenForecast,
                 )
             }
+        }
+        item {
+            ToolTile(
+                seed = "maplibre-forecast-spike",
+                title = "2小時預報 · MapLibre 試驗",
+                description = "A/B 地圖引擎 · 同一 SWIRLS / HUD / timeline",
+                status = "M0 experimental",
+                background = pageColour,
+                modifier = Modifier.fillMaxWidth().height(126.dp),
+                onClick = onOpenMapLibreForecast,
+            )
         }
 
         item { MetroSectionLabel("storm") }
@@ -257,6 +287,28 @@ private fun ForecastToolScreen(
 ) {
     Box(modifier = Modifier.fillMaxSize()) {
         RainForecastPanel(
+            state = rainState,
+            pageColour = pageColour,
+            isActive = isActive,
+            onRefresh = onRefresh,
+            onSelectFrame = onSelectFrame,
+            onBack = onBack,
+            modifier = Modifier.fillMaxSize(),
+        )
+    }
+}
+
+@Composable
+private fun ForecastMapLibreToolScreen(
+    pageColour: Color,
+    rainState: RainHostState,
+    isActive: Boolean,
+    onRefresh: () -> Unit,
+    onSelectFrame: (Int) -> Unit,
+    onBack: () -> Unit,
+) {
+    Box(modifier = Modifier.fillMaxSize()) {
+        RainForecastMapLibrePanel(
             state = rainState,
             pageColour = pageColour,
             isActive = isActive,
