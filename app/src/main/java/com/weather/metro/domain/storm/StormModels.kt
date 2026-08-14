@@ -24,10 +24,26 @@ enum class StormPointType(val wireValue: String) {
     }
 }
 
+enum class StormLiveState {
+    LOADING,
+    OK,
+    EMPTY,
+    STALE,
+    ERROR,
+}
+
 data class StormHealth(
     val ok: Boolean,
     val version: String?,
     val checkedAt: String?,
+)
+
+data class StormWindRadii(
+    val level: String?,
+    val northEastKm: Double,
+    val southEastKm: Double,
+    val southWestKm: Double,
+    val northWestKm: Double,
 )
 
 data class StormPoint(
@@ -41,6 +57,12 @@ data class StormPoint(
     val pressureHpa: Double?,
     val forecastHour: Int?,
     val probabilityRadiusKm: Double?,
+    val maximumGustMs: Double? = null,
+    val movingSpeedKmh: Double? = null,
+    val movingDirection: String? = null,
+    val movementPrediction: String? = null,
+    val stateTransfer: String? = null,
+    val windRadii: List<StormWindRadii> = emptyList(),
 )
 
 data class StormTrack(
@@ -50,8 +72,17 @@ data class StormTrack(
     val internationalNumber: String?,
     val nameEn: String?,
     val nameZh: String?,
+    val bulletinTime: String?,
     val analysisPoints: List<StormPoint>,
     val forecastPoints: List<StormPoint>,
+)
+
+data class AgencyLiveResult(
+    val agency: StormAgency,
+    val state: StormLiveState,
+    val message: String?,
+    val updatedAt: String?,
+    val storms: List<StormTrack>,
 )
 
 data class ArchiveStorm(
