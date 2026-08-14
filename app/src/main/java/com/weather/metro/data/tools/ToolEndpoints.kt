@@ -65,8 +65,16 @@ object ToolEndpoints {
     fun stormHkoListLive(): String = stormProxy(HKO_LIST_UPSTREAM)
 
     fun stormHkoTrackLive(rawUrl: String): String {
-        val uri = URI(HKO_LIST_UPSTREAM).resolve(rawUrl).normalize()
-        require(uri.scheme.equals("https", ignoreCase = true)) { "HKO track must use HTTPS" }
+        val resolved = URI(HKO_LIST_UPSTREAM).resolve(rawUrl).normalize()
+        val uri = URI(
+            "https",
+            resolved.userInfo,
+            resolved.host,
+            resolved.port,
+            resolved.path,
+            resolved.query,
+            resolved.fragment,
+        )
         require(uri.host in setOf("www.weather.gov.hk", "www.hko.gov.hk", "data.weather.gov.hk")) {
             "HKO track host is not approved"
         }
@@ -93,13 +101,23 @@ object ToolEndpoints {
         stormProxy(if (longFeed) JMA_EXTRA_LONG_UPSTREAM else JMA_EXTRA_UPSTREAM)
 
     fun stormJmaDocumentLive(rawUrl: String): String {
-        val uri = URI(rawUrl).normalize()
-        require(uri.scheme.equals("https", ignoreCase = true)) { "JMA document must use HTTPS" }
+        val resolved = URI(JMA_EXTRA_UPSTREAM).resolve(rawUrl).normalize()
+        val uri = URI(
+            "https",
+            resolved.userInfo,
+            resolved.host,
+            resolved.port,
+            resolved.path,
+            resolved.query,
+            resolved.fragment,
+        )
         require(uri.host == "www.data.jma.go.jp") { "JMA document host is not approved" }
-        require(uri.path.startsWith("/developer/xml/data/")) { "JMA document path is not approved" }
-        require(Regex(".*_VPTW6[0-5]_.*\\.xml$", RegexOption.IGNORE_CASE).matches(uri.path)) {
-            "JMA document is not an approved VPTW60-65 XML"
-        }
+        require(
+            Regex(
+                "^/developer/xml/data/[A-Za-z0-9_.-]*VPTW6[0-5][A-Za-z0-9_.-]*\\.xml$",
+                RegexOption.IGNORE_CASE,
+            ).matches(uri.path),
+        ) { "JMA document is not an approved VPTW60-65 XML" }
         return stormProxy(uri.toASCIIString())
     }
 
