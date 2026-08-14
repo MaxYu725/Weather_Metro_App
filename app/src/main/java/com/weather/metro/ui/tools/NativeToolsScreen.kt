@@ -129,6 +129,8 @@ fun NativeToolsScreen(
     LaunchedEffect(
         effectiveActive,
         destination,
+        rainState.location?.latitude,
+        rainState.location?.longitude,
         rainState.pointForecast.status,
         radarState.timeline.status,
         rainState.forecast.status,
@@ -148,7 +150,13 @@ fun NativeToolsScreen(
         }
     }
 
-    LaunchedEffect(effectiveActive, destination, selectedRadiusKm) {
+    LaunchedEffect(
+        effectiveActive,
+        destination,
+        selectedRadiusKm,
+        rainState.location?.latitude,
+        rainState.location?.longitude,
+    ) {
         if (!effectiveActive) return@LaunchedEffect
         if (destination != DESTINATION_POINT && destination != DESTINATION_FORECAST) return@LaunchedEffect
         while (true) {
