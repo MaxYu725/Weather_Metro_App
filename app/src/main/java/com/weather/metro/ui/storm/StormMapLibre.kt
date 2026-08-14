@@ -21,6 +21,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.weather.metro.domain.storm.StormAgency
+import com.weather.metro.domain.storm.StormPointType
 import com.weather.metro.domain.storm.StormTrack
 import com.weather.metro.domain.storm.StormWindRadii
 import org.json.JSONArray
@@ -90,6 +91,13 @@ private val STORM_BASE_STYLE = """
 
 internal data class StormMapCoordinate(val latitude: Double, val longitude: Double)
 
+internal data class StormMapPointRef(
+    val agency: StormAgency,
+    val stableKey: String,
+    val pointType: StormPointType,
+    val pointIndex: Int,
+)
+
 internal data class StormAgencyMapData(
     val analysisLines: String,
     val forecastLines: String,
@@ -114,12 +122,14 @@ internal fun StormMapLibreSurface(
     tracksByAgency: Map<StormAgency, List<StormTrack>>,
     enabledAgencies: Set<StormAgency>,
     fitToken: Int,
+    onPointSelected: (StormMapPointRef?) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val latestTracks by rememberUpdatedState(tracksByAgency)
     val latestEnabled by rememberUpdatedState(enabledAgencies)
+    val latestOnPointSelected by rememberUpdatedState(onPointSelected)
     val agencySources = remember { mutableMapOf<StormAgency, StormAgencySources>() }
     var map by remember { mutableStateOf<MapLibreMap?>(null) }
     var styleGeneration by remember { mutableIntStateOf(0) }
@@ -183,6 +193,29 @@ internal fun StormMapLibreSurface(
                 styleGeneration += 1
                 updateStormSources(agencySources, latestTracks, latestEnabled)
                 fitStormCamera(readyMap, latestTracks, latestEnabled)
+            }
+            readyMap.addOnMapClickListener { point ->
+                val layerIds = stormPointLayerIds(latestEnabled)
+                val feature = if (layerIds.isEmpty()) {
+                    null
+                } else {
+                    readyMap.queryRenderedFeatures(
+                        readyMap.projection.toScreenLocation(point),
+                        *layerIds.toTypedArray(),
+                    ).firstOrNull()
+                }
+                val ref = feature?.let { hit ->
+                    runCatching {
+                        StormMapPointRef(
+                            agency = StormAgency.fromWire(hit.getStringProperty("agency")),
+                            stableKey = hit.getStringProperty("storm"),
+                            pointType = StormPointType.fromWire(hit.getStringProperty("kind")),
+                            pointIndex = hit.getStringProperty("index").toInt(),
+                        )
+                    }.getOrNull()
+                }
+                latestOnPointSelected(ref)
+                ref != null
             }
         }
     }
@@ -262,6 +295,14 @@ private fun addAgencyLayers(style: Style, agency: StormAgency): StormAgencySourc
     )
 }
 
+private fun stormPointLayerIds(enabledAgencies: Set<StormAgency>): List<String> = buildList {
+    enabledAgencies.forEach { agency ->
+        val prefix = "storm-${agency.name.lowercase()}"
+        add("$prefix-analysis-point-layer")
+        add("$prefix-forecast-point-layer")
+    }
+}
+
 private fun updateStormSources(
     sources: Map<StormAgency, StormAgencySources>,
     tracksByAgency: Map<StormAgency, List<StormTrack>>,
@@ -327,11 +368,29 @@ internal fun buildStormAgencyMapData(tracks: List<StormTrack>): StormAgencyMapDa
         }
         if (forecastPath.size >= 2) forecastLineFeatures.put(lineFeature(forecastPath, track.stableKey, "forecast"))
 
-        track.analysisPoints.forEach { point ->
-            analysisPointFeatures.put(pointFeature(point.longitude, point.latitude, track.stableKey, "analysis"))
+        track.analysisPoints.forEachIndexed { index, point ->
+            analysisPointFeatures.put(
+                pointFeature(
+                    longitude = point.longitude,
+                    latitude = point.latitude,
+                    agency = track.agency,
+                    stableKey = track.stableKey,
+                    kind = StormPointType.ANALYSIS,
+                    pointIndex = index,
+                ),
+            )
         }
-        track.forecastPoints.forEach { point ->
-            forecastPointFeatures.put(pointFeature(point.longitude, point.latitude, track.stableKey, "forecast"))
+        track.forecastPoints.forEachIndexed { index, point ->
+            forecastPointFeatures.put(
+                pointFeature(
+                    longitude = point.longitude,
+                    latitude = point.latitude,
+                    agency = track.agency,
+                    stableKey = track.stableKey,
+                    kind = StormPointType.FORECAST,
+                    pointIndex = index,
+                ),
+            )
             point.probabilityRadiusKm?.takeIf { it > 0.0 }?.let { radius ->
                 val polygon = stormCirclePolygonCoordinates(point.latitude, point.longitude, radius)
                 bounds += polygon
@@ -442,11 +501,20 @@ private fun lineFeature(
 private fun pointFeature(
     longitude: Double,
     latitude: Double,
+    agency: StormAgency,
     stableKey: String,
-    kind: String,
+    kind: StormPointType,
+    pointIndex: Int,
 ): JSONObject = JSONObject()
     .put("type", "Feature")
-    .put("properties", JSONObject().put("storm", stableKey).put("kind", kind))
+    .put(
+        "properties",
+        JSONObject()
+            .put("agency", agency.name)
+            .put("storm", stableKey)
+            .put("kind", kind.wireValue)
+            .put("index", pointIndex.toString()),
+    )
     .put(
         "geometry",
         JSONObject().put("type", "Point").put("coordinates", JSONArray().put(longitude).put(latitude)),
