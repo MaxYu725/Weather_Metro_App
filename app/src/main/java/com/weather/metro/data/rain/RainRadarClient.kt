@@ -33,8 +33,11 @@ internal class UrlConnectionRainRadarTransport : RainRadarHttpTransport {
         connectTimeoutMs: Int,
         readTimeoutMs: Int,
     ): String = withContext(Dispatchers.IO) {
-        open(url, connectTimeoutMs, readTimeoutMs, "application/json").use { connection ->
+        val connection = open(url, connectTimeoutMs, readTimeoutMs, "application/json")
+        try {
             connection.inputStream.bufferedReader(StandardCharsets.UTF_8).use { it.readText() }
+        } finally {
+            connection.disconnect()
         }
     }
 
@@ -43,10 +46,18 @@ internal class UrlConnectionRainRadarTransport : RainRadarHttpTransport {
         connectTimeoutMs: Int,
         readTimeoutMs: Int,
     ): ByteArray = withContext(Dispatchers.IO) {
-        open(url, connectTimeoutMs, readTimeoutMs, "image/avif,image/webp,image/png,image/jpeg,image/gif,image/svg+xml,*/*").use { connection ->
+        val connection = open(
+            url,
+            connectTimeoutMs,
+            readTimeoutMs,
+            "image/avif,image/webp,image/png,image/jpeg,image/gif,image/svg+xml,*/*",
+        )
+        try {
             val contentType = connection.contentType.orEmpty().lowercase()
             require(contentType.startsWith("image/")) { "Radar Worker returned non-image content" }
             connection.inputStream.use { it.readBytes() }
+        } finally {
+            connection.disconnect()
         }
     }
 
