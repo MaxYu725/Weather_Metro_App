@@ -15,6 +15,9 @@ import kotlin.math.sin
 
 internal const val FORECAST_BASEMAP_ZOOM = 10
 internal const val FORECAST_TILE_SIZE_PX = 256.0
+internal const val FORECAST_DEFAULT_VIEW_SCALE = 0.78
+internal const val FORECAST_MIN_VIEW_SCALE = 0.62
+internal const val FORECAST_MAX_VIEW_SCALE = 1.10
 private const val MAX_MERCATOR_LAT = 85.05112878
 
 internal data class MercatorPoint(
@@ -79,6 +82,28 @@ internal fun paddedForecastBounds(bounds: RainGridBounds, fraction: Double = 0.0
         south = (bounds.south - latPadding).coerceAtLeast(-MAX_MERCATOR_LAT),
         east = (bounds.east + lonPadding).coerceAtMost(180.0),
         west = (bounds.west - lonPadding).coerceAtLeast(-180.0),
+    )
+}
+
+/**
+ * Scale the visible viewport around the forecast grid centre.
+ * A value below 1.0 zooms out and shows more surrounding geography; above 1.0 zooms in.
+ */
+internal fun forecastViewportBounds(
+    bounds: RainGridBounds,
+    viewScale: Double = FORECAST_DEFAULT_VIEW_SCALE,
+): RainGridBounds {
+    val base = paddedForecastBounds(bounds, fraction = 0.06)
+    val scale = viewScale.coerceIn(FORECAST_MIN_VIEW_SCALE, FORECAST_MAX_VIEW_SCALE)
+    val centerLat = (base.north + base.south) / 2.0
+    val centerLon = (base.east + base.west) / 2.0
+    val halfLat = (base.north - base.south).coerceAtLeast(0.01) / 2.0 / scale
+    val halfLon = (base.east - base.west).coerceAtLeast(0.01) / 2.0 / scale
+    return RainGridBounds(
+        north = (centerLat + halfLat).coerceAtMost(MAX_MERCATOR_LAT),
+        south = (centerLat - halfLat).coerceAtLeast(-MAX_MERCATOR_LAT),
+        east = (centerLon + halfLon).coerceAtMost(180.0),
+        west = (centerLon - halfLon).coerceAtLeast(-180.0),
     )
 }
 
