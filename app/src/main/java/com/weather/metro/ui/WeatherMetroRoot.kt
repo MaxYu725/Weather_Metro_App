@@ -181,7 +181,7 @@ fun WeatherMetroRoot(
                                 },
                                 onRefreshPoint = rainViewModel::refreshPointForecast,
                                 onCancelPointRefresh = rainViewModel::cancelPointRefresh,
-                                onRefreshRadar = radarViewModel::refreshRadar,
+                                onRefreshRadar = { radarViewModel.refreshRadar() },
                                 onSelectRadarFrame = radarViewModel::selectFrame,
                                 onCancelRadarRequests = radarViewModel::cancelRequests,
                                 onRefreshForecast = rainViewModel::refreshForecast,
