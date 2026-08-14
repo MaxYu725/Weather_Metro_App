@@ -4,8 +4,10 @@ import com.weather.metro.data.tools.ToolEndpoints
 import com.weather.metro.domain.rain.RainCapabilities
 import com.weather.metro.domain.rain.RainDataQuality
 import com.weather.metro.domain.rain.RainFreshness
+import com.weather.metro.domain.rain.RainGridCoverage
 import com.weather.metro.domain.rain.RainPeriod
 import com.weather.metro.domain.rain.RainPointForecast
+import com.weather.metro.domain.rain.RainPointLocation
 import com.weather.metro.domain.rain.RainPointSummary
 import com.weather.metro.domain.rain.RainSpatialQuality
 import com.weather.metro.domain.rain.SwirlsContract
@@ -15,8 +17,9 @@ import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URI
 import java.nio.charset.StandardCharsets
+import kotlin.math.abs
 
-internal data class RainNetworkResult<T>(
+data class RainNetworkResult<T>(
     val value: T,
     val rawPayload: String,
 )
@@ -142,19 +145,27 @@ internal object RainParsers {
         val unit = requiredString(root, "unit")
         require(unit == RAIN_UNIT) { "Unexpected rainfall unit: $unit" }
 
-        val location = root.optJSONObject("location")
+        val locationObject = root.optJSONObject("location")
+        val location = locationObject?.let {
+            RainPointLocation(
+                latitude = it.requiredFiniteDouble("lat"),
+                longitude = it.requiredFiniteDouble("lon"),
+            )
+        }
         if (expectedLatitude != null && expectedLongitude != null) {
             require(location != null) { "Rain point response location missing" }
-            requireClose(location.requiredFiniteDouble("lat"), expectedLatitude, "latitude")
-            requireClose(location.requiredFiniteDouble("lon"), expectedLongitude, "longitude")
+            requireClose(location.latitude, expectedLatitude, "latitude")
+            requireClose(location.longitude, expectedLongitude, "longitude")
         }
 
         val nearbyRadius = root.optFiniteDouble("nearbyRadiusKm")
+        if (nearbyRadius != null) require(nearbyRadius > 0.0) { "Rain point nearby radius must be positive" }
         if (expectedRadiusKm != null) {
             require(nearbyRadius != null) { "Rain point nearby radius missing" }
             requireClose(nearbyRadius, expectedRadiusKm.toDouble(), "nearby radius")
         }
 
+        val grid = root.optJSONObject("grid")?.let(::parseCoverage)
         val rawPeriods = root.optJSONArray("periods")
             ?: error("Rain point forecast periods missing")
         require(rawPeriods.length() > 0) { "Rain point forecast periods empty" }
@@ -167,13 +178,20 @@ internal object RainParsers {
                 require(amount >= 0.0) { "Rain point amount must be non-negative" }
                 require(nearbyMax >= 0.0) { "Rain point nearby maximum must be non-negative" }
                 val nearbyMean = item.optFiniteDouble("nearbyMeanMm")
+                val nearestGrid = item.optFiniteDouble("nearestGridKm")
+                val spatialSpread = item.optFiniteDouble("spatialSpreadMm")
                 if (nearbyMean != null) require(nearbyMean >= 0.0) { "Rain point nearby mean must be non-negative" }
+                if (nearestGrid != null) require(nearestGrid >= 0.0) { "Nearest grid distance must be non-negative" }
+                if (spatialSpread != null) require(spatialSpread >= 0.0) { "Spatial spread must be non-negative" }
                 add(
                     RainPeriod(
                         time = requiredString(item, "time"),
+                        leadMinutes = item.optIntOrNull("leadMinutes"),
                         amountMm = amount,
                         nearbyMaxMm = nearbyMax,
                         nearbyMeanMm = nearbyMean,
+                        nearestGridKm = nearestGrid,
+                        spatialSpreadMm = spatialSpread,
                         level = item.optNonBlankString("level"),
                     ),
                 )
@@ -183,9 +201,13 @@ internal object RainParsers {
         return RainPointForecast(
             workerVersion = version,
             unit = unit,
+            sourceUpdatedAt = root.optNonBlankString("sourceUpdatedAt"),
             issueTime = root.optNonBlankString("issueTime"),
             generatedAt = root.optNonBlankString("generatedAt"),
-            nearbyRadiusKm = nearbyRadius?.toInt(),
+            location = location,
+            nearbyRadiusKm = nearbyRadius,
+            interpolation = root.optNonBlankString("interpolation"),
+            grid = grid,
             summary = root.optJSONObject("summary")?.let(::parseSummary),
             periods = periods,
             quality = root.optJSONObject("dataQuality")?.let(::parseQuality),
@@ -202,12 +224,31 @@ internal object RainParsers {
         return SwirlsContract(frameCount, cadence, accumulation)
     }
 
+    private fun parseCoverage(value: JSONObject): RainGridCoverage {
+        val minLat = value.requiredFiniteDouble("minLat")
+        val maxLat = value.requiredFiniteDouble("maxLat")
+        val minLon = value.requiredFiniteDouble("minLon")
+        val maxLon = value.requiredFiniteDouble("maxLon")
+        require(maxLat > minLat) { "Rain grid latitude coverage invalid" }
+        require(maxLon > minLon) { "Rain grid longitude coverage invalid" }
+        return RainGridCoverage(minLat, maxLat, minLon, maxLon)
+    }
+
     private fun parseSummary(value: JSONObject): RainPointSummary = RainPointSummary(
         text = value.optNonBlankString("text"),
         totalMm = value.optFiniteDouble("totalMm")?.also { require(it >= 0.0) },
         peakMm = value.optFiniteDouble("peakMm")?.also { require(it >= 0.0) },
+        peakTime = value.optNonBlankString("peakTime"),
+        peakWindowStart = value.optNonBlankString("peakWindowStart"),
+        peakWindowEnd = value.optNonBlankString("peakWindowEnd"),
+        rainStartTime = value.optNonBlankString("rainStartTime"),
         rainStartWindowStart = value.optNonBlankString("rainStartWindowStart"),
         rainStartWindowEnd = value.optNonBlankString("rainStartWindowEnd"),
+        rainStartLeadMinutes = value.optIntOrNull("rainStartLeadMinutes"),
+        rainEndTime = value.optNonBlankString("rainEndTime"),
+        rainEndWindowStart = value.optNonBlankString("rainEndWindowStart"),
+        rainEndWindowEnd = value.optNonBlankString("rainEndWindowEnd"),
+        wetPeriodCount = value.optIntOrNull("wetPeriodCount"),
     )
 
     private fun parseQuality(value: JSONObject): RainDataQuality {
@@ -225,6 +266,7 @@ internal object RainParsers {
                 label = it.optNonBlankString("label"),
                 note = it.optNonBlankString("note"),
                 nearbyDeltaMaxMm = it.optFiniteDouble("nearbyDeltaMaxMm"),
+                maxSpatialSpreadMm = it.optFiniteDouble("maxSpatialSpreadMm"),
             )
         }
         return RainDataQuality(freshness, spatial)
@@ -252,8 +294,14 @@ internal object RainParsers {
         return number.takeIf { it.isFinite() }
     }
 
+    private fun JSONObject.optIntOrNull(key: String): Int? {
+        if (!has(key) || isNull(key)) return null
+        val value = optInt(key, Int.MIN_VALUE)
+        return value.takeIf { it != Int.MIN_VALUE }
+    }
+
     private fun requireClose(actual: Double, expected: Double, label: String) {
-        require(kotlin.math.abs(actual - expected) <= 0.000001) {
+        require(abs(actual - expected) <= 0.000001) {
             "Rain point $label mismatch: expected $expected, got $actual"
         }
     }
