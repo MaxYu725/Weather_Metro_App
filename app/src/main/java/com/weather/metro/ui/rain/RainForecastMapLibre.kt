@@ -301,7 +301,7 @@ private fun MapLibreForecastSurface(
                     RasterLayer(MAPLIBRE_RAIN_LAYER, MAPLIBRE_RAIN_SOURCE)
                         .withProperties(
                             rasterFadeDuration(0f),
-                            rasterResampling(Property.RASTER_RESAMPLING_NEAREST),
+                            rasterResampling(Property.RASTER_RESAMPLING_LINEAR),
                         ),
                 )
                 rainSource = source
@@ -388,7 +388,16 @@ private fun RainForecastFrame.mapLibreQuad(): LatLngQuad {
 }
 
 private fun RainForecastFrame.toAndroidRainBitmap(): Bitmap {
-    val pixels = IntArray(values.size) { index -> rainfallArgb(values[index]) }
+    require(values.size == grid.rows * grid.cols) { "Rain raster shape does not match grid" }
+    val pixels = IntArray(values.size)
+    for (targetRow in 0 until grid.rows) {
+        val sourceRow = grid.rows - 1 - targetRow
+        for (column in 0 until grid.cols) {
+            val targetIndex = targetRow * grid.cols + column
+            val sourceIndex = sourceRow * grid.cols + column
+            pixels[targetIndex] = rainfallArgb(values[sourceIndex])
+        }
+    }
     return Bitmap.createBitmap(pixels, grid.cols, grid.rows, Bitmap.Config.ARGB_8888)
 }
 
