@@ -1,17 +1,29 @@
 package com.weather.metro.data.rain
 
 import com.weather.metro.domain.rain.RainCapabilities
+import com.weather.metro.domain.rain.RainForecastFrame
+import com.weather.metro.domain.rain.RainForecastRunChangedException
+import com.weather.metro.domain.rain.RainForecastSource
+import com.weather.metro.domain.rain.RainForecastTimeline
 import com.weather.metro.domain.rain.RainLoadResult
 import com.weather.metro.domain.rain.RainPointForecast
+import kotlinx.coroutines.CancellationException
 
 class RainRepository(
     private val client: RainTrackClient,
     private val cache: RainCache,
+    private val forecastClient: RainForecastClient = RainForecastClient(),
 ) {
+    private val forecastLock = Any()
+    private var activeSwirlsRun: String? = null
+    private val activeSwirlsFrames = mutableMapOf<Int, RainForecastFrame>()
+
     suspend fun loadCapabilities(): RainLoadResult<RainCapabilities> = try {
         val network = client.loadCapabilities()
         runCatching { cache.writeCapabilities(network.rawPayload) }
         RainLoadResult(network.value, isStale = false)
+    } catch (error: CancellationException) {
+        throw error
     } catch (error: Throwable) {
         val cached = cache.readCapabilities()?.let {
             runCatching { client.parseCapabilities(it) }.getOrNull()
@@ -31,6 +43,8 @@ class RainRepository(
         val network = client.loadPointForecast(latitude, longitude, radiusKm)
         runCatching { cache.writePoint(latitude, longitude, radiusKm, network.rawPayload) }
         RainLoadResult(network.value, isStale = false)
+    } catch (error: CancellationException) {
+        throw error
     } catch (error: Throwable) {
         val cached = cache.readPoint(latitude, longitude, radiusKm)?.let {
             runCatching {
@@ -49,5 +63,92 @@ class RainRepository(
         )
     }
 
-    suspend fun clearCache() = cache.clear()
+    suspend fun loadForecastTimeline(): RainLoadResult<RainForecastTimeline> {
+        try {
+            val network = forecastClient.loadSwirlsFrame(0)
+            val timeline = forecastClient.buildSwirlsTimeline(network.value)
+            synchronized(forecastLock) {
+                if (activeSwirlsRun != timeline.issueTime) activeSwirlsFrames.clear()
+                activeSwirlsRun = timeline.issueTime
+                activeSwirlsFrames[0] = network.value
+            }
+            return RainLoadResult(timeline, isStale = false)
+        } catch (error: CancellationException) {
+            throw error
+        } catch (swirlsError: Throwable) {
+            return loadNowcastFallback(swirlsError)
+        }
+    }
+
+    suspend fun loadForecastFrame(
+        timeline: RainForecastTimeline,
+        frameIndex: Int,
+    ): RainLoadResult<RainForecastFrame> {
+        require(frameIndex in timeline.frames.indices) { "Forecast frame index outside active timeline" }
+        timeline.frame(frameIndex)?.let { return RainLoadResult(it, isStale = false) }
+        require(timeline.source == RainForecastSource.SWIRLS) {
+            "Only SWIRLS timelines support lazy frame loading"
+        }
+
+        synchronized(forecastLock) {
+            if (activeSwirlsRun == timeline.issueTime) {
+                activeSwirlsFrames[frameIndex]?.let { return RainLoadResult(it, isStale = false) }
+            }
+        }
+
+        val network = forecastClient.loadSwirlsFrame(frameIndex)
+        forecastClient.assertSwirlsFrameCompatible(timeline, network.value)
+        synchronized(forecastLock) {
+            if (activeSwirlsRun != timeline.issueTime) {
+                throw RainForecastRunChangedException(
+                    "SWIRLS active run changed while frame $frameIndex was loading",
+                )
+            }
+            activeSwirlsFrames[frameIndex] = network.value
+        }
+        return RainLoadResult(network.value, isStale = false)
+    }
+
+    fun clearForecastMemory() {
+        synchronized(forecastLock) {
+            activeSwirlsRun = null
+            activeSwirlsFrames.clear()
+        }
+    }
+
+    suspend fun clearCache() {
+        clearForecastMemory()
+        cache.clear()
+    }
+
+    private suspend fun loadNowcastFallback(swirlsError: Throwable): RainLoadResult<RainForecastTimeline> {
+        val swirlsMessage = swirlsError.message ?: "SWIRLS unavailable"
+        try {
+            val network = forecastClient.loadNowcast(fallbackReason = swirlsMessage)
+            runCatching { cache.writeNowcast(network.rawPayload) }
+            return RainLoadResult(network.value, isStale = false)
+        } catch (error: CancellationException) {
+            throw error
+        } catch (nowcastError: Throwable) {
+            val cached = cache.readNowcast()?.let {
+                runCatching {
+                    forecastClient.parseNowcast(
+                        payload = it,
+                        fallbackReason = "$swirlsMessage; nowcast refresh failed: ${nowcastError.message ?: "unknown error"}",
+                    )
+                }.getOrNull()
+            }
+            if (cached != null) {
+                return RainLoadResult(
+                    value = cached,
+                    isStale = true,
+                    networkError = nowcastError.message ?: "Rain forecast unavailable",
+                )
+            }
+            throw IllegalStateException(
+                "SWIRLS unavailable ($swirlsMessage); nowcast fallback unavailable (${nowcastError.message ?: "unknown error"})",
+                nowcastError,
+            )
+        }
+    }
 }
