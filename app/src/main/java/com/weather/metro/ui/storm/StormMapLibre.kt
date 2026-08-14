@@ -34,6 +34,8 @@ import org.maplibre.android.maps.MapLibreMap
 import org.maplibre.android.maps.MapLibreMapOptions
 import org.maplibre.android.maps.MapView
 import org.maplibre.android.maps.Style
+import org.maplibre.android.style.expressions.Expression.get
+import org.maplibre.android.style.expressions.Expression.toColor
 import org.maplibre.android.style.layers.CircleLayer
 import org.maplibre.android.style.layers.FillLayer
 import org.maplibre.android.style.layers.LineLayer
@@ -96,6 +98,8 @@ internal data class StormMapPointRef(
     val stableKey: String,
     val pointType: StormPointType,
     val pointIndex: Int,
+    val anchorXPx: Float? = null,
+    val anchorYPx: Float? = null,
 )
 
 internal data class StormAgencyMapData(
@@ -196,13 +200,11 @@ internal fun StormMapLibreSurface(
             }
             readyMap.addOnMapClickListener { point ->
                 val layerIds = stormPointLayerIds(latestEnabled)
+                val screenPoint = readyMap.projection.toScreenLocation(point)
                 val feature = if (layerIds.isEmpty()) {
                     null
                 } else {
-                    readyMap.queryRenderedFeatures(
-                        readyMap.projection.toScreenLocation(point),
-                        *layerIds.toTypedArray(),
-                    ).firstOrNull()
+                    readyMap.queryRenderedFeatures(screenPoint, *layerIds.toTypedArray()).firstOrNull()
                 }
                 val ref = feature?.let { hit ->
                     runCatching {
@@ -211,6 +213,8 @@ internal fun StormMapLibreSurface(
                             stableKey = hit.getStringProperty("storm"),
                             pointType = StormPointType.fromWire(hit.getStringProperty("kind")),
                             pointIndex = hit.getStringProperty("index").toInt(),
+                            anchorXPx = screenPoint.x,
+                            anchorYPx = screenPoint.y,
                         )
                     }.getOrNull()
                 }
@@ -274,14 +278,14 @@ private fun addAgencyLayers(style: Style, agency: StormAgency): StormAgencySourc
     )
     style.addLayer(
         CircleLayer("$prefix-analysis-point-layer", analysisPointSource.id).withProperties(
-            circleColor(color), circleRadius(5.0f), circleOpacity(0.98f),
+            circleColor(toColor(get("color"))), circleRadius(5.2f), circleOpacity(0.98f),
             circleStrokeColor(AndroidColor.BLACK), circleStrokeWidth(1.4f),
         ),
     )
     style.addLayer(
         CircleLayer("$prefix-forecast-point-layer", forecastPointSource.id).withProperties(
-            circleColor(AndroidColor.BLACK), circleRadius(4.2f), circleOpacity(0.88f),
-            circleStrokeColor(color), circleStrokeWidth(1.6f),
+            circleColor(toColor(get("color"))), circleRadius(4.8f), circleOpacity(0.96f),
+            circleStrokeColor(AndroidColor.BLACK), circleStrokeWidth(1.3f),
         ),
     )
 
@@ -377,6 +381,7 @@ internal fun buildStormAgencyMapData(tracks: List<StormTrack>): StormAgencyMapDa
                     stableKey = track.stableKey,
                     kind = StormPointType.ANALYSIS,
                     pointIndex = index,
+                    intensityColor = stormIntensityColorHex(point),
                 ),
             )
         }
@@ -389,6 +394,7 @@ internal fun buildStormAgencyMapData(tracks: List<StormTrack>): StormAgencyMapDa
                     stableKey = track.stableKey,
                     kind = StormPointType.FORECAST,
                     pointIndex = index,
+                    intensityColor = stormIntensityColorHex(point),
                 ),
             )
             point.probabilityRadiusKm?.takeIf { it > 0.0 }?.let { radius ->
@@ -505,6 +511,7 @@ private fun pointFeature(
     stableKey: String,
     kind: StormPointType,
     pointIndex: Int,
+    intensityColor: String,
 ): JSONObject = JSONObject()
     .put("type", "Feature")
     .put(
@@ -513,7 +520,8 @@ private fun pointFeature(
             .put("agency", agency.name)
             .put("storm", stableKey)
             .put("kind", kind.wireValue)
-            .put("index", pointIndex.toString()),
+            .put("index", pointIndex.toString())
+            .put("color", intensityColor),
     )
     .put(
         "geometry",
