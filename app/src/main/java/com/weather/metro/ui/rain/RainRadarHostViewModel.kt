@@ -75,7 +75,13 @@ class RainRadarHostViewModel(application: Application) : AndroidViewModel(applic
     val state: StateFlow<RainRadarHostState> = _state.asStateFlow()
 
     private var refreshJob: Job? = null
+    private var prefetchJob: Job? = null
     private var refreshGeneration = 0L
+    private var prefetchGeneration = 0L
+    private val prefetchedImages = object : LinkedHashMap<String, ByteArray>(PREFETCH_CACHE_FRAME_LIMIT, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, ByteArray>?): Boolean =
+            size > PREFETCH_CACHE_FRAME_LIMIT
+    }
 
     fun bindHostLocation(location: LocationInfo) {
         val current = _state.value.location
@@ -92,6 +98,8 @@ class RainRadarHostViewModel(application: Application) : AndroidViewModel(applic
             requestedRangeKm = current.rangeKm,
             requestedHeightKm = current.heightKm,
             requestedMode = current.mode,
+            preserveSelection = true,
+            quiet = current.timeline.value != null,
         )
     }
 
@@ -162,18 +170,24 @@ class RainRadarHostViewModel(application: Application) : AndroidViewModel(applic
         val timeline = _state.value.timeline.value ?: return
         require(index in timeline.frames.indices) { "Radar frame index outside active timeline" }
         _state.update { it.copy(selectedFrameIndex = index) }
+        scheduleFramePrefetch(timeline, index)
     }
 
     fun jumpToLatest() {
         val timeline = _state.value.timeline.value ?: return
         if (timeline.frames.isEmpty()) return
-        _state.update { it.copy(selectedFrameIndex = timeline.frames.lastIndex) }
+        val index = timeline.frames.lastIndex
+        _state.update { it.copy(selectedFrameIndex = index) }
+        scheduleFramePrefetch(timeline, index)
     }
 
     fun cancelRequests() {
         refreshGeneration += 1
+        prefetchGeneration += 1
         refreshJob?.cancel()
         refreshJob = null
+        prefetchJob?.cancel()
+        prefetchJob = null
         _state.update {
             it.copy(
                 contract = settleRadarCancelled(it.contract),
@@ -186,26 +200,46 @@ class RainRadarHostViewModel(application: Application) : AndroidViewModel(applic
         requestedRangeKm: Int,
         requestedHeightKm: Int,
         requestedMode: RainRadarMode,
+        preserveSelection: Boolean = false,
+        quiet: Boolean = false,
     ) {
         val generation = ++refreshGeneration
         refreshJob?.cancel()
-        val previousContract = _state.value.contract
-        val previousTimeline = _state.value.timeline
+        prefetchGeneration += 1
+        prefetchJob?.cancel()
+        prefetchJob = null
+
+        val stateBeforeRefresh = _state.value
+        val previousContract = stateBeforeRefresh.contract
+        val previousTimeline = stateBeforeRefresh.timeline
         val previousTimelineMatchesRequest = previousTimeline.value?.matchesRadarProduct(
             requestedRangeKm,
             requestedHeightKm,
             requestedMode,
         ) == true
+        val previousSelectedIndex = stateBeforeRefresh.selectedFrameIndex
+            ?.takeIf { previousTimelineMatchesRequest }
+        val previousSelectedTime = previousTimeline.value
+            ?.frames
+            ?.getOrNull(previousSelectedIndex ?: -1)
+            ?.time
+        val previousWasLatest = previousTimeline.value?.let { timeline ->
+            previousSelectedIndex != null && previousSelectedIndex >= timeline.frames.lastIndex
+        } == true
 
         _state.update {
             it.copy(
-                contract = previousContract.copy(
-                    status = if (previousContract.value == null) RainResourceStatus.LOADING else previousContract.status,
-                    errorMessage = null,
-                ),
+                contract = if (quiet && previousContract.value != null) {
+                    previousContract.copy(errorMessage = null)
+                } else {
+                    previousContract.copy(
+                        status = if (previousContract.value == null) RainResourceStatus.LOADING else previousContract.status,
+                        errorMessage = null,
+                    )
+                },
                 timeline = if (previousTimelineMatchesRequest) {
                     previousTimeline.copy(
-                        status = RainResourceStatus.LOADING,
+                        status = if (quiet) RainResourceStatus.READY else RainResourceStatus.LOADING,
                         errorMessage = null,
                     )
                 } else {
@@ -243,6 +277,17 @@ class RainRadarHostViewModel(application: Application) : AndroidViewModel(applic
 
                 val timeline = repository.loadRadarTimeline(rangeKm, heightKm, mode).value
                 if (generation != refreshGeneration) return@launch
+                val selectedIndex = when {
+                    preserveSelection &&
+                        previousTimelineMatchesRequest &&
+                        !previousWasLatest &&
+                        previousSelectedTime != null -> {
+                        timeline.frames.indexOfFirst { it.time == previousSelectedTime }
+                            .takeIf { it >= 0 }
+                            ?: timeline.frames.lastIndex
+                    }
+                    else -> timeline.frames.lastIndex
+                }
                 _state.update {
                     it.copy(
                         contract = RainResourceState(
@@ -253,9 +298,10 @@ class RainRadarHostViewModel(application: Application) : AndroidViewModel(applic
                             status = RainResourceStatus.READY,
                             value = timeline,
                         ),
-                        selectedFrameIndex = timeline.frames.lastIndex,
+                        selectedFrameIndex = selectedIndex,
                     )
                 }
+                scheduleFramePrefetch(timeline, selectedIndex)
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Throwable) {
@@ -268,6 +314,11 @@ class RainRadarHostViewModel(application: Application) : AndroidViewModel(applic
                             current.heightKm,
                             current.mode,
                         )
+                    }
+                    val retainedIndex = retainedTimeline?.let { timeline ->
+                        previousSelectedIndex
+                            ?.takeIf { preserveSelection && it in timeline.frames.indices }
+                            ?: timeline.frames.lastIndex
                     }
                     current.copy(
                         contract = if (retainedContract != null) {
@@ -296,8 +347,51 @@ class RainRadarHostViewModel(application: Application) : AndroidViewModel(applic
                                 errorMessage = error.message ?: "Radar unavailable",
                             )
                         },
-                        selectedFrameIndex = retainedTimeline?.frames?.lastIndex,
+                        selectedFrameIndex = retainedIndex,
                     )
+                }
+                previousTimeline.value?.takeIf { previousTimelineMatchesRequest }?.let { retained ->
+                    val index = _state.value.selectedFrameIndex ?: retained.frames.lastIndex
+                    scheduleFramePrefetch(retained, index)
+                }
+            }
+        }
+    }
+
+    private fun scheduleFramePrefetch(timeline: RainRadarTimeline, selectedIndex: Int) {
+        if (timeline.frames.isEmpty()) return
+        val generation = ++prefetchGeneration
+        prefetchJob?.cancel()
+        val candidateIndexes = buildList {
+            add(selectedIndex)
+            add(selectedIndex - 1)
+            add(selectedIndex + 1)
+            add(selectedIndex - 2)
+            add(selectedIndex + 2)
+            for (index in timeline.frames.lastIndex downTo 0) {
+                if (size >= RECENT_PREFETCH_FRAME_COUNT) break
+                add(index)
+            }
+        }.distinct().filter { it in timeline.frames.indices }
+
+        prefetchJob = viewModelScope.launch {
+            for (index in candidateIndexes) {
+                if (generation != prefetchGeneration) return@launch
+                val imageUrl = timeline.frames[index].imageUrl
+                val alreadyCached = synchronized(prefetchedImages) {
+                    prefetchedImages[imageUrl] != null
+                }
+                if (alreadyCached) continue
+                val bytes = try {
+                    repository.loadRadarImage(imageUrl)
+                } catch (error: CancellationException) {
+                    throw error
+                } catch (_: Throwable) {
+                    continue
+                }
+                if (generation != prefetchGeneration) return@launch
+                synchronized(prefetchedImages) {
+                    prefetchedImages[imageUrl] = bytes
                 }
             }
         }
@@ -322,6 +416,8 @@ class RainRadarHostViewModel(application: Application) : AndroidViewModel(applic
         private const val KEY_MODE = "mode"
         private const val KEY_OPACITY = "opacity"
         private const val KEY_PLAYBACK_DELAY_MS = "playback_delay_ms"
+        private const val RECENT_PREFETCH_FRAME_COUNT = 12
+        private const val PREFETCH_CACHE_FRAME_LIMIT = 12
     }
 }
 
