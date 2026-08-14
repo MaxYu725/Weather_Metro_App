@@ -1,7 +1,6 @@
 package com.weather.metro.data.tools
 
 import java.net.URLEncoder
-import java.nio.charset.StandardCharsets
 
 enum class RainRadarMode(val wireValue: String) {
     LIVE("live"),
@@ -78,7 +77,7 @@ object ToolEndpoints {
 
     private fun encodePathSegment(value: String): String {
         require(value.isNotBlank()) { "Path identifier must not be blank" }
-        return URLEncoder.encode(value, StandardCharsets.UTF_8)
+        return URLEncoder.encode(value, "UTF-8")
             .replace("+", "%20")
     }
 }
