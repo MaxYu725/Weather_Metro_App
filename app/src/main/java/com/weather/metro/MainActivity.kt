@@ -14,9 +14,11 @@ import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import com.weather.metro.ui.WeatherMetroRoot
 import com.weather.metro.ui.WeatherViewModel
+import com.weather.metro.ui.rain.RainHostViewModel
 
 class MainActivity : ComponentActivity() {
     private val viewModel: WeatherViewModel by viewModels()
+    private val rainViewModel: RainHostViewModel by viewModels()
 
     private val locationPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions(),
@@ -39,6 +41,7 @@ class MainActivity : ComponentActivity() {
         setContent {
             WeatherMetroRoot(
                 viewModel = viewModel,
+                rainViewModel = rainViewModel,
                 requestLocationPermission = ::requestLocationPermission,
                 requestNotificationPermission = ::requestNotificationPermission,
             )
