@@ -1,9 +1,9 @@
 # Weather Metro — Rain / Storm tool integration roadmap
 
-Status: **Phase 0B host preparation**  
-Weather Metro baseline: `32fc4dd08344b1eb3c59e84c4423bc7ee476d557`  
-Rain-Track reference baseline: `b762b27ac428b5369b53ba2b6c5ee7b7d65dfc9d`  
-Storm-Track reference baseline: `bf6bb3616d861c62f156bc8a77e67a8c404487f8`
+Status: **Phase 1A Rain data foundation**  
+Weather Metro baseline: `2f6904697edc6541f62cc489b597627ff178953f`  
+Rain-Track reference baseline: `2a3a62c75c397564f1b46e2e8cd86db313bd5b7a`  
+Storm-Track reference baseline: `b03d16149a33928a49790b0d8308dd31e40b1ed4`
 
 ## Goal
 
@@ -11,9 +11,11 @@ Replace the current `tools` Pivot page of external HKO browser shortcuts with na
 
 The host remains Kotlin + Jetpack Compose. No standalone PWA shell is embedded into the app.
 
+Rain-Track is integrated as **independent reusable capabilities**, not as one mandatory `RainTrackScreen`. Weather Metro can open point rainfall, Radar, two-hour Forecast, or Rain settings directly according to context.
+
 ## Current host replacement point
 
-Weather Metro currently keeps five top-level Pivot pages:
+Weather Metro keeps five top-level Pivot pages:
 
 ```text
 current / hourly / forecast / tools / settings
@@ -21,20 +23,61 @@ current / hourly / forecast / tools / settings
 
 `ToolsScreen` currently opens official HKO webpages through `ACTION_VIEW`. This screen is the integration replacement point.
 
-Target navigation:
+Target navigation is capability-first rather than app-inside-app navigation:
 
 ```text
+CURRENT
+  └── rainfall tile / detail
+       └── RainPointPanel
+
 TOOLS
   └── ToolsHome
-       ├── Rain
-       │    ├── Point forecast
-       │    └── Map: Radar / 2-hour Forecast
-       └── Storm
-            ├── Live
-            └── Archive
+       ├── Point rainfall ─────────── RainPointPanel
+       ├── Radar ─────────────────── RainMapScreen(RADAR)
+       ├── 2-hour Forecast ───────── RainMapScreen(FORECAST)
+       └── Tropical cyclone ──────── Storm module
+
+SETTINGS
+  └── Rain preferences when persistent host-level options are needed
 ```
 
-Rain and Storm are internal states of `TOOLS`, not new top-level Pivot pages.
+A compact Radar / Forecast switch may exist inside the map surface for convenience, but users do not have to enter a Rain home screen before reaching either mode.
+
+## Rain component boundary
+
+The standalone Rain-Track PWA currently combines a map, bottom sheet, Radar, two-hour Forecast and settings. Weather Metro must decompose those responsibilities.
+
+Target native composition:
+
+```text
+Rain domain/data
+  RainRepository
+  RainTrackClient
+  point forecast
+  SWIRLS forecast
+  radar metadata/images
+  separate Rain cache
+
+Rain UI components
+  RainSummary
+  RainPointPanel
+  RainTimeline
+  RainMapScreen(initialMode)
+  RadarOverlay / RadarControls
+  ForecastOverlay / ForecastControls
+  RainSettingsSheet or host settings rows
+```
+
+Required behavior:
+
+- `RainPointPanel` can render without any map;
+- Radar can open directly without first rendering point forecast;
+- Forecast can open directly without first rendering Radar;
+- tapping/selecting a location on either map may reuse `RainPointPanel`;
+- Radar settings are visible only for Radar mode;
+- Forecast playback/opacity settings are visible only for Forecast mode;
+- persistent settings belong to Weather Metro storage, not browser localStorage;
+- the standalone Rain-Track bottom-sheet lifecycle is a reference behavior, not a UI shell to copy wholesale.
 
 ## Backend ownership
 
@@ -44,7 +87,7 @@ Rain and Storm are internal states of `TOOLS`, not new top-level Pivot pages.
 https://radar.max-yu.workers.dev
 ```
 
-Weather Metro will consume public runtime APIs for:
+Weather Metro consumes public runtime APIs for:
 
 - capabilities;
 - point forecast;
@@ -59,7 +102,7 @@ Weather Metro will consume public runtime APIs for:
 https://storm.max-yu.workers.dev
 ```
 
-Weather Metro will consume public runtime APIs for:
+Weather Metro consumes public runtime APIs for:
 
 - per-agency live transport behind `StormService`;
 - CWA live data;
@@ -80,24 +123,22 @@ Do not merge either Worker into `Weather_Metro_App/backend` during initial integ
 
 ## Host architecture
 
-Planned structure:
-
 ```text
 app/src/main/java/com/weather/metro/
   data/
     tools/             production origins / endpoint builders
-    rain/              transport, parser, native cache
+    rain/              transport, parser, native cache, repository
     storm/             transport, parser, native cache
   domain/
     rain/              immutable Rain models
     storm/             immutable Storm models
   ui/
     tools/             ToolsHome and internal navigation
-    rain/              Compose Rain surfaces
+    rain/              reusable Compose Rain surfaces
     storm/             Compose Storm surfaces
 ```
 
-The existing normal weather `WeatherLoadState` should not become a giant shared state for tool modules. Rain and Storm should have independent service/load states so one tool failure cannot break current/hourly/forecast pages or the other tool.
+The existing normal weather `WeatherLoadState` must not become a giant shared state for tool modules. Rain and Storm keep independent service/load state so one tool failure cannot break current/hourly/forecast pages or the other tool.
 
 ## Rain integration contract
 
@@ -134,7 +175,7 @@ Key invariants:
 
 ## Cache strategy
 
-Weather Metro already has an offline atomic cache for normal weather. Tool integration should preserve the same product principle but keep separate namespaces:
+Weather Metro already has an offline atomic cache for normal weather. Tool integration preserves the same product principle but keeps separate namespaces:
 
 ```text
 weather cache
@@ -148,6 +189,7 @@ Shared rules:
 - last successful data can render first;
 - a failed refresh never erases good cache;
 - stale state is visible;
+- point cache is request-scoped and must not be reused for a different coordinate/radius;
 - cache clear eventually clears all host-owned tool caches;
 - browser PWA cache keys are never imported into Android.
 
@@ -184,29 +226,38 @@ Storm reference pipeline:
 Worker JSON → normalized agency tracks → native vector/map layers
 ```
 
-The map library is deliberately not selected in Phase 0. Library choice will be made after data/domain integration so rendering technology does not dictate the service contract.
+The map library is deliberately not selected in Phase 1. Library choice is made after data/domain integration so rendering technology does not dictate the service contract.
 
 ## Implementation checkpoints
 
-### Phase 0A — source contract freeze
+### Phase 0A — source contract freeze — COMPLETE
 
-- refresh Rain integration contract to Worker v2.5.0 / SWIRLS 16-frame behavior;
-- refresh Storm integration baseline to current release candidate;
-- confirm Weather Metro `ToolsScreen` as the host replacement point.
+- refreshed Rain integration contract to Worker v2.5.0 / SWIRLS 16-frame behavior;
+- refreshed Storm integration baseline to current release candidate;
+- confirmed Weather Metro `ToolsScreen` as the host replacement point.
 
-### Phase 0B — host skeleton
+### Phase 0B — host skeleton — COMPLETE
 
-- add one production endpoint registry;
-- add unit tests for fixed public endpoint construction;
-- no Tools UI/runtime change yet.
+- one production endpoint registry;
+- unit tests for fixed public endpoint construction;
+- no Tools UI/runtime change.
 
-### Phase 1 — Rain data foundation
+### Phase 1A — Rain point data foundation
 
-- Rain capabilities parser/service;
-- point forecast parser/service;
-- domain models;
+- Rain capabilities parser/client;
+- point forecast parser/client;
+- immutable Rain domain models independent of Compose;
+- dedicated `RainRepository` and namespaced native cache;
+- request-scoped cache fallback;
 - fixtures and fail-closed parser tests;
-- native cache boundary.
+- no Tools UI/runtime change.
+
+### Phase 1B — Rain host state wiring
+
+- create Rain-specific load/state owner;
+- reuse Weather Metro location coordinates;
+- cancellation/refresh ownership;
+- expose point forecast to multiple future UI surfaces without coupling them to a Rain home screen.
 
 ### Phase 2 — Rain forecast map data
 
@@ -216,19 +267,22 @@ The map library is deliberately not selected in Phase 0. Library choice will be 
 - nowcast observed-axis fallback parser/regression test;
 - no map UI yet.
 
-### Phase 3 — ToolsHome + Rain UI
+### Phase 3 — ToolsHome + Rain point UI
 
 - replace external shortcut list with native ToolsHome;
-- Rain point forecast surface;
+- reusable `RainPointPanel` / summary surface;
+- direct entry points rather than a mandatory Rain home screen;
 - internal back behavior;
 - keep Storm entry present but gated until its service is ready.
 
 ### Phase 4 — Rain map rendering
 
+- direct `RADAR` and `FORECAST` map entry modes;
 - native raster overlay;
 - 16-frame timeline/autoplay;
 - Radar / Forecast mutually exclusive modes;
 - independent settings;
+- optional point panel overlay/sheet;
 - lifecycle/rotation/background regression.
 
 ### Phase 5 — Storm data foundation
@@ -237,24 +291,3 @@ The map library is deliberately not selected in Phase 0. Library choice will be 
 - per-agency live service/domain;
 - partial-source failure semantics;
 - fixtures and cancellation tests.
-
-### Phase 6 — Storm native UI/map
-
-- Live source status/list;
-- track rendering;
-- multi-agency comparison;
-- Archive list/detail/replay;
-- lifecycle/map ownership regression.
-
-### Phase 7 — Tools consolidation
-
-- remove superseded external HKO shortcut tiles where native functionality exists;
-- keep only browser links that still provide unique value;
-- unified cache clear/diagnostics;
-- final mobile/PWA-reference comparison and release regression.
-
-## Rollback rule
-
-Each integration phase must be independently revertible. Do not delete the current Tools external shortcuts until the corresponding native module has passed device regression.
-
-Rain-Track and Storm-Track remain deployable standalone references throughout integration.
