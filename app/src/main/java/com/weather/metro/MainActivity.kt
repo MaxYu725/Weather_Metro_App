@@ -54,6 +54,11 @@ class MainActivity : ComponentActivity() {
         viewModel.handleDeepLink(intent.data)
     }
 
+    override fun onStop() {
+        rainViewModel.cancelTransientRequests()
+        super.onStop()
+    }
+
     override fun onWindowFocusChanged(hasFocus: Boolean) {
         super.onWindowFocusChanged(hasFocus)
         if (hasFocus) enterImmersiveMode()
