@@ -40,12 +40,12 @@ import com.weather.metro.ui.rain.RainHostViewModel
 import com.weather.metro.ui.screens.CurrentScreen
 import com.weather.metro.ui.screens.ForecastScreen
 import com.weather.metro.ui.screens.SettingsScreen
-import com.weather.metro.ui.screens.ToolsScreen
 import com.weather.metro.ui.theme.LocalMetroSubText
 import com.weather.metro.ui.theme.LocalReduceMotion
 import com.weather.metro.ui.theme.MetroPageTheme
 import com.weather.metro.ui.theme.WeatherMetroTheme
 import com.weather.metro.ui.theme.argbColor
+import com.weather.metro.ui.tools.NativeToolsScreen
 
 private val pages = PageColourSlot.entries
 
@@ -60,6 +60,7 @@ fun WeatherMetroRoot(
     val settings by viewModel.settings.collectAsStateWithLifecycle()
     val loadState by viewModel.loadState.collectAsStateWithLifecycle()
     val navigationRequest by viewModel.navigationRequest.collectAsStateWithLifecycle()
+    val rainState by rainViewModel.state.collectAsStateWithLifecycle()
     val rainHostLocation = when (val state = loadState) {
         is WeatherLoadState.Ready -> state.snapshot.location
         is WeatherLoadState.Error -> state.cached?.location
@@ -152,7 +153,13 @@ fun WeatherMetroRoot(
                                 onNavigationHandled = viewModel::consumeNavigation,
                             )
                             PageColourSlot.FORECAST -> ForecastScreen(state.snapshot, pageColour)
-                            PageColourSlot.TOOLS -> ToolsScreen(pageColour)
+                            PageColourSlot.TOOLS -> NativeToolsScreen(
+                                pageColour = pageColour,
+                                rainState = rainState,
+                                isActive = pageIndex == index,
+                                onRefreshPoint = rainViewModel::refreshPointForecast,
+                                onCancelPointRefresh = rainViewModel::cancelPointRefresh,
+                            )
                             PageColourSlot.SETTINGS -> SettingsScreen(
                                 settings = settings,
                                 pageColour = pageColour,
