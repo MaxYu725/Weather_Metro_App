@@ -108,6 +108,7 @@ fun RainForecastPanel(
                 frame = frame,
                 location = state.location,
                 markerColour = accent,
+                isActive = isActive,
                 modifier = Modifier.fillMaxSize(),
             )
         } else {
@@ -235,6 +236,7 @@ private fun ForecastMapCanvas(
     frame: RainForecastFrame,
     location: LocationInfo?,
     markerColour: Color,
+    isActive: Boolean,
     modifier: Modifier = Modifier,
 ) {
     val rainImage = remember(frame) { frame.toRainImageBitmap() }
@@ -284,8 +286,8 @@ private fun ForecastMapCanvas(
         )
     }
 
-    LaunchedEffect(tileSpecs) {
-        if (tileSpecs.isEmpty()) return@LaunchedEffect
+    LaunchedEffect(tileSpecs, isActive) {
+        if (!isActive || tileSpecs.isEmpty()) return@LaunchedEffect
         val activeKeys = tileSpecs.mapTo(mutableSetOf()) { it.key }
         val stableKeys = stableTileSpecs.mapTo(mutableSetOf()) { it.key }
         val missingTiles = tileSpecs.filterNot { tileImages.containsKey(it.key) }
@@ -535,17 +537,17 @@ private fun ForecastTimelineHud(
             RainForecastSource.SWIRLS -> "HKO SWIRLS 基準 ${formatForecastTime(timeline.issueTime)}"
             RainForecastSource.NOWCAST -> "HKO nowcast 後備預報"
         }
-        val preload = if (
+        val loadingMode = if (
             timeline.source == RainForecastSource.SWIRLS &&
             timeline.loadedFrameCount < timeline.frames.size
         ) {
-            " · 背景預載中"
+            " · 時段按需要載入"
         } else {
             ""
         }
         val stale = if (isStale) " · 舊資料" else ""
         Text(
-            text = "$source · 每${timeline.cadenceMinutes}分鐘一格 · 每格為${timeline.accumulationMinutes}分鐘累積$preload$stale · © OSM © CARTO",
+            text = "$source · 每${timeline.cadenceMinutes}分鐘一格 · 每格為${timeline.accumulationMinutes}分鐘累積$loadingMode$stale · © OSM © CARTO",
             color = if (isStale) Color(0xFFFFB300) else RAIN_MUTED,
             fontSize = 8.sp,
             maxLines = 1,

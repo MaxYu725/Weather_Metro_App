@@ -38,6 +38,7 @@ import androidx.lifecycle.repeatOnLifecycle
 import com.weather.metro.data.tools.RainRadarMode
 import com.weather.metro.ui.components.MetroSectionLabel
 import com.weather.metro.ui.components.MetroTile
+import com.weather.metro.ui.rain.RAIN_TOOL_POLICY_TICK_MS
 import com.weather.metro.ui.rain.RainForecastPanel
 import com.weather.metro.ui.rain.RainHostState
 import com.weather.metro.ui.rain.RainHostViewModel
@@ -68,6 +69,7 @@ fun NativeToolsScreen(
     isActive: Boolean,
     onFullscreenChanged: (Boolean) -> Unit,
     onRefreshPoint: (Int) -> Unit,
+    onEnsurePointFresh: (Int) -> Unit,
     onCancelPointRefresh: () -> Unit,
     onRefreshRadar: () -> Unit,
     onSelectRadarFrame: (Int) -> Unit,
@@ -79,6 +81,7 @@ fun NativeToolsScreen(
     onJumpRadarToLatest: () -> Unit,
     onCancelRadarRequests: () -> Unit,
     onRefreshForecast: () -> Unit,
+    onEnsureForecastFresh: () -> Unit,
     onLoadForecastFrame: (Int) -> Unit,
     onCancelForecastRequests: () -> Unit,
     onRefreshStorm: () -> Unit,
@@ -126,6 +129,8 @@ fun NativeToolsScreen(
     LaunchedEffect(
         effectiveActive,
         destination,
+        rainState.location?.latitude,
+        rainState.location?.longitude,
         rainState.pointForecast.status,
         radarState.timeline.status,
         rainState.forecast.status,
@@ -135,17 +140,30 @@ fun NativeToolsScreen(
             return@LaunchedEffect
         }
         when (destination) {
-            DESTINATION_POINT -> if (
-                rainState.location != null &&
-                rainState.pointForecast.status == RainResourceStatus.IDLE
-            ) {
-                onRefreshPoint(selectedRadiusKm)
+            DESTINATION_POINT -> if (rainState.location != null) {
+                onEnsurePointFresh(selectedRadiusKm)
             }
             DESTINATION_RADAR -> if (radarState.timeline.status == RainResourceStatus.IDLE) {
                 onRefreshRadar()
             }
-            DESTINATION_FORECAST -> if (rainState.forecast.status == RainResourceStatus.IDLE) {
-                onRefreshForecast()
+            DESTINATION_FORECAST -> onEnsureForecastFresh()
+        }
+    }
+
+    LaunchedEffect(
+        effectiveActive,
+        destination,
+        selectedRadiusKm,
+        rainState.location?.latitude,
+        rainState.location?.longitude,
+    ) {
+        if (!effectiveActive) return@LaunchedEffect
+        if (destination != DESTINATION_POINT && destination != DESTINATION_FORECAST) return@LaunchedEffect
+        while (true) {
+            delay(RAIN_TOOL_POLICY_TICK_MS)
+            when (destination) {
+                DESTINATION_POINT -> if (rainState.location != null) onEnsurePointFresh(selectedRadiusKm)
+                DESTINATION_FORECAST -> onEnsureForecastFresh()
             }
         }
     }

@@ -172,6 +172,7 @@ fun WeatherMetroRoot(
                                 if (pageIndex == index) fullscreenTool = active
                             },
                             onRefreshPoint = rainViewModel::refreshPointForecast,
+                            onEnsurePointFresh = rainViewModel::refreshPointForecastIfStale,
                             onCancelPointRefresh = rainViewModel::cancelPointRefresh,
                             onRefreshRadar = radarViewModel::refreshRadar,
                             onSelectRadarFrame = radarViewModel::selectFrame,
@@ -183,6 +184,7 @@ fun WeatherMetroRoot(
                             onJumpRadarToLatest = radarViewModel::jumpToLatest,
                             onCancelRadarRequests = radarViewModel::cancelRequests,
                             onRefreshForecast = rainViewModel::refreshForecast,
+                            onEnsureForecastFresh = rainViewModel::refreshForecastIfStale,
                             onLoadForecastFrame = rainViewModel::loadForecastFrame,
                             onCancelForecastRequests = rainViewModel::cancelForecastRequests,
                             onRefreshStorm = stormViewModel::refreshLive,
