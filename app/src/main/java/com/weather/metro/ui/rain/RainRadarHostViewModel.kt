@@ -82,7 +82,7 @@ class RainRadarHostViewModel(application: Application) : AndroidViewModel(applic
                 }
                 require(mode.wireValue in contract.modes) { "Radar mode ${mode.wireValue} is unavailable" }
 
-                val timeline = repository.loadRadarFrames(rangeKm, heightKm, mode)
+                val timeline = repository.loadRadarTimeline(rangeKm, heightKm, mode).value
                 if (generation != refreshGeneration) return@launch
                 _state.update {
                     it.copy(
