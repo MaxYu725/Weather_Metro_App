@@ -10,6 +10,7 @@ import com.weather.metro.domain.storm.StormAgency
 import com.weather.metro.domain.storm.StormHealth
 import com.weather.metro.domain.storm.StormPoint
 import com.weather.metro.domain.storm.StormPointType
+import com.weather.metro.domain.storm.StormTrack
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
@@ -17,6 +18,7 @@ import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URI
 import java.nio.charset.StandardCharsets
+import java.time.Instant
 
 internal interface StormHttpTransport {
     suspend fun getText(
@@ -66,7 +68,7 @@ class StormService internal constructor(
 ) {
     suspend fun loadLive(force: Boolean = false): List<AgencyLiveResult> {
         if (force) Unit // Transport is no-store; retained for the stable service contract.
-        return liveLoader.loadAll()
+        return liveLoader.loadAll().map(::normalizeLiveResult)
     }
 
     suspend fun loadLiveAgency(
@@ -74,7 +76,7 @@ class StormService internal constructor(
         force: Boolean = false,
     ): AgencyLiveResult {
         if (force) Unit
-        return liveLoader.loadAgency(agency)
+        return normalizeLiveResult(liveLoader.loadAgency(agency))
     }
 
     suspend fun probeHealth(): StormNetworkResult<StormHealth> = load(
@@ -159,6 +161,27 @@ class StormService internal constructor(
         )
         return ArchiveAdvisoryDetail(advisory = advisory, points = points)
     }
+
+    private fun normalizeLiveResult(result: AgencyLiveResult): AgencyLiveResult {
+        if (result.agency != StormAgency.CWA || result.storms.isEmpty()) return result
+        val storms = result.storms.map { track ->
+            track.copy(bulletinTime = cwaIssueTime(track) ?: track.bulletinTime)
+        }
+        return result.copy(
+            updatedAt = storms.mapNotNull { it.bulletinTime }.maxOrNull(),
+            storms = storms,
+        )
+    }
+
+    private fun cwaIssueTime(track: StormTrack): String? =
+        track.forecastPoints.firstNotNullOfOrNull { point ->
+            val hour = point.forecastHour ?: return@firstNotNullOfOrNull null
+            runCatching {
+                Instant.parse(point.validAt)
+                    .minusSeconds(hour.toLong() * 3600L)
+                    .toString()
+            }.getOrNull()
+        }
 
     private suspend fun <T> load(
         url: String,
