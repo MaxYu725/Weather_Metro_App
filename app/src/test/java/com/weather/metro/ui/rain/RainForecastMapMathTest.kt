@@ -39,37 +39,39 @@ class RainForecastMapMathTest {
     }
 
     @Test
-    fun zoomOutViewportShowsMoreGeographyWithoutChangingGridBounds() {
-        val gridBounds = RainGridBounds(
-            north = 22.7,
-            south = 22.0,
-            east = 114.6,
-            west = 113.7,
-        )
-
-        val defaultViewport = forecastViewportBounds(gridBounds, FORECAST_DEFAULT_VIEW_SCALE)
-        val zoomedOut = forecastViewportBounds(gridBounds, FORECAST_MIN_VIEW_SCALE)
-        val zoomedIn = forecastViewportBounds(gridBounds, FORECAST_MAX_VIEW_SCALE)
-
-        val defaultLatSpan = defaultViewport.north - defaultViewport.south
-        val defaultLonSpan = defaultViewport.east - defaultViewport.west
-        assertTrue(zoomedOut.north - zoomedOut.south > defaultLatSpan)
-        assertTrue(zoomedOut.east - zoomedOut.west > defaultLonSpan)
-        assertTrue(zoomedIn.north - zoomedIn.south < defaultLatSpan)
-        assertTrue(zoomedIn.east - zoomedIn.west < defaultLonSpan)
+    fun defaultMapZoomIsStreetLevelAndMercatorRoundTrips() {
+        assertTrue(FORECAST_DEFAULT_MAP_ZOOM in 15.0..16.0)
+        val point = webMercatorPoint(22.4967, 114.1412, forecastTileZoom(FORECAST_DEFAULT_MAP_ZOOM))
+        val restored = inverseWebMercatorPoint(point, forecastTileZoom(FORECAST_DEFAULT_MAP_ZOOM))
+        assertEquals(22.4967, restored.latitude, 0.000001)
+        assertEquals(114.1412, restored.longitude, 0.000001)
     }
 
     @Test
-    fun webMercatorPlacesNorthAboveSouthAndProducesBasemapTiles() {
-        val north = webMercatorPoint(22.6, 114.1, FORECAST_BASEMAP_ZOOM)
-        val south = webMercatorPoint(22.1, 114.1, FORECAST_BASEMAP_ZOOM)
-        assertTrue(north.y < south.y)
+    fun draggingMapRightMovesMapCenterWest() {
+        val moved = forecastMapCenterAfterPan(
+            latitude = 22.4967,
+            longitude = 114.1412,
+            mapZoom = FORECAST_DEFAULT_MAP_ZOOM,
+            panX = 120f,
+            panY = 0f,
+        )
+        assertTrue(moved.longitude < 114.1412)
+        assertEquals(22.4967, moved.latitude, 0.0005)
+    }
 
+    @Test
+    fun streetViewportProducesBoundedCartoTileSet() {
         val tiles = forecastBasemapTiles(
-            RainGridBounds(north = 22.7, south = 22.0, east = 114.6, west = 113.7),
+            centerLatitude = 22.4967,
+            centerLongitude = 114.1412,
+            mapZoom = FORECAST_DEFAULT_MAP_ZOOM,
+            viewportWidthPx = 1080,
+            viewportHeightPx = 2200,
         )
         assertTrue(tiles.isNotEmpty())
-        assertTrue(tiles.size < 30)
+        assertTrue(tiles.size < 100)
+        assertTrue(tiles.all { it.zoom == 15 })
         assertTrue(tiles.all { it.url.contains("basemaps.cartocdn.com/dark_all") })
     }
 

@@ -61,10 +61,7 @@ fun NativeToolsScreen(
     fun cancelDestinationRequests() {
         when (destination) {
             DESTINATION_POINT -> onCancelPointRefresh()
-            DESTINATION_FORECAST -> {
-                onCancelForecastRequests()
-                onCancelPointRefresh()
-            }
+            DESTINATION_FORECAST -> onCancelForecastRequests()
         }
     }
 
@@ -94,16 +91,8 @@ fun NativeToolsScreen(
             ) {
                 onRefreshPoint(selectedRadiusKm)
             }
-            DESTINATION_FORECAST -> {
-                if (
-                    rainState.location != null &&
-                    rainState.pointForecast.status == RainResourceStatus.IDLE
-                ) {
-                    onRefreshPoint(selectedRadiusKm)
-                }
-                if (rainState.forecast.status == RainResourceStatus.IDLE) {
-                    onRefreshForecast()
-                }
+            DESTINATION_FORECAST -> if (rainState.forecast.status == RainResourceStatus.IDLE) {
+                onRefreshForecast()
             }
         }
     }
@@ -131,7 +120,6 @@ fun NativeToolsScreen(
             onSelectFrame = onLoadForecastFrame,
             onBack = {
                 onCancelForecastRequests()
-                onCancelPointRefresh()
                 destination = DESTINATION_HOME
             },
         )

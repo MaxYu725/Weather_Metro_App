@@ -7,22 +7,29 @@ import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import kotlin.math.PI
 import kotlin.math.abs
+import kotlin.math.atan
 import kotlin.math.floor
 import kotlin.math.ln
 import kotlin.math.max
 import kotlin.math.min
+import kotlin.math.pow
 import kotlin.math.sin
+import kotlin.math.sinh
 
-internal const val FORECAST_BASEMAP_ZOOM = 10
 internal const val FORECAST_TILE_SIZE_PX = 256.0
-internal const val FORECAST_DEFAULT_VIEW_SCALE = 0.78
-internal const val FORECAST_MIN_VIEW_SCALE = 0.62
-internal const val FORECAST_MAX_VIEW_SCALE = 1.10
+internal const val FORECAST_DEFAULT_MAP_ZOOM = 15.5
+internal const val FORECAST_MIN_MAP_ZOOM = 10.0
+internal const val FORECAST_MAX_MAP_ZOOM = 18.0
 private const val MAX_MERCATOR_LAT = 85.05112878
 
 internal data class MercatorPoint(
     val x: Double,
     val y: Double,
+)
+
+internal data class ForecastMapCenter(
+    val latitude: Double,
+    val longitude: Double,
 )
 
 internal data class ForecastTileSpec(
@@ -50,6 +57,45 @@ internal fun webMercatorPoint(latitude: Double, longitude: Double, zoom: Int): M
     return MercatorPoint(x = x, y = y)
 }
 
+internal fun inverseWebMercatorPoint(point: MercatorPoint, zoom: Int): ForecastMapCenter {
+    require(zoom in 0..22) { "Unsupported map zoom" }
+    val worldSize = FORECAST_TILE_SIZE_PX * (1 shl zoom)
+    val longitude = point.x / worldSize * 360.0 - 180.0
+    val n = PI - (2.0 * PI * point.y / worldSize)
+    val latitude = Math.toDegrees(atan(sinh(n))).coerceIn(-MAX_MERCATOR_LAT, MAX_MERCATOR_LAT)
+    return ForecastMapCenter(
+        latitude = latitude,
+        longitude = longitude.coerceIn(-180.0, 180.0),
+    )
+}
+
+internal fun forecastTileZoom(mapZoom: Double): Int =
+    floor(mapZoom.coerceIn(FORECAST_MIN_MAP_ZOOM, FORECAST_MAX_MAP_ZOOM)).toInt().coerceIn(0, 22)
+
+internal fun forecastVisualScale(mapZoom: Double): Double {
+    val zoom = mapZoom.coerceIn(FORECAST_MIN_MAP_ZOOM, FORECAST_MAX_MAP_ZOOM)
+    return 2.0.pow(zoom - forecastTileZoom(zoom))
+}
+
+internal fun forecastMapCenterAfterPan(
+    latitude: Double,
+    longitude: Double,
+    mapZoom: Double,
+    panX: Float,
+    panY: Float,
+): ForecastMapCenter {
+    val tileZoom = forecastTileZoom(mapZoom)
+    val scale = forecastVisualScale(mapZoom)
+    val center = webMercatorPoint(latitude, longitude, tileZoom)
+    return inverseWebMercatorPoint(
+        MercatorPoint(
+            x = center.x - panX / scale,
+            y = center.y - panY / scale,
+        ),
+        tileZoom,
+    )
+}
+
 /**
  * Convert centre-point grid axes into display edges using the adjacent observed axes.
  * This deliberately does not reconstruct an axis from one minimum step.
@@ -72,57 +118,29 @@ internal fun forecastRenderBounds(grid: RainForecastGrid): RainGridBounds {
     )
 }
 
-internal fun paddedForecastBounds(bounds: RainGridBounds, fraction: Double = 0.045): RainGridBounds {
-    val latSpan = (bounds.north - bounds.south).coerceAtLeast(0.01)
-    val lonSpan = (bounds.east - bounds.west).coerceAtLeast(0.01)
-    val latPadding = latSpan * fraction
-    val lonPadding = lonSpan * fraction
-    return RainGridBounds(
-        north = (bounds.north + latPadding).coerceAtMost(MAX_MERCATOR_LAT),
-        south = (bounds.south - latPadding).coerceAtLeast(-MAX_MERCATOR_LAT),
-        east = (bounds.east + lonPadding).coerceAtMost(180.0),
-        west = (bounds.west - lonPadding).coerceAtLeast(-180.0),
-    )
-}
-
-/**
- * Scale the visible viewport around the forecast grid centre.
- * A value below 1.0 zooms out and shows more surrounding geography; above 1.0 zooms in.
- */
-internal fun forecastViewportBounds(
-    bounds: RainGridBounds,
-    viewScale: Double = FORECAST_DEFAULT_VIEW_SCALE,
-): RainGridBounds {
-    val base = paddedForecastBounds(bounds, fraction = 0.06)
-    val scale = viewScale.coerceIn(FORECAST_MIN_VIEW_SCALE, FORECAST_MAX_VIEW_SCALE)
-    val centerLat = (base.north + base.south) / 2.0
-    val centerLon = (base.east + base.west) / 2.0
-    val halfLat = (base.north - base.south).coerceAtLeast(0.01) / 2.0 / scale
-    val halfLon = (base.east - base.west).coerceAtLeast(0.01) / 2.0 / scale
-    return RainGridBounds(
-        north = (centerLat + halfLat).coerceAtMost(MAX_MERCATOR_LAT),
-        south = (centerLat - halfLat).coerceAtLeast(-MAX_MERCATOR_LAT),
-        east = (centerLon + halfLon).coerceAtMost(180.0),
-        west = (centerLon - halfLon).coerceAtLeast(-180.0),
-    )
-}
-
 internal fun forecastBasemapTiles(
-    bounds: RainGridBounds,
-    zoom: Int = FORECAST_BASEMAP_ZOOM,
+    centerLatitude: Double,
+    centerLongitude: Double,
+    mapZoom: Double,
+    viewportWidthPx: Int,
+    viewportHeightPx: Int,
 ): List<ForecastTileSpec> {
-    val northWest = webMercatorPoint(bounds.north, bounds.west, zoom)
-    val southEast = webMercatorPoint(bounds.south, bounds.east, zoom)
-    val maxTile = (1 shl zoom) - 1
-    val startX = floor(northWest.x / FORECAST_TILE_SIZE_PX).toInt().coerceIn(0, maxTile)
-    val endX = floor(southEast.x / FORECAST_TILE_SIZE_PX).toInt().coerceIn(0, maxTile)
-    val startY = floor(northWest.y / FORECAST_TILE_SIZE_PX).toInt().coerceIn(0, maxTile)
-    val endY = floor(southEast.y / FORECAST_TILE_SIZE_PX).toInt().coerceIn(0, maxTile)
+    if (viewportWidthPx <= 0 || viewportHeightPx <= 0) return emptyList()
+    val tileZoom = forecastTileZoom(mapZoom)
+    val scale = forecastVisualScale(mapZoom)
+    val center = webMercatorPoint(centerLatitude, centerLongitude, tileZoom)
+    val halfWidth = viewportWidthPx / 2.0 / scale
+    val halfHeight = viewportHeightPx / 2.0 / scale
+    val maxTile = (1 shl tileZoom) - 1
+    val startX = (floor((center.x - halfWidth) / FORECAST_TILE_SIZE_PX).toInt() - 1).coerceIn(0, maxTile)
+    val endX = (floor((center.x + halfWidth) / FORECAST_TILE_SIZE_PX).toInt() + 1).coerceIn(0, maxTile)
+    val startY = (floor((center.y - halfHeight) / FORECAST_TILE_SIZE_PX).toInt() - 1).coerceIn(0, maxTile)
+    val endY = (floor((center.y + halfHeight) / FORECAST_TILE_SIZE_PX).toInt() + 1).coerceIn(0, maxTile)
 
     return buildList {
         for (y in min(startY, endY)..max(startY, endY)) {
             for (x in min(startX, endX)..max(startX, endX)) {
-                add(ForecastTileSpec(zoom = zoom, x = x, y = y))
+                add(ForecastTileSpec(zoom = tileZoom, x = x, y = y))
             }
         }
     }
