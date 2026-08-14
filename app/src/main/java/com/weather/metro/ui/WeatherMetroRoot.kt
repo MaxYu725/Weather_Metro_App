@@ -36,10 +36,12 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.viewmodel.compose.viewModel
 import com.weather.metro.data.settings.PageColourSlot
 import com.weather.metro.domain.WeatherLoadState
 import com.weather.metro.ui.components.MetroProgress
 import com.weather.metro.ui.rain.RainHostViewModel
+import com.weather.metro.ui.rain.RainRadarHostViewModel
 import com.weather.metro.ui.screens.CurrentScreen
 import com.weather.metro.ui.screens.ForecastScreen
 import com.weather.metro.ui.screens.SettingsScreen
@@ -60,10 +62,12 @@ fun WeatherMetroRoot(
     requestLocationPermission: () -> Unit,
     requestNotificationPermission: () -> Unit,
 ) {
+    val radarViewModel: RainRadarHostViewModel = viewModel()
     val settings by viewModel.settings.collectAsStateWithLifecycle()
     val loadState by viewModel.loadState.collectAsStateWithLifecycle()
     val navigationRequest by viewModel.navigationRequest.collectAsStateWithLifecycle()
     val rainState by rainViewModel.state.collectAsStateWithLifecycle()
+    val radarState by radarViewModel.state.collectAsStateWithLifecycle()
     val rainHostLocation = when (val state = loadState) {
         is WeatherLoadState.Ready -> state.snapshot.location
         is WeatherLoadState.Error -> state.cached?.location
@@ -71,7 +75,10 @@ fun WeatherMetroRoot(
     }
 
     LaunchedEffect(rainHostLocation) {
-        rainHostLocation?.let(rainViewModel::bindHostLocation)
+        rainHostLocation?.let { location ->
+            rainViewModel.bindHostLocation(location)
+            radarViewModel.bindHostLocation(location)
+        }
     }
 
     LaunchedEffect(Unit) {
@@ -167,12 +174,16 @@ fun WeatherMetroRoot(
                             PageColourSlot.TOOLS -> NativeToolsScreen(
                                 pageColour = pageColour,
                                 rainState = rainState,
+                                radarState = radarState,
                                 isActive = pageIndex == index,
                                 onFullscreenChanged = { active ->
                                     if (pageIndex == index) fullscreenTool = active
                                 },
                                 onRefreshPoint = rainViewModel::refreshPointForecast,
                                 onCancelPointRefresh = rainViewModel::cancelPointRefresh,
+                                onRefreshRadar = radarViewModel::refreshRadar,
+                                onSelectRadarFrame = radarViewModel::selectFrame,
+                                onCancelRadarRequests = radarViewModel::cancelRequests,
                                 onRefreshForecast = rainViewModel::refreshForecast,
                                 onLoadForecastFrame = rainViewModel::loadForecastFrame,
                                 onCancelForecastRequests = rainViewModel::cancelForecastRequests,
