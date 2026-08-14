@@ -7,12 +7,54 @@ data class RainCapabilities(
     val radarFrames: Boolean,
     val swirlsFrames: Boolean,
     val swirlsContract: SwirlsContract?,
+    val radarContract: RainRadarContract? = null,
 )
 
 data class SwirlsContract(
     val frameCount: Int,
     val cadenceMinutes: Int,
     val accumulationMinutes: Int,
+)
+
+data class RainRadarContract(
+    val version: String,
+    val rangesKm: List<Int>,
+    val heightsKmByRange: Map<Int, List<Int>>,
+    val defaultHeightKm: Int,
+    val modes: List<String>,
+    val cadenceMinutes: Int,
+    val maxFrames: Int,
+) {
+    fun heightsForRange(rangeKm: Int): List<Int> = heightsKmByRange[rangeKm].orEmpty()
+
+    fun supports(rangeKm: Int, heightKm: Int): Boolean =
+        rangeKm in rangesKm && heightKm in heightsForRange(rangeKm)
+}
+
+data class RainRadarBounds(
+    val north: Double,
+    val south: Double,
+    val east: Double,
+    val west: Double,
+)
+
+data class RainRadarFrame(
+    val id: String,
+    val time: String,
+    val imageUrl: String,
+    val bounds: RainRadarBounds,
+)
+
+data class RainRadarTimeline(
+    val workerVersion: String,
+    val contractVersion: String,
+    val rangeKm: Int,
+    val heightKm: Int,
+    val mode: String,
+    val issueTime: String?,
+    val cadenceMinutes: Int?,
+    val renderMode: String?,
+    val frames: List<RainRadarFrame>,
 )
 
 data class RainPointForecast(
