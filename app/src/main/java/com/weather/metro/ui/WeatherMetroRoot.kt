@@ -199,6 +199,7 @@ fun WeatherMetroRoot(
                                 onLoadForecastFrame = rainViewModel::loadForecastFrame,
                                 onCancelForecastRequests = rainViewModel::cancelForecastRequests,
                                 onRefreshStorm = stormViewModel::refreshLive,
+                                onEnsureStormFresh = { stormViewModel.refreshLiveIfStale() },
                                 onCancelStormRequests = stormViewModel::cancelRequests,
                             )
                             PageColourSlot.SETTINGS -> SettingsScreen(

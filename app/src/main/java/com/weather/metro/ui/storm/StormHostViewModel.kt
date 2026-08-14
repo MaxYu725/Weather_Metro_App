@@ -12,13 +12,15 @@ import com.weather.metro.domain.storm.StormLiveState
 import com.weather.metro.domain.storm.StormTrack
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.joinAll
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.supervisorScope
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.joinAll
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.supervisorScope
 import kotlin.math.abs
 
 data class StormAgencyHostState(
@@ -31,6 +33,8 @@ data class StormAgencyHostState(
     val hasSuccessfulSnapshot: Boolean = false,
     val isCached: Boolean = false,
     val cacheSavedAtMillis: Long? = null,
+    val lastSuccessAtMillis: Long? = null,
+    val lastAttemptAtMillis: Long? = null,
     val errorMessage: String? = null,
 )
 
@@ -74,62 +78,21 @@ class StormHostViewModel(application: Application) : AndroidViewModel(applicatio
         _state.update { it.copy(location = location) }
     }
 
+    /** Manual refresh always forces all four official agencies. */
     fun refreshLive() {
-        val generation = ++refreshGeneration
-        refreshJob?.cancel()
-        _state.update { current ->
-            current.copy(
-                hasRefreshAttempted = true,
-                sources = current.sources.mapValues { (_, source) ->
-                    source.copy(
-                        liveState = if (source.hasSuccessfulSnapshot) StormLiveState.STALE else StormLiveState.LOADING,
-                        message = if (source.hasSuccessfulSnapshot) "更新中 · 保留最近資料" else "同步中",
-                        refreshing = true,
-                        errorMessage = null,
-                    )
-                },
-            )
-        }
+        refreshAgencies(
+            agencies = StormAgency.entries.toSet(),
+            startedAtMillis = System.currentTimeMillis(),
+        )
+    }
 
-        refreshJob = viewModelScope.launch {
-            supervisorScope {
-                StormAgency.entries.map { agency ->
-                    launch {
-                        val incoming = try {
-                            service.loadLiveAgency(agency = agency, force = true)
-                        } catch (error: CancellationException) {
-                            throw error
-                        } catch (error: Throwable) {
-                            AgencyLiveResult(
-                                agency = agency,
-                                state = StormLiveState.ERROR,
-                                message = error.message ?: "${agency.name} live load failed",
-                                updatedAt = null,
-                                storms = emptyList(),
-                            )
-                        }
-                        if (generation != refreshGeneration) return@launch
-
-                        _state.update { current ->
-                            val previous = current.sources[agency] ?: initialStormSource(agency)
-                            current.copy(
-                                sources = current.sources + (agency to mergeStormAgencyResult(previous, incoming)),
-                            )
-                        }
-
-                        if (incoming.state == StormLiveState.OK || incoming.state == StormLiveState.EMPTY) {
-                            try {
-                                cache.save(incoming)
-                            } catch (error: CancellationException) {
-                                throw error
-                            } catch (_: Throwable) {
-                                // Network success remains authoritative even if disk persistence fails.
-                            }
-                        }
-                    }
-                }.joinAll()
-            }
-        }
+    /** Foreground/resume refresh only requests agencies whose last-success state is stale. */
+    fun refreshLiveIfStale(nowMillis: Long = System.currentTimeMillis()) {
+        val current = _state.value
+        if (!current.cacheRestored || current.isRefreshing) return
+        val agencies = stormAgenciesNeedingRefresh(current.sources, nowMillis)
+        if (agencies.isEmpty()) return
+        refreshAgencies(agencies = agencies, startedAtMillis = nowMillis)
     }
 
     fun cancelRequests() {
@@ -139,14 +102,22 @@ class StormHostViewModel(application: Application) : AndroidViewModel(applicatio
         _state.update { current ->
             current.copy(
                 sources = current.sources.mapValues { (_, source) ->
-                    source.copy(
-                        refreshing = false,
-                        message = if (source.liveState == StormLiveState.LOADING && !source.hasSuccessfulSnapshot) {
-                            "已暫停"
-                        } else {
-                            source.message
-                        },
-                    )
+                    if (!source.refreshing) {
+                        source
+                    } else {
+                        source.copy(
+                            refreshing = false,
+                            lastAttemptAtMillis = null,
+                            message = if (
+                                source.liveState == StormLiveState.LOADING &&
+                                !source.hasSuccessfulSnapshot
+                            ) {
+                                "已暫停"
+                            } else {
+                                source.message
+                            },
+                        )
+                    }
                 },
             )
         }
@@ -170,6 +141,95 @@ class StormHostViewModel(application: Application) : AndroidViewModel(applicatio
         }
     }
 
+    private fun refreshAgencies(
+        agencies: Set<StormAgency>,
+        startedAtMillis: Long,
+    ) {
+        if (agencies.isEmpty()) return
+        val generation = ++refreshGeneration
+        refreshJob?.cancel()
+        _state.update { current ->
+            current.copy(
+                hasRefreshAttempted = true,
+                sources = current.sources.mapValues { (agency, source) ->
+                    if (agency !in agencies) {
+                        source
+                    } else {
+                        source.copy(
+                            liveState = if (source.hasSuccessfulSnapshot) {
+                                source.liveState
+                            } else {
+                                StormLiveState.LOADING
+                            },
+                            message = if (source.hasSuccessfulSnapshot) {
+                                "更新中 · 保留最近資料"
+                            } else {
+                                "同步中"
+                            },
+                            refreshing = true,
+                            lastAttemptAtMillis = startedAtMillis,
+                            errorMessage = null,
+                        )
+                    }
+                },
+            )
+        }
+
+        refreshJob = viewModelScope.launch {
+            try {
+                supervisorScope {
+                    agencies.map { agency ->
+                        launch {
+                            val incoming = try {
+                                val result = service.loadLiveAgency(agency = agency, force = true)
+                                currentCoroutineContext().ensureActive()
+                                result
+                            } catch (error: CancellationException) {
+                                throw error
+                            } catch (error: Throwable) {
+                                AgencyLiveResult(
+                                    agency = agency,
+                                    state = StormLiveState.ERROR,
+                                    message = error.message ?: "${agency.name} live load failed",
+                                    updatedAt = null,
+                                    storms = emptyList(),
+                                )
+                            }
+                            if (generation != refreshGeneration) return@launch
+                            currentCoroutineContext().ensureActive()
+
+                            val receivedAtMillis = System.currentTimeMillis()
+                            _state.update { current ->
+                                val previous = current.sources[agency] ?: initialStormSource(agency)
+                                current.copy(
+                                    sources = current.sources + (
+                                        agency to mergeStormAgencyResult(
+                                            previous = previous,
+                                            incoming = incoming,
+                                            receivedAtMillis = receivedAtMillis,
+                                        )
+                                    ),
+                                )
+                            }
+
+                            if (incoming.state == StormLiveState.OK || incoming.state == StormLiveState.EMPTY) {
+                                try {
+                                    cache.save(incoming)
+                                } catch (error: CancellationException) {
+                                    throw error
+                                } catch (_: Throwable) {
+                                    // Network success remains authoritative even if disk persistence fails.
+                                }
+                            }
+                        }
+                    }.joinAll()
+                }
+            } finally {
+                if (generation == refreshGeneration) refreshJob = null
+            }
+        }
+    }
+
     private fun restoreCache() {
         cacheJob?.cancel()
         cacheJob = viewModelScope.launch {
@@ -189,6 +249,8 @@ class StormHostViewModel(application: Application) : AndroidViewModel(applicatio
                             hasSuccessfulSnapshot = true,
                             isCached = true,
                             cacheSavedAtMillis = entry.savedAtMillis,
+                            lastSuccessAtMillis = entry.savedAtMillis,
+                            lastAttemptAtMillis = null,
                             errorMessage = null,
                         )
                     }
@@ -205,6 +267,7 @@ class StormHostViewModel(application: Application) : AndroidViewModel(applicatio
 internal fun mergeStormAgencyResult(
     previous: StormAgencyHostState,
     incoming: AgencyLiveResult,
+    receivedAtMillis: Long = System.currentTimeMillis(),
 ): StormAgencyHostState {
     require(previous.agency == incoming.agency) { "Storm agency merge mismatch" }
     return when (incoming.state) {
@@ -220,25 +283,31 @@ internal fun mergeStormAgencyResult(
             hasSuccessfulSnapshot = true,
             isCached = false,
             cacheSavedAtMillis = null,
+            lastSuccessAtMillis = receivedAtMillis,
+            lastAttemptAtMillis = previous.lastAttemptAtMillis,
             errorMessage = null,
         )
 
-        StormLiveState.ERROR -> if (previous.hasSuccessfulSnapshot) {
-            previous.copy(
-                liveState = StormLiveState.STALE,
-                message = "即時更新失敗，保留最近資料",
-                refreshing = false,
-                errorMessage = incoming.message ?: "${incoming.agency.name} live load failed",
-            )
-        } else {
-            StormAgencyHostState(
-                agency = incoming.agency,
-                liveState = StormLiveState.ERROR,
-                message = incoming.message ?: "讀取失敗",
-                refreshing = false,
-                hasSuccessfulSnapshot = false,
-                errorMessage = incoming.message ?: "${incoming.agency.name} live load failed",
-            )
+        StormLiveState.ERROR -> {
+            val userMessage = stormUserFacingError(incoming.message)
+            if (previous.hasSuccessfulSnapshot) {
+                previous.copy(
+                    liveState = StormLiveState.STALE,
+                    message = "即時更新失敗，保留最近資料",
+                    refreshing = false,
+                    errorMessage = userMessage,
+                )
+            } else {
+                StormAgencyHostState(
+                    agency = incoming.agency,
+                    liveState = StormLiveState.ERROR,
+                    message = "讀取失敗",
+                    refreshing = false,
+                    hasSuccessfulSnapshot = false,
+                    lastAttemptAtMillis = previous.lastAttemptAtMillis,
+                    errorMessage = userMessage,
+                )
+            }
         }
 
         StormLiveState.LOADING,

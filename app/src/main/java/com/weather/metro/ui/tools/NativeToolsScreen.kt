@@ -29,6 +29,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.net.toUri
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.repeatOnLifecycle
+import com.weather.metro.data.tools.RainRadarMode
 import com.weather.metro.ui.components.MetroSectionLabel
 import com.weather.metro.ui.components.MetroTile
 import com.weather.metro.ui.rain.RainForecastMapLibrePanel
@@ -41,10 +45,11 @@ import com.weather.metro.ui.rain.RainRadarMapLibrePanel
 import com.weather.metro.ui.rain.RainRadarPlaybackSpeed
 import com.weather.metro.ui.rain.RainRadarProductionStatus
 import com.weather.metro.ui.rain.RainResourceStatus
+import com.weather.metro.ui.storm.STORM_FOREGROUND_POLICY_TICK_MS
 import com.weather.metro.ui.storm.StormHostState
 import com.weather.metro.ui.storm.StormLivePanel
 import com.weather.metro.ui.theme.LocalMetroSubText
-import com.weather.metro.data.tools.RainRadarMode
+import kotlinx.coroutines.delay
 
 private const val DESTINATION_HOME = "home"
 private const val DESTINATION_POINT = "point"
@@ -76,6 +81,7 @@ fun NativeToolsScreen(
     onLoadForecastFrame: (Int) -> Unit,
     onCancelForecastRequests: () -> Unit,
     onRefreshStorm: () -> Unit,
+    onEnsureStormFresh: () -> Unit,
     onCancelStormRequests: () -> Unit,
 ) {
     var destination by rememberSaveable { mutableStateOf(DESTINATION_HOME) }
@@ -100,10 +106,7 @@ fun NativeToolsScreen(
     }
 
     LaunchedEffect(isActive, destination) {
-        if (isActive) {
-            onFullscreenChanged(destination != DESTINATION_HOME)
-            if (destination == DESTINATION_STORM) onRefreshStorm()
-        }
+        if (isActive) onFullscreenChanged(destination != DESTINATION_HOME)
     }
 
     LaunchedEffect(
@@ -194,6 +197,7 @@ fun NativeToolsScreen(
             stormState = stormState,
             isActive = isActive,
             onRefresh = onRefreshStorm,
+            onEnsureFresh = onEnsureStormFresh,
             onCancelRequests = onCancelStormRequests,
             onBack = {
                 onCancelStormRequests()
@@ -285,7 +289,7 @@ private fun ToolsHome(
                 seed = "native-storm",
                 title = "熱帶氣旋",
                 description = "HKO · CMA · JMA · CWA Live",
-                status = "S1C native",
+                status = "S1F native",
                 background = pageColour,
                 onClick = onOpenStorm,
             )
@@ -435,9 +439,21 @@ private fun StormLiveToolScreen(
     stormState: StormHostState,
     isActive: Boolean,
     onRefresh: () -> Unit,
+    onEnsureFresh: () -> Unit,
     onCancelRequests: () -> Unit,
     onBack: () -> Unit,
 ) {
+    val lifecycleOwner = LocalLifecycleOwner.current
+    LaunchedEffect(lifecycleOwner, isActive, stormState.cacheRestored) {
+        if (!isActive || !stormState.cacheRestored) return@LaunchedEffect
+        lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) {
+            while (true) {
+                onEnsureFresh()
+                delay(STORM_FOREGROUND_POLICY_TICK_MS)
+            }
+        }
+    }
+
     StormLivePanel(
         state = stormState,
         pageColour = pageColour,
