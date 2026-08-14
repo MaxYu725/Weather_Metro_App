@@ -18,7 +18,6 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
@@ -201,7 +200,7 @@ private fun PointToolScreen(
                 fontSize = 16.sp,
                 modifier = Modifier
                     .clickable(onClick = onBack)
-                    .padding(vertical = 8.dp, end = 16.dp),
+                    .padding(start = 0.dp, top = 8.dp, end = 16.dp, bottom = 8.dp),
             )
         }
         item {
