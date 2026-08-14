@@ -23,6 +23,8 @@ class StormHostStateTest {
             refreshing = true,
             hasSuccessfulSnapshot = true,
             isCached = false,
+            lastSuccessAtMillis = 10_000L,
+            lastAttemptAtMillis = 20_000L,
         )
         val incoming = AgencyLiveResult(
             agency = StormAgency.JMA,
@@ -32,12 +34,14 @@ class StormHostStateTest {
             storms = emptyList(),
         )
 
-        val merged = mergeStormAgencyResult(previous, incoming)
+        val merged = mergeStormAgencyResult(previous, incoming, receivedAtMillis = 30_000L)
 
         assertEquals(StormLiveState.STALE, merged.liveState)
         assertEquals(previous.storms, merged.storms)
         assertEquals(previous.updatedAt, merged.updatedAt)
-        assertEquals("JMA upstream timeout", merged.errorMessage)
+        assertEquals("資料來源回應逾時", merged.errorMessage)
+        assertEquals(10_000L, merged.lastSuccessAtMillis)
+        assertEquals(20_000L, merged.lastAttemptAtMillis)
         assertTrue(merged.hasSuccessfulSnapshot)
         assertFalse(merged.refreshing)
     }
@@ -52,6 +56,8 @@ class StormHostStateTest {
             storms = listOf(track(StormAgency.HKO)),
             hasSuccessfulSnapshot = true,
             isCached = true,
+            lastSuccessAtMillis = 1_000L,
+            lastAttemptAtMillis = 2_000L,
         )
         val incoming = AgencyLiveResult(
             agency = StormAgency.HKO,
@@ -61,31 +67,37 @@ class StormHostStateTest {
             storms = emptyList(),
         )
 
-        val merged = mergeStormAgencyResult(previous, incoming)
+        val merged = mergeStormAgencyResult(previous, incoming, receivedAtMillis = 5_000L)
 
         assertEquals(StormLiveState.EMPTY, merged.liveState)
         assertTrue(merged.storms.isEmpty())
         assertTrue(merged.hasSuccessfulSnapshot)
         assertFalse(merged.isCached)
+        assertEquals(5_000L, merged.lastSuccessAtMillis)
+        assertEquals(2_000L, merged.lastAttemptAtMillis)
         assertEquals(null, merged.errorMessage)
     }
 
     @Test
     fun failureWithoutSnapshotBecomesSourceOnlyError() {
-        val previous = StormAgencyHostState(agency = StormAgency.CMA)
+        val previous = StormAgencyHostState(
+            agency = StormAgency.CMA,
+            lastAttemptAtMillis = 7_000L,
+        )
         val incoming = AgencyLiveResult(
             agency = StormAgency.CMA,
             state = StormLiveState.ERROR,
-            message = "CMA failed",
+            message = "HTTP 503 upstream unavailable",
             updatedAt = null,
             storms = emptyList(),
         )
 
-        val merged = mergeStormAgencyResult(previous, incoming)
+        val merged = mergeStormAgencyResult(previous, incoming, receivedAtMillis = 9_000L)
 
         assertEquals(StormLiveState.ERROR, merged.liveState)
         assertFalse(merged.hasSuccessfulSnapshot)
-        assertEquals("CMA failed", merged.errorMessage)
+        assertEquals("資料來源暫時無法連線", merged.errorMessage)
+        assertEquals(7_000L, merged.lastAttemptAtMillis)
     }
 
     private fun track(agency: StormAgency): StormTrack = StormTrack(
