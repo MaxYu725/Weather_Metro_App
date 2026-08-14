@@ -64,6 +64,7 @@ import java.util.Locale
 import java.util.TimeZone
 import kotlin.math.abs
 import kotlin.math.roundToInt
+import kotlin.math.roundToLong
 
 private val RADAR_MAPLIBRE_FALLBACK_ACCENT = Color(0xFF20A7D8)
 private val RADAR_MAPLIBRE_PANEL = Color(0xF20A0A0A)
@@ -201,11 +202,12 @@ fun RainRadarMapLibrePanel(
                 playing = playing,
                 accent = accent,
                 onTogglePlay = {
-                    if (timeline.frames.size < 2) return@RadarControlsHud
-                    if (!playing && (state.selectedFrameIndex ?: timeline.frames.lastIndex) >= timeline.frames.lastIndex) {
-                        onSelectFrame(0)
+                    if (timeline.frames.size >= 2) {
+                        if (!playing && (state.selectedFrameIndex ?: timeline.frames.lastIndex) >= timeline.frames.lastIndex) {
+                            onSelectFrame(0)
+                        }
+                        playing = !playing
                     }
-                    playing = !playing
                 },
                 onSelectFrame = { index ->
                     playing = false
