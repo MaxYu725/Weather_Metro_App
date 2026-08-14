@@ -45,6 +45,7 @@ import com.weather.metro.ui.rain.RainRadarHostViewModel
 import com.weather.metro.ui.screens.CurrentScreen
 import com.weather.metro.ui.screens.ForecastScreen
 import com.weather.metro.ui.screens.SettingsScreen
+import com.weather.metro.ui.storm.StormHostViewModel
 import com.weather.metro.ui.theme.LocalMetroSubText
 import com.weather.metro.ui.theme.LocalReduceMotion
 import com.weather.metro.ui.theme.MetroPageTheme
@@ -63,11 +64,13 @@ fun WeatherMetroRoot(
     requestNotificationPermission: () -> Unit,
 ) {
     val radarViewModel: RainRadarHostViewModel = viewModel()
+    val stormViewModel: StormHostViewModel = viewModel()
     val settings by viewModel.settings.collectAsStateWithLifecycle()
     val loadState by viewModel.loadState.collectAsStateWithLifecycle()
     val navigationRequest by viewModel.navigationRequest.collectAsStateWithLifecycle()
     val rainState by rainViewModel.state.collectAsStateWithLifecycle()
     val radarState by radarViewModel.state.collectAsStateWithLifecycle()
+    val stormState by stormViewModel.state.collectAsStateWithLifecycle()
     val rainHostLocation = when (val state = loadState) {
         is WeatherLoadState.Ready -> state.snapshot.location
         is WeatherLoadState.Error -> state.cached?.location
@@ -78,6 +81,7 @@ fun WeatherMetroRoot(
         rainHostLocation?.let { location ->
             rainViewModel.bindHostLocation(location)
             radarViewModel.bindHostLocation(location)
+            stormViewModel.bindHostLocation(location)
         }
     }
 
@@ -175,6 +179,7 @@ fun WeatherMetroRoot(
                                 pageColour = pageColour,
                                 rainState = rainState,
                                 radarState = radarState,
+                                stormState = stormState,
                                 isActive = pageIndex == index,
                                 onFullscreenChanged = { active ->
                                     if (pageIndex == index) fullscreenTool = active
@@ -193,6 +198,8 @@ fun WeatherMetroRoot(
                                 onRefreshForecast = rainViewModel::refreshForecast,
                                 onLoadForecastFrame = rainViewModel::loadForecastFrame,
                                 onCancelForecastRequests = rainViewModel::cancelForecastRequests,
+                                onRefreshStorm = stormViewModel::refreshLive,
+                                onCancelStormRequests = stormViewModel::cancelRequests,
                             )
                             PageColourSlot.SETTINGS -> SettingsScreen(
                                 settings = settings,
@@ -210,6 +217,7 @@ fun WeatherMetroRoot(
                                 onClearCache = {
                                     viewModel.clearCache()
                                     rainViewModel.clearCache()
+                                    stormViewModel.clearCache()
                                 },
                             )
                         }
