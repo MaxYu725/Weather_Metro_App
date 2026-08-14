@@ -41,6 +41,8 @@ import com.weather.metro.ui.rain.RainRadarMapLibrePanel
 import com.weather.metro.ui.rain.RainRadarPlaybackSpeed
 import com.weather.metro.ui.rain.RainRadarProductionStatus
 import com.weather.metro.ui.rain.RainResourceStatus
+import com.weather.metro.ui.storm.StormHostState
+import com.weather.metro.ui.storm.StormLivePanel
 import com.weather.metro.ui.theme.LocalMetroSubText
 import com.weather.metro.data.tools.RainRadarMode
 
@@ -49,12 +51,14 @@ private const val DESTINATION_POINT = "point"
 private const val DESTINATION_RADAR = "radar"
 private const val DESTINATION_FORECAST = "forecast"
 private const val DESTINATION_FORECAST_MAPLIBRE = "forecast-maplibre"
+private const val DESTINATION_STORM = "storm"
 
 @Composable
 fun NativeToolsScreen(
     pageColour: Color,
     rainState: RainHostState,
     radarState: RainRadarHostState,
+    stormState: StormHostState,
     isActive: Boolean,
     onFullscreenChanged: (Boolean) -> Unit,
     onRefreshPoint: (Int) -> Unit,
@@ -71,6 +75,8 @@ fun NativeToolsScreen(
     onRefreshForecast: () -> Unit,
     onLoadForecastFrame: (Int) -> Unit,
     onCancelForecastRequests: () -> Unit,
+    onRefreshStorm: () -> Unit,
+    onCancelStormRequests: () -> Unit,
 ) {
     var destination by rememberSaveable { mutableStateOf(DESTINATION_HOME) }
     var selectedRadiusKm by rememberSaveable {
@@ -84,6 +90,7 @@ fun NativeToolsScreen(
             DESTINATION_FORECAST,
             DESTINATION_FORECAST_MAPLIBRE,
             -> onCancelForecastRequests()
+            DESTINATION_STORM -> onCancelStormRequests()
         }
     }
 
@@ -93,7 +100,10 @@ fun NativeToolsScreen(
     }
 
     LaunchedEffect(isActive, destination) {
-        if (isActive) onFullscreenChanged(destination != DESTINATION_HOME)
+        if (isActive) {
+            onFullscreenChanged(destination != DESTINATION_HOME)
+            if (destination == DESTINATION_STORM) onRefreshStorm()
+        }
     }
 
     LaunchedEffect(
@@ -179,12 +189,24 @@ fun NativeToolsScreen(
                 destination = DESTINATION_HOME
             },
         )
+        DESTINATION_STORM -> StormLiveToolScreen(
+            pageColour = pageColour,
+            stormState = stormState,
+            isActive = isActive,
+            onRefresh = onRefreshStorm,
+            onCancelRequests = onCancelStormRequests,
+            onBack = {
+                onCancelStormRequests()
+                destination = DESTINATION_HOME
+            },
+        )
         else -> ToolsHome(
             pageColour = pageColour,
             onOpenPoint = { destination = DESTINATION_POINT },
             onOpenRadar = { destination = DESTINATION_RADAR },
             onOpenForecast = { destination = DESTINATION_FORECAST },
             onOpenMapLibreForecast = { destination = DESTINATION_FORECAST_MAPLIBRE },
+            onOpenStorm = { destination = DESTINATION_STORM },
         )
     }
 }
@@ -196,6 +218,7 @@ private fun ToolsHome(
     onOpenRadar: () -> Unit,
     onOpenForecast: () -> Unit,
     onOpenMapLibreForecast: () -> Unit,
+    onOpenStorm: () -> Unit,
 ) {
     val context = LocalContext.current
     LazyColumn(
@@ -261,9 +284,10 @@ private fun ToolsHome(
             ToolTile(
                 seed = "native-storm",
                 title = "熱帶氣旋",
-                description = "Storm native module 將接入此入口",
-                status = "planned",
+                description = "HKO · CMA · JMA · CWA Live",
+                status = "S1C native",
                 background = pageColour,
+                onClick = onOpenStorm,
             )
         }
 
@@ -403,6 +427,26 @@ private fun ForecastMapLibreToolScreen(
             modifier = Modifier.fillMaxSize(),
         )
     }
+}
+
+@Composable
+private fun StormLiveToolScreen(
+    pageColour: Color,
+    stormState: StormHostState,
+    isActive: Boolean,
+    onRefresh: () -> Unit,
+    onCancelRequests: () -> Unit,
+    onBack: () -> Unit,
+) {
+    StormLivePanel(
+        state = stormState,
+        pageColour = pageColour,
+        isActive = isActive,
+        onRefresh = onRefresh,
+        onBack = onBack,
+        onCancelRequests = onCancelRequests,
+        modifier = Modifier.fillMaxSize(),
+    )
 }
 
 @Composable
