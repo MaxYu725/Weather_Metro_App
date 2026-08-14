@@ -25,6 +25,9 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -85,10 +88,15 @@ fun WeatherMetroRoot(
         val pageIndex = pagerState.currentPage.mod(pages.size)
         val activePageColour = argbColor(settings.pageColours.colour(pages[pageIndex]))
         val reduceMotion = LocalReduceMotion.current
+        var fullscreenTool by remember { mutableStateOf(false) }
         val pagerFlingBehavior = PagerDefaults.flingBehavior(
             state = pagerState,
             snapAnimationSpec = tween(durationMillis = if (reduceMotion) 1 else 520),
         )
+
+        LaunchedEffect(pageIndex) {
+            if (pages[pageIndex] != PageColourSlot.TOOLS) fullscreenTool = false
+        }
 
         LaunchedEffect(navigationRequest?.token) {
             val request = navigationRequest ?: return@LaunchedEffect
@@ -108,26 +116,29 @@ fun WeatherMetroRoot(
                 .fillMaxSize()
                 .background(Color.Black),
         ) {
-            if (
-                loadState is WeatherLoadState.Loading ||
-                (loadState as? WeatherLoadState.Ready)?.refreshing == true
-            ) {
-                MetroProgress(colour = activePageColour)
-            } else {
-                Spacer(Modifier.height(10.dp))
-            }
+            if (!fullscreenTool) {
+                if (
+                    loadState is WeatherLoadState.Loading ||
+                    (loadState as? WeatherLoadState.Ready)?.refreshing == true
+                ) {
+                    MetroProgress(colour = activePageColour)
+                } else {
+                    Spacer(Modifier.height(10.dp))
+                }
 
-            PivotHeader(
-                current = pages[pageIndex].label,
-                next = pages[(pageIndex + 1) % pages.size].label,
-                reduceMotion = reduceMotion,
-            )
+                PivotHeader(
+                    current = pages[pageIndex].label,
+                    next = pages[(pageIndex + 1) % pages.size].label,
+                    reduceMotion = reduceMotion,
+                )
+            }
 
             HorizontalPager(
                 state = pagerState,
                 beyondViewportPageCount = 1,
                 key = { it },
                 flingBehavior = pagerFlingBehavior,
+                userScrollEnabled = !fullscreenTool,
                 modifier = Modifier.fillMaxSize(),
             ) { virtualPage ->
                 val index = virtualPage.mod(pages.size)
@@ -157,6 +168,9 @@ fun WeatherMetroRoot(
                                 pageColour = pageColour,
                                 rainState = rainState,
                                 isActive = pageIndex == index,
+                                onFullscreenChanged = { active ->
+                                    if (pageIndex == index) fullscreenTool = active
+                                },
                                 onRefreshPoint = rainViewModel::refreshPointForecast,
                                 onCancelPointRefresh = rainViewModel::cancelPointRefresh,
                                 onRefreshForecast = rainViewModel::refreshForecast,
