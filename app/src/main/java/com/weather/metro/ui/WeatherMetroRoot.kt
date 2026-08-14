@@ -36,6 +36,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.weather.metro.data.settings.PageColourSlot
 import com.weather.metro.domain.WeatherLoadState
 import com.weather.metro.ui.components.MetroProgress
+import com.weather.metro.ui.rain.RainHostViewModel
 import com.weather.metro.ui.screens.CurrentScreen
 import com.weather.metro.ui.screens.ForecastScreen
 import com.weather.metro.ui.screens.SettingsScreen
@@ -52,12 +53,22 @@ private val pages = PageColourSlot.entries
 @Composable
 fun WeatherMetroRoot(
     viewModel: WeatherViewModel,
+    rainViewModel: RainHostViewModel,
     requestLocationPermission: () -> Unit,
     requestNotificationPermission: () -> Unit,
 ) {
     val settings by viewModel.settings.collectAsStateWithLifecycle()
     val loadState by viewModel.loadState.collectAsStateWithLifecycle()
     val navigationRequest by viewModel.navigationRequest.collectAsStateWithLifecycle()
+    val rainHostLocation = when (val state = loadState) {
+        is WeatherLoadState.Ready -> state.snapshot.location
+        is WeatherLoadState.Error -> state.cached?.location
+        WeatherLoadState.Loading -> null
+    }
+
+    LaunchedEffect(rainHostLocation) {
+        rainHostLocation?.let(rainViewModel::bindHostLocation)
+    }
 
     LaunchedEffect(Unit) {
         if (settings.preciseLocation && !viewModel.hasLocationPermission()) {
@@ -155,7 +166,10 @@ fun WeatherMetroRoot(
                                     viewModel.setNotificationsEnabled(enabled)
                                     if (enabled) requestNotificationPermission()
                                 },
-                                onClearCache = viewModel::clearCache,
+                                onClearCache = {
+                                    viewModel.clearCache()
+                                    rainViewModel.clearCache()
+                                },
                             )
                         }
                     }

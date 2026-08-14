@@ -1,7 +1,7 @@
 # Weather Metro — Rain / Storm tool integration roadmap
 
-Status: **Phase 1A Rain data foundation**  
-Weather Metro baseline: `2f6904697edc6541f62cc489b597627ff178953f`  
+Status: **Phase 1B Rain host state wiring**  
+Weather Metro baseline: `d7ab4b166affbdf1fd3a0468be84c5ae642e23da`  
 Rain-Track reference baseline: `2a3a62c75c397564f1b46e2e8cd86db313bd5b7a`  
 Storm-Track reference baseline: `b03d16149a33928a49790b0d8308dd31e40b1ed4`
 
@@ -57,6 +57,13 @@ Rain domain/data
   SWIRLS forecast
   radar metadata/images
   separate Rain cache
+
+Rain host state
+  RainHostViewModel
+  host LocationInfo binding
+  capabilities state
+  point request state
+  cancellation / request-generation guard
 
 Rain UI components
   RainSummary
@@ -134,11 +141,26 @@ app/src/main/java/com/weather/metro/
     storm/             immutable Storm models
   ui/
     tools/             ToolsHome and internal navigation
-    rain/              reusable Compose Rain surfaces
+    rain/              Rain host state + reusable Compose surfaces
     storm/             Compose Storm surfaces
 ```
 
 The existing normal weather `WeatherLoadState` must not become a giant shared state for tool modules. Rain and Storm keep independent service/load state so one tool failure cannot break current/hourly/forecast pages or the other tool.
+
+### Host location ownership
+
+Weather Metro keeps one location pipeline:
+
+```text
+LocationRepository
+  → WeatherRepository
+  → WeatherSnapshot.location
+  → RainHostViewModel.bindHostLocation(...)
+```
+
+Rain must not instantiate a second `LocationRepository` or independently request fused location. A host location change invalidates the previous point request. Label/accuracy-only changes at the same coordinates may retain point data.
+
+Rain requests are explicit and lazy: binding a location does **not** automatically fetch Rain data. This prevents hidden/off-screen Rain capabilities from creating background network work.
 
 ## Rain integration contract
 
@@ -190,7 +212,7 @@ Shared rules:
 - a failed refresh never erases good cache;
 - stale state is visible;
 - point cache is request-scoped and must not be reused for a different coordinate/radius;
-- cache clear eventually clears all host-owned tool caches;
+- Settings cache clear clears both Weather and Rain host-owned caches at the current integration stage;
 - browser PWA cache keys are never imported into Android.
 
 ## Lifecycle strategy
@@ -209,6 +231,8 @@ When restored:
 - resume rendering;
 - refresh only when stale/explicitly requested;
 - do not create another map instance merely because the surface became visible again.
+
+Rain host state applies both coroutine cancellation and a monotonically increasing request generation. A late response from an old location/radius must never overwrite the current point request even if the underlying blocking network call cannot terminate immediately.
 
 ## Native rendering strategy
 
@@ -242,7 +266,7 @@ The map library is deliberately not selected in Phase 1. Library choice is made 
 - unit tests for fixed public endpoint construction;
 - no Tools UI/runtime change.
 
-### Phase 1A — Rain point data foundation
+### Phase 1A — Rain point data foundation — COMPLETE
 
 - Rain capabilities parser/client;
 - point forecast parser/client;
@@ -252,12 +276,15 @@ The map library is deliberately not selected in Phase 1. Library choice is made 
 - fixtures and fail-closed parser tests;
 - no Tools UI/runtime change.
 
-### Phase 1B — Rain host state wiring
+### Phase 1B — Rain host state wiring — CURRENT
 
-- create Rain-specific load/state owner;
-- reuse Weather Metro location coordinates;
-- cancellation/refresh ownership;
-- expose point forecast to multiple future UI surfaces without coupling them to a Rain home screen.
+- independent `RainHostViewModel` rather than extending normal `WeatherLoadState`;
+- Weather `LocationInfo` is bound into Rain; no second location subsystem;
+- capabilities and point requests are explicit/lazy;
+- cancellation plus request-generation guards prevent old responses overwriting new state;
+- same-request refresh preserves good data on failure and marks it stale;
+- host cache clear includes Rain cache;
+- no visible Tools UI change.
 
 ### Phase 2 — Rain forecast map data
 
