@@ -21,7 +21,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlin.math.abs
 
-internal data class StormAgencyHostState(
+data class StormAgencyHostState(
     val agency: StormAgency,
     val liveState: StormLiveState = StormLiveState.LOADING,
     val message: String = "準備同步",
@@ -34,7 +34,7 @@ internal data class StormAgencyHostState(
     val errorMessage: String? = null,
 )
 
-internal data class StormHostState(
+data class StormHostState(
     val location: LocationInfo? = null,
     val sources: Map<StormAgency, StormAgencyHostState> = initialStormSources(),
     val cacheRestored: Boolean = false,
@@ -50,7 +50,7 @@ internal data class StormHostState(
         get() = sources.values.count { it.hasSuccessfulSnapshot }
 }
 
-internal class StormHostViewModel(application: Application) : AndroidViewModel(application) {
+class StormHostViewModel(application: Application) : AndroidViewModel(application) {
     private val service = StormService()
     private val cache = StormLiveCache(application)
 
