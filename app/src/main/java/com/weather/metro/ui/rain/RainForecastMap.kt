@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.matchParentSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyRow
@@ -420,7 +421,7 @@ private object ForecastTileLoader {
             connection.connect()
             try {
                 if (connection.responseCode !in 200..299) return@runCatching null
-                connection.inputStream.use(BitmapFactory::decodeStream)
+                connection.inputStream.use { stream -> BitmapFactory.decodeStream(stream) }
             } finally {
                 connection.disconnect()
             }
