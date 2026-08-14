@@ -55,6 +55,9 @@ import com.weather.metro.ui.tools.NativeToolsScreen
 
 private val pages = PageColourSlot.entries
 
+internal fun pageRequiresWeatherData(page: PageColourSlot): Boolean =
+    page == PageColourSlot.CURRENT || page == PageColourSlot.FORECAST
+
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun WeatherMetroRoot(
@@ -97,7 +100,8 @@ fun WeatherMetroRoot(
         val alignedInitialPage = Int.MAX_VALUE / 2 - (Int.MAX_VALUE / 2 % pages.size)
         val pagerState = rememberPagerState(initialPage = alignedInitialPage) { Int.MAX_VALUE }
         val pageIndex = pagerState.currentPage.mod(pages.size)
-        val activePageColour = argbColor(settings.pageColours.colour(pages[pageIndex]))
+        val activePage = pages[pageIndex]
+        val activePageColour = argbColor(settings.pageColours.colour(activePage))
         val reduceMotion = LocalReduceMotion.current
         var fullscreenTool by remember { mutableStateOf(false) }
         val pagerFlingBehavior = PagerDefaults.flingBehavior(
@@ -106,7 +110,7 @@ fun WeatherMetroRoot(
         )
 
         LaunchedEffect(pageIndex) {
-            if (pages[pageIndex] != PageColourSlot.TOOLS) fullscreenTool = false
+            if (activePage != PageColourSlot.TOOLS) fullscreenTool = false
         }
 
         LaunchedEffect(navigationRequest?.token) {
@@ -128,17 +132,18 @@ fun WeatherMetroRoot(
                 .background(Color.Black),
         ) {
             if (!fullscreenTool) {
-                if (
+                val showWeatherProgress = pageRequiresWeatherData(activePage) && (
                     loadState is WeatherLoadState.Loading ||
-                    (loadState as? WeatherLoadState.Ready)?.refreshing == true
-                ) {
+                        (loadState as? WeatherLoadState.Ready)?.refreshing == true
+                    )
+                if (showWeatherProgress) {
                     MetroProgress(colour = activePageColour)
                 } else {
                     Spacer(Modifier.height(10.dp))
                 }
 
                 PivotHeader(
-                    current = pages[pageIndex].label,
+                    current = activePage.label,
                     next = pages[(pageIndex + 1) % pages.size].label,
                     reduceMotion = reduceMotion,
                 )
@@ -156,71 +161,78 @@ fun WeatherMetroRoot(
                 val page = pages[index]
                 val pageColour = argbColor(settings.pageColours.colour(page))
                 MetroPageTheme(pageColour) {
-                    when (val state = loadState) {
-                        WeatherLoadState.Loading -> LoadingPage()
-                        is WeatherLoadState.Error -> ErrorPage(
-                            message = state.message,
-                            retry = viewModel::refresh,
+                    when (page) {
+                        PageColourSlot.TOOLS -> NativeToolsScreen(
+                            pageColour = pageColour,
+                            rainState = rainState,
+                            radarState = radarState,
+                            stormState = stormState,
+                            isActive = pageIndex == index,
+                            onFullscreenChanged = { active ->
+                                if (pageIndex == index) fullscreenTool = active
+                            },
+                            onRefreshPoint = rainViewModel::refreshPointForecast,
+                            onCancelPointRefresh = rainViewModel::cancelPointRefresh,
+                            onRefreshRadar = radarViewModel::refreshRadar,
+                            onSelectRadarFrame = radarViewModel::selectFrame,
+                            onSelectRadarRange = radarViewModel::selectRange,
+                            onSelectRadarHeight = radarViewModel::selectHeight,
+                            onSelectRadarMode = radarViewModel::selectMode,
+                            onRadarOpacityChange = radarViewModel::setOpacity,
+                            onRadarPlaybackSpeedChange = radarViewModel::setPlaybackSpeed,
+                            onJumpRadarToLatest = radarViewModel::jumpToLatest,
+                            onCancelRadarRequests = radarViewModel::cancelRequests,
+                            onRefreshForecast = rainViewModel::refreshForecast,
+                            onLoadForecastFrame = rainViewModel::loadForecastFrame,
+                            onCancelForecastRequests = rainViewModel::cancelForecastRequests,
+                            onRefreshStorm = stormViewModel::refreshLive,
+                            onEnsureStormFresh = { stormViewModel.refreshLiveIfStale() },
+                            onCancelStormRequests = stormViewModel::cancelRequests,
                         )
-                        is WeatherLoadState.Ready -> when (page) {
-                            PageColourSlot.CURRENT -> CurrentScreen(
-                                snapshot = state.snapshot,
-                                pageColour = pageColour,
-                                refreshing = state.refreshing,
-                                onRefresh = viewModel::refresh,
-                                onRequestLocation = requestLocationPermission,
-                                navigationRequest = navigationRequest?.takeIf {
-                                    it.page == PageColourSlot.CURRENT && it.showAlerts
-                                },
-                                onNavigationHandled = viewModel::consumeNavigation,
+
+                        PageColourSlot.SETTINGS -> SettingsScreen(
+                            settings = settings,
+                            pageColour = pageColour,
+                            onPageColourChange = viewModel::setPageColour,
+                            onTextScaleChange = viewModel::setTextScale,
+                            onPatternIntensityChange = viewModel::setPatternIntensity,
+                            onReduceMotionChange = viewModel::setReduceMotion,
+                            onHighContrastChange = viewModel::setHighContrast,
+                            onPreciseLocationChange = viewModel::setPreciseLocation,
+                            onNotificationsChange = { enabled ->
+                                viewModel.setNotificationsEnabled(enabled)
+                                if (enabled) requestNotificationPermission()
+                            },
+                            onClearCache = {
+                                viewModel.clearCache()
+                                rainViewModel.clearCache()
+                                stormViewModel.clearCache()
+                            },
+                        )
+
+                        PageColourSlot.CURRENT,
+                        PageColourSlot.FORECAST,
+                        -> when (val state = loadState) {
+                            WeatherLoadState.Loading -> LoadingPage()
+                            is WeatherLoadState.Error -> ErrorPage(
+                                message = state.message,
+                                retry = viewModel::refresh,
                             )
-                            PageColourSlot.FORECAST -> ForecastScreen(state.snapshot, pageColour)
-                            PageColourSlot.TOOLS -> NativeToolsScreen(
-                                pageColour = pageColour,
-                                rainState = rainState,
-                                radarState = radarState,
-                                stormState = stormState,
-                                isActive = pageIndex == index,
-                                onFullscreenChanged = { active ->
-                                    if (pageIndex == index) fullscreenTool = active
-                                },
-                                onRefreshPoint = rainViewModel::refreshPointForecast,
-                                onCancelPointRefresh = rainViewModel::cancelPointRefresh,
-                                onRefreshRadar = radarViewModel::refreshRadar,
-                                onSelectRadarFrame = radarViewModel::selectFrame,
-                                onSelectRadarRange = radarViewModel::selectRange,
-                                onSelectRadarHeight = radarViewModel::selectHeight,
-                                onSelectRadarMode = radarViewModel::selectMode,
-                                onRadarOpacityChange = radarViewModel::setOpacity,
-                                onRadarPlaybackSpeedChange = radarViewModel::setPlaybackSpeed,
-                                onJumpRadarToLatest = radarViewModel::jumpToLatest,
-                                onCancelRadarRequests = radarViewModel::cancelRequests,
-                                onRefreshForecast = rainViewModel::refreshForecast,
-                                onLoadForecastFrame = rainViewModel::loadForecastFrame,
-                                onCancelForecastRequests = rainViewModel::cancelForecastRequests,
-                                onRefreshStorm = stormViewModel::refreshLive,
-                                onEnsureStormFresh = { stormViewModel.refreshLiveIfStale() },
-                                onCancelStormRequests = stormViewModel::cancelRequests,
-                            )
-                            PageColourSlot.SETTINGS -> SettingsScreen(
-                                settings = settings,
-                                pageColour = pageColour,
-                                onPageColourChange = viewModel::setPageColour,
-                                onTextScaleChange = viewModel::setTextScale,
-                                onPatternIntensityChange = viewModel::setPatternIntensity,
-                                onReduceMotionChange = viewModel::setReduceMotion,
-                                onHighContrastChange = viewModel::setHighContrast,
-                                onPreciseLocationChange = viewModel::setPreciseLocation,
-                                onNotificationsChange = { enabled ->
-                                    viewModel.setNotificationsEnabled(enabled)
-                                    if (enabled) requestNotificationPermission()
-                                },
-                                onClearCache = {
-                                    viewModel.clearCache()
-                                    rainViewModel.clearCache()
-                                    stormViewModel.clearCache()
-                                },
-                            )
+                            is WeatherLoadState.Ready -> if (page == PageColourSlot.CURRENT) {
+                                CurrentScreen(
+                                    snapshot = state.snapshot,
+                                    pageColour = pageColour,
+                                    refreshing = state.refreshing,
+                                    onRefresh = viewModel::refresh,
+                                    onRequestLocation = requestLocationPermission,
+                                    navigationRequest = navigationRequest?.takeIf {
+                                        it.page == PageColourSlot.CURRENT && it.showAlerts
+                                    },
+                                    onNavigationHandled = viewModel::consumeNavigation,
+                                )
+                            } else {
+                                ForecastScreen(state.snapshot, pageColour)
+                            }
                         }
                     }
                 }

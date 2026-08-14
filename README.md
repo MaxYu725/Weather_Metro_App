@@ -8,7 +8,7 @@ estimates that HKO does not publish at the same granularity.
 ## Product highlights
 
 - Full-screen, edge-to-edge interface with no app bar, logo, or clock region.
-- Endless five-page Pivot: `current`, `hourly`, `forecast`, `tools`, `settings`.
+- Endless four-page Pivot: `current`, `forecast`, `tools`, `settings`.
 - Expandable tiles automatically move into view for direct reading.
 - Stable seeded geometric tile backgrounds: expansion reveals the previously
   clipped remainder without moving the pattern.
@@ -20,9 +20,14 @@ estimates that HKO does not publish at the same granularity.
   nearest available HKO tide station.
 - Precise Android fused location, Hong Kong street/district reverse geocoding,
   nearest HKO observation station, and nearest tide station selection.
+- Native Tools modules for point rainfall, observed Radar, two-hour SWIRLS
+  forecast, and multi-agency tropical-cyclone Live tracks from HKO/CMA/JMA/CWA.
+- MapLibre-native Radar and tropical-cyclone rendering with independent tool
+  lifecycle, cache and refresh state; no WebView/Leaflet runtime is embedded.
 - Accent colour, text scaling, geometric pattern strength, motion, contrast,
   precise-location and notification settings.
-- Offline atomic cache and stale-data indication.
+- Offline atomic cache and stale-data indication, with independent Rain and
+  Storm caches alongside the normal weather cache.
 - FCM HTTP v1 alert delivery backed by a five-minute Apps Script monitor.
 
 ## Architecture
@@ -32,18 +37,25 @@ The app contains no embedded server credential and does not perform periodic
 work every five minutes on the handset; the server monitor does that work and
 FCM wakes subscribed devices efficiently.
 
+Rain and Storm are native tool modules with independent repositories and load
+state. A normal weather-source failure must not make `tools` or `settings`
+unavailable. Fullscreen tools temporarily hide the host Pivot and stop their
+disposable requests/animation when hidden.
+
 ```text
 app/
-  data/          HKO/Open-Meteo transport, cache, location and settings
-  domain/        UI-independent weather models
+  data/          HKO/Open-Meteo plus Rain/Storm transport, cache, location and settings
+  domain/        UI-independent weather, Rain and Storm models
   notification/ FCM service and Android notification channels
-  ui/            Compose Pivot, screens, Metro tiles and theme
+  ui/            Compose Pivot, native tool surfaces, Metro tiles and theme
 backend/apps-script/
   Code.gs        HKO state monitor and FCM HTTP v1 sender
 ```
 
-Detailed decisions are in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and the
-visual/interaction contract is in [docs/DESIGN_SPEC.md](docs/DESIGN_SPEC.md).
+Detailed decisions are in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md), the
+visual/interaction contract is in [docs/DESIGN_SPEC.md](docs/DESIGN_SPEC.md),
+and native tool ownership is documented in
+[docs/TOOLS_INTEGRATION.md](docs/TOOLS_INTEGRATION.md).
 
 ## Local build
 
