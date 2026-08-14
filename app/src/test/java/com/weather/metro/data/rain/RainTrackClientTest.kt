@@ -60,7 +60,7 @@ class RainTrackClientTest {
 
     @Test
     fun rejectsNegativeRainfall() {
-        val broken = POINT_FIXTURE.replace("\"amountMm\":7.9", "\"amountMm\":-1.0")
+        val broken = POINT_FIXTURE.replace("\"amountMm\": 7.9", "\"amountMm\": -1.0")
 
         val result = runCatching { RainTrackClient().parsePointForecast(broken) }
 
