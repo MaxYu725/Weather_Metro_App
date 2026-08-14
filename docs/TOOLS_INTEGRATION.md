@@ -1,320 +1,294 @@
-# Weather Metro — Rain / Storm tool integration roadmap
+# Weather Metro — native Tools integration contract
 
-Status: **Phase 1B Rain host state wiring**  
-Weather Metro baseline: `d7ab4b166affbdf1fd3a0468be84c5ae642e23da`  
-Rain-Track reference baseline: `2a3a62c75c397564f1b46e2e8cd86db313bd5b7a`  
-Storm-Track reference baseline: `b03d16149a33928a49790b0d8308dd31e40b1ed4`
+Status: **Rain + Radar + 2-hour Forecast + Storm Live integrated; IR1 host review**  
+Weather Metro review baseline: `f3ceeeea5c1d99f0c9e20203b7c6b7a1ec1faae1`  
+Rain-Track reference: `MaxYu725/Rain-Track`  
+Storm-Track reference: `MaxYu725/Storm-Track`
 
-## Goal
+## 1. Product ownership
 
-Replace the current `tools` Pivot page of external HKO browser shortcuts with native Weather Metro tool modules backed by the already-verified Rain-Track and Storm-Track production services.
+Weather Metro is the native Android host. Rain-Track and Storm-Track are source/reference products; their runtime capabilities are integrated as native Kotlin/Compose modules rather than embedded PWAs.
 
-The host remains Kotlin + Jetpack Compose. No standalone PWA shell is embedded into the app.
-
-Rain-Track is integrated as **independent reusable capabilities**, not as one mandatory `RainTrackScreen`. Weather Metro can open point rainfall, Radar, two-hour Forecast, or Rain settings directly according to context.
-
-## Current host replacement point
-
-Weather Metro keeps five top-level Pivot pages:
+The current host Pivot is:
 
 ```text
-current / hourly / forecast / tools / settings
+current / forecast / tools / settings
 ```
 
-`ToolsScreen` currently opens official HKO webpages through `ACTION_VIEW`. This screen is the integration replacement point.
+`tools` is discovery/home only. Entering a native tool hides the host Pivot and gives that tool the full available app surface.
 
-Target navigation is capability-first rather than app-inside-app navigation:
+Current ToolsHome:
 
 ```text
-CURRENT
-  └── rainfall tile / detail
-       └── RainPointPanel
-
-TOOLS
-  └── ToolsHome
-       ├── Point rainfall ─────────── RainPointPanel
-       ├── Radar ─────────────────── RainMapScreen(RADAR)
-       ├── 2-hour Forecast ───────── RainMapScreen(FORECAST)
-       └── Tropical cyclone ──────── Storm module
-
-SETTINGS
-  └── Rain preferences when persistent host-level options are needed
+ToolsHome
+  ├── Point rainfall
+  ├── Radar
+  ├── 2-hour Forecast
+  ├── 2-hour Forecast · MapLibre experiment/reference
+  └── Tropical cyclone Live
 ```
 
-A compact Radar / Forecast switch may exist inside the map surface for convenience, but users do not have to enter a Rain home screen before reaching either mode.
+Storm Archive is not yet integrated into the native host.
 
-## Rain component boundary
+## 2. Host state independence
 
-The standalone Rain-Track PWA currently combines a map, bottom sheet, Radar, two-hour Forecast and settings. Weather Metro must decompose those responsibilities.
-
-Target native composition:
+Normal weather, Rain, Radar and Storm do not share one giant load state.
 
 ```text
-Rain domain/data
-  RainRepository
-  RainTrackClient
-  point forecast
-  SWIRLS forecast
-  radar metadata/images
-  separate Rain cache
+WeatherViewModel
+  └── normal HKO/Open-Meteo weather state
 
-Rain host state
-  RainHostViewModel
-  host LocationInfo binding
-  capabilities state
-  point request state
-  cancellation / request-generation guard
+RainHostViewModel
+  ├── point rainfall
+  └── 2-hour Forecast
 
-Rain UI components
-  RainSummary
-  RainPointPanel
-  RainTimeline
-  RainMapScreen(initialMode)
-  RadarOverlay / RadarControls
-  ForecastOverlay / ForecastControls
-  RainSettingsSheet or host settings rows
+RainRadarHostViewModel
+  └── observed Radar
+
+StormHostViewModel
+  └── HKO/CMA/JMA/CWA Live tracks
 ```
 
-Required behavior:
+A failure or refresh in one product must not fail another product.
 
-- `RainPointPanel` can render without any map;
-- Radar can open directly without first rendering point forecast;
-- Forecast can open directly without first rendering Radar;
-- tapping/selecting a location on either map may reuse `RainPointPanel`;
-- Radar settings are visible only for Radar mode;
-- Forecast playback/opacity settings are visible only for Forecast mode;
-- persistent settings belong to Weather Metro storage, not browser localStorage;
-- the standalone Rain-Track bottom-sheet lifecycle is a reference behavior, not a UI shell to copy wholesale.
+`TOOLS` and `SETTINGS` are host-owned surfaces and must remain usable even while normal weather is loading or has failed. Normal weather loading/error UI belongs only to `CURRENT` and `FORECAST`.
 
-## Backend ownership
+## 3. Location ownership
 
-### Rain
-
-```text
-https://radar.max-yu.workers.dev
-```
-
-Weather Metro consumes public runtime APIs for:
-
-- capabilities;
-- point forecast;
-- SWIRLS 16-frame forecast;
-- full nowcast fallback;
-- radar metadata;
-- radar image proxy.
-
-### Storm
-
-```text
-https://storm.max-yu.workers.dev
-```
-
-Weather Metro consumes public runtime APIs for:
-
-- per-agency live transport behind `StormService`;
-- CWA live data;
-- storm/advisory history;
-- health/diagnostics where useful.
-
-Do not merge either Worker into `Weather_Metro_App/backend` during initial integration.
-
-## Security invariants
-
-- HTTPS only.
-- No Cloudflare deployment credential in the Android app.
-- No Storm admin/D1/R2/CWA secret in the Android app.
-- No UI component may build arbitrary Worker proxy URLs.
-- No general-purpose WebView or JavaScript bridge.
-- Rain radar images must use the Rain Worker image proxy.
-- Production origins live in one host-side registry: `ToolEndpoints`.
-
-## Host architecture
-
-```text
-app/src/main/java/com/weather/metro/
-  data/
-    tools/             production origins / endpoint builders
-    rain/              transport, parser, native cache, repository
-    storm/             transport, parser, native cache
-  domain/
-    rain/              immutable Rain models
-    storm/             immutable Storm models
-  ui/
-    tools/             ToolsHome and internal navigation
-    rain/              Rain host state + reusable Compose surfaces
-    storm/             Compose Storm surfaces
-```
-
-The existing normal weather `WeatherLoadState` must not become a giant shared state for tool modules. Rain and Storm keep independent service/load state so one tool failure cannot break current/hourly/forecast pages or the other tool.
-
-### Host location ownership
-
-Weather Metro keeps one location pipeline:
+Weather Metro owns the only Android location pipeline:
 
 ```text
 LocationRepository
   → WeatherRepository
   → WeatherSnapshot.location
   → RainHostViewModel.bindHostLocation(...)
+  → RainRadarHostViewModel.bindHostLocation(...)
+  → StormHostViewModel.bindHostLocation(...)
 ```
 
-Rain must not instantiate a second `LocationRepository` or independently request fused location. A host location change invalidates the previous point request. Label/accuracy-only changes at the same coordinates may retain point data.
+Tool modules must not create another fused-location owner or independently request location permission.
 
-Rain requests are explicit and lazy: binding a location does **not** automatically fetch Rain data. This prevents hidden/off-screen Rain capabilities from creating background network work.
+Point rainfall depends on host coordinates. Radar and Storm may continue to operate when a host coordinate is temporarily unavailable. A host location change invalidates only location-bound point rainfall state.
 
-## Rain integration contract
+## 4. Backend boundaries
 
-Authoritative source document: `MaxYu725/Rain-Track/INTEGRATION.md`.
+### Rain / Radar
 
-Key invariants:
-
-- point rainfall uses existing Weather Metro location coordinates;
-- preferred Forecast timeline is SWIRLS frames `0..15`;
-- 6 minutes is the valid-time cadence, while each value is `mm / 30 min` accumulation;
-- frames are `121 × 121 = 14,641` cells;
-- lazy-load selected/next frames instead of eagerly fetching all 16;
-- `/api/rain/nowcast` remains a four-period fallback;
-- nowcast fallback grid reconstruction uses observed unique axes, never one artificial minimum step;
-- Radar = observation, Forecast = future valid time;
-- Radar and Forecast map modes remain mutually exclusive;
-- Radar settings and Forecast playback/opacity settings remain separate;
-- hidden/background Rain surfaces stop playback/animation and disposable requests.
-
-## Storm integration contract
-
-Authoritative source document: `MaxYu725/Storm-Track/docs/WEATHER_APP_INTEGRATION.md`.
-
-Key invariants:
-
-- HKO/CMA/JMA/CWA stay independent official sources;
-- one agency failure does not fail the whole Live result;
-- Archive keeps backend storm/advisory IDs;
-- old requests cannot overwrite a newer selected storm/advisory;
-- Archive replay stops when hidden;
-- browser IndexedDB/localStorage are not host persistence;
-- native map ownership is separate from data refresh;
-- no old historical Storm Worker source may be redeployed from the standalone repository.
-
-## Cache strategy
-
-Weather Metro already has an offline atomic cache for normal weather. Tool integration preserves the same product principle but keeps separate namespaces:
+Production origin:
 
 ```text
-weather cache
+https://radar.max-yu.workers.dev
+```
+
+Weather Metro consumes documented runtime APIs for:
+
+- Rain capabilities and point forecast;
+- SWIRLS two-hour forecast timeline/frames;
+- nowcast fallback where applicable;
+- Radar contract/timeline;
+- Radar image/test-image routes.
+
+Radar image access remains Worker-owned. No arbitrary image/proxy URL builder is exposed to Compose.
+
+### Storm
+
+Production origin:
+
+```text
+https://storm.max-yu.workers.dev
+```
+
+Weather Metro consumes documented public runtime APIs for:
+
+- HKO/CMA/JMA/CWA Live transport behind `StormService`;
+- CWA official API data through the Worker;
+- History storm/advisory APIs for the future Archive phase;
+- health/probes only where diagnostics require them.
+
+The Android app must never contain Cloudflare admin credentials, D1/R2 credentials, CWA authorization secrets, or unrestricted Worker proxy construction.
+
+## 5. Security invariants
+
+- HTTPS only.
+- No WebView or JavaScript bridge for native Tools.
+- No Leaflet runtime inside Weather Metro.
+- Production origins live in `ToolEndpoints`.
+- Rain and Storm Workers remain separate production services.
+- HKO/CMA/JMA/CWA remain independently identified sources.
+- An external-agency forecast must never be presented as HKO output.
+
+## 6. Rain semantics
+
+Point rainfall, Radar and two-hour Forecast are separate capabilities.
+
+### Point rainfall
+
+- uses Weather Metro host location;
+- supports the native request-scoped radius choices;
+- same-request refresh may retain last-good data and mark it stale;
+- hidden point requests are cancellable.
+
+### Radar
+
+Radar means **observed/past scans**, not future forecast.
+
+Current native production behavior includes:
+
+- MapLibre raster rendering;
+- Worker-defined range/height/mode contract;
+- LIVE and deterministic TEST modes;
+- 6-minute observation cadence;
+- timeline/playback speed/opacity controls;
+- latest-frame hold;
+- foreground-only LIVE auto refresh;
+- freshness status;
+- bounded recent/adjacent frame prefetch;
+- last-good retention and generation guards.
+
+Radar settings remain independent from Forecast settings.
+
+### 2-hour Forecast
+
+Forecast means **future valid-time SWIRLS data**.
+
+Current contract:
+
+- preferred SWIRLS timeline contains 16 forecast frames;
+- cadence is 6 minutes;
+- each grid value remains a 30-minute rainfall accumulation value;
+- frame/run rollover is guarded;
+- loading/prefetch is cancellable;
+- Canvas remains the reference/safety renderer;
+- MapLibre Forecast remains available as the validated experimental/reference renderer during the final renderer consolidation decision.
+
+Do not silently reinterpret Radar scans as future forecast or merge their clocks/settings.
+
+## 7. Storm Live semantics
+
+Storm Live currently supports HKO, CMA, JMA and CWA as independent official sources.
+
+Native state behavior:
+
+- each agency loads independently;
+- a failed source does not block successful sources;
+- each agency has an independent last-success snapshot;
+- successful empty/no-active-storm results are valid cache entries;
+- stale/failed refresh does not erase last-good tracks;
+- manual Update forces all four agencies;
+- foreground automatic policy refreshes only sources that need it;
+- successful snapshots are treated as fresh for 15 minutes;
+- failed/no-snapshot sources use a 5-minute retry backoff;
+- hidden/background Storm surfaces do not poll;
+- cancellation/generation guards block late state/cache publication.
+
+MapLibre rendering preserves agency identity:
+
+- analysis path = solid;
+- forecast path = dashed;
+- track lines use agency colours;
+- analysis/forecast nodes use Storm-Track intensity colours;
+- probability circles and quadrant wind geometry render only when supplied;
+- source toggles affect visibility without re-fetching;
+- selected point details resolve from the current ViewModel snapshot and fail closed when invalidated.
+
+## 8. Fullscreen lifecycle
+
+ToolsHome is not fullscreen. Point rainfall, Radar, Forecast and Storm are fullscreen internal destinations.
+
+While a fullscreen tool is active:
+
+- host Pivot chrome is hidden;
+- Pivot swipe navigation is disabled;
+- Android Back returns to ToolsHome;
+- the active tool owns back/refresh/status/contextual controls;
+- leaving the tool cancels disposable requests and stops playback/animation;
+- hidden/background tools do not poll;
+- state/cache needed for quick return may remain in the ViewModel.
+
+Map ownership must not be recreated merely because data refreshes.
+
+## 9. Cache ownership
+
+Separate namespaces are intentional:
+
+```text
+normal weather cache
 rain cache
+radar preferences / transient image prefetch
 storm live cache
-storm archive cache
+future storm archive cache
 ```
 
 Shared rules:
 
-- last successful data can render first;
-- a failed refresh never erases good cache;
-- stale state is visible;
-- point cache is request-scoped and must not be reused for a different coordinate/radius;
-- Settings cache clear clears both Weather and Rain host-owned caches at the current integration stage;
-- browser PWA cache keys are never imported into Android.
+- last-good data can render first;
+- failed refresh never deletes good cached data;
+- stale state remains explicit;
+- cache keys preserve upstream/backend identity;
+- browser PWA IndexedDB/localStorage keys are not imported;
+- Weather Metro Settings → Clear cache clears normal Weather, Rain and Storm host-owned caches.
 
-## Lifecycle strategy
+User preferences such as Radar opacity/speed/product are settings, not disposable cache.
 
-Because Pivot pages can remain composed while off-screen, visibility must be driven by selected host/tool state rather than Composable existence.
+## 10. Renderer status
 
-When a tool is hidden:
+Validated native map direction is MapLibre.
 
-- stop autoplay/replay/animation;
-- cancel disposable requests;
-- keep only state needed for quick return;
-- do not poll in the background.
+Current state:
 
-When restored:
+- Radar: MapLibre production path validated on real device;
+- Storm Live: MapLibre production path validated on real device;
+- Forecast: Canvas reference renderer plus validated MapLibre experimental/reference renderer.
 
-- resume rendering;
-- refresh only when stale/explicitly requested;
-- do not create another map instance merely because the surface became visible again.
+Do not remove the Canvas Forecast safety/reference path as part of unrelated integration maintenance. Renderer consolidation is a separate checkpoint with explicit regression testing.
 
-Rain host state applies both coroutine cancellation and a monotonically increasing request generation. A late response from an old location/radius must never overwrite the current point request even if the underlying blocking network call cannot terminate immediately.
+## 11. Completed checkpoints
 
-## Native rendering strategy
+Rain integration completed through native point/Forecast state, fullscreen Tools presentation, MapLibre feasibility and Radar production hardening.
 
-Final state is native Compose + native raster/map rendering.
+Radar native milestones completed through M1D:
 
-Rain reference pipeline:
+- contract/data layer;
+- MapLibre raster prototype;
+- controls/playback/persistence;
+- LIVE refresh/freshness/prefetch hardening.
 
-```text
-Worker JSON → validated grid/frame → native bitmap/raster → map overlay
-```
+Storm Live native milestones completed through S1F:
 
-Storm reference pipeline:
+- S1A History/domain foundation;
+- S1B HKO/CMA/JMA/CWA Live adapters;
+- S1C native state/cache/fullscreen host;
+- S1C1 Android XML parser compatibility hotfix;
+- S1D MapLibre tracks/probability/wind geometry;
+- S1E point interaction;
+- S1E1 anchored detail popup + intensity colours;
+- S1F foreground freshness/cancellation production hardening.
 
-```text
-Worker JSON → normalized agency tracks → native vector/map layers
-```
+All current Storm Live visual and lifecycle checkpoints have passed real-device validation.
 
-The map library is deliberately not selected in Phase 1. Library choice is made after data/domain integration so rendering technology does not dictate the service contract.
+## 12. Current integration review — IR1
 
-## Implementation checkpoints
+IR1 audits the whole Tools host without assuming previous phases are sufficient.
 
-### Phase 0A — source contract freeze — COMPLETE
+First identified host defect:
 
-- refreshed Rain integration contract to Worker v2.5.0 / SWIRLS 16-frame behavior;
-- refreshed Storm integration baseline to current release candidate;
-- confirmed Weather Metro `ToolsScreen` as the host replacement point.
+- `WeatherMetroRoot` previously gated every Pivot page behind normal `WeatherLoadState`, so a normal-weather loading/error state could make otherwise independent Tools/Settings unavailable.
 
-### Phase 0B — host skeleton — COMPLETE
+IR1 rule:
 
-- one production endpoint registry;
-- unit tests for fixed public endpoint construction;
-- no Tools UI/runtime change.
+- only `CURRENT` and `FORECAST` require normal weather data;
+- `TOOLS` and `SETTINGS` render independently;
+- normal weather refresh progress is not shown as if it were a Tools/Settings refresh.
 
-### Phase 1A — Rain point data foundation — COMPLETE
+IR1 does not change Rain/Storm parsers, Worker contracts, map geometry or validated Storm/Radar visual behavior.
 
-- Rain capabilities parser/client;
-- point forecast parser/client;
-- immutable Rain domain models independent of Compose;
-- dedicated `RainRepository` and namespaced native cache;
-- request-scoped cache fallback;
-- fixtures and fail-closed parser tests;
-- no Tools UI/runtime change.
+## 13. Next work after IR1
 
-### Phase 1B — Rain host state wiring — CURRENT
+Recommended order:
 
-- independent `RainHostViewModel` rather than extending normal `WeatherLoadState`;
-- Weather `LocationInfo` is bound into Rain; no second location subsystem;
-- capabilities and point requests are explicit/lazy;
-- cancellation plus request-generation guards prevent old responses overwriting new state;
-- same-request refresh preserves good data on failure and marks it stale;
-- host cache clear includes Rain cache;
-- no visible Tools UI change.
+1. finish ToolsHome/product-surface review and remove only clearly obsolete development residue;
+2. run cross-tool lifecycle/back/cache regression on a real device;
+3. decide Forecast renderer consolidation separately;
+4. then begin native Storm Archive list/detail/advisory playback.
 
-### Phase 2 — Rain forecast map data
-
-- SWIRLS frame parser;
-- run/frame cache and cancellation;
-- 60-second-class bounded frame request budget suitable for Worker rollover recovery;
-- nowcast observed-axis fallback parser/regression test;
-- no map UI yet.
-
-### Phase 3 — ToolsHome + Rain point UI
-
-- replace external shortcut list with native ToolsHome;
-- reusable `RainPointPanel` / summary surface;
-- direct entry points rather than a mandatory Rain home screen;
-- internal back behavior;
-- keep Storm entry present but gated until its service is ready.
-
-### Phase 4 — Rain map rendering
-
-- direct `RADAR` and `FORECAST` map entry modes;
-- native raster overlay;
-- 16-frame timeline/autoplay;
-- Radar / Forecast mutually exclusive modes;
-- independent settings;
-- optional point panel overlay/sheet;
-- lifecycle/rotation/background regression.
-
-### Phase 5 — Storm data foundation
-
-- history service/domain/cache;
-- per-agency live service/domain;
-- partial-source failure semantics;
-- fixtures and cancellation tests.
+Storm Archive must reuse the existing normalized History APIs and must not reintroduce Leaflet/WebView or a second app-inside-app shell.
