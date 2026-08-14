@@ -58,9 +58,12 @@ import org.maplibre.android.maps.MapLibreMap
 import org.maplibre.android.maps.MapLibreMapOptions
 import org.maplibre.android.maps.MapView
 import org.maplibre.android.maps.Style
+import org.maplibre.android.style.layers.Property
 import org.maplibre.android.style.layers.PropertyFactory.rasterFadeDuration
+import org.maplibre.android.style.layers.PropertyFactory.rasterResampling
 import org.maplibre.android.style.layers.RasterLayer
 import org.maplibre.android.style.sources.ImageSource
+import kotlin.math.abs
 
 private val MAPLIBRE_FALLBACK_ACCENT = Color(0xFF20A7D8)
 private val MAPLIBRE_MUTED = Color(0xFF8E8E8E)
@@ -70,6 +73,7 @@ private const val MAPLIBRE_RAIN_LAYER = "weather-metro-rain-layer"
 private const val MAPLIBRE_DEFAULT_ZOOM = 15.5
 private const val MAPLIBRE_MIN_ZOOM = 10.0
 private const val MAPLIBRE_MAX_ZOOM = 18.0
+private const val MAPLIBRE_LOCATION_EPSILON = 0.000001
 
 private val MAPLIBRE_BASE_STYLE = """
 {
@@ -211,6 +215,24 @@ private fun MapLibreForecastSurface(
     var map by remember { mutableStateOf<MapLibreMap?>(null) }
     var rainSource by remember { mutableStateOf<ImageSource?>(null) }
     var marker by remember { mutableStateOf<Marker?>(null) }
+    var cameraBoundLatitude by remember { mutableStateOf(Double.NaN) }
+    var cameraBoundLongitude by remember { mutableStateOf(Double.NaN) }
+
+    fun bindCameraToLocation(readyMap: MapLibreMap, point: LocationInfo?) {
+        if (point == null) return
+        val changed = !cameraBoundLatitude.isFinite() ||
+            !cameraBoundLongitude.isFinite() ||
+            abs(point.latitude - cameraBoundLatitude) > MAPLIBRE_LOCATION_EPSILON ||
+            abs(point.longitude - cameraBoundLongitude) > MAPLIBRE_LOCATION_EPSILON
+        if (!changed) return
+
+        readyMap.cameraPosition = CameraPosition.Builder()
+            .target(LatLng(point.latitude, point.longitude))
+            .zoom(MAPLIBRE_DEFAULT_ZOOM)
+            .build()
+        cameraBoundLatitude = point.latitude
+        cameraBoundLongitude = point.longitude
+    }
 
     val mapView = remember(context) {
         MapLibre.getInstance(context.applicationContext)
@@ -277,7 +299,10 @@ private fun MapLibreForecastSurface(
                 style.addSource(source)
                 style.addLayer(
                     RasterLayer(MAPLIBRE_RAIN_LAYER, MAPLIBRE_RAIN_SOURCE)
-                        .withProperties(rasterFadeDuration(0f)),
+                        .withProperties(
+                            rasterFadeDuration(0f),
+                            rasterResampling(Property.RASTER_RESAMPLING_NEAREST),
+                        ),
                 )
                 rainSource = source
                 marker = readyMap.replaceLocationMarker(
@@ -286,6 +311,7 @@ private fun MapLibreForecastSurface(
                     markerColour = latestMarkerColour,
                     context = context,
                 )
+                bindCameraToLocation(readyMap, latestLocation)
             }
         }
     }
@@ -304,6 +330,7 @@ private fun MapLibreForecastSurface(
             markerColour = markerColour,
             context = context,
         )
+        bindCameraToLocation(readyMap, location)
     }
 
     Box(modifier = modifier.background(Color(0xFF101010))) {
