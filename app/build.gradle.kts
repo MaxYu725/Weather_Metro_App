@@ -77,6 +77,7 @@ dependencies {
     implementation(libs.androidx.lifecycle.viewmodel.compose)
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.play.services.location)
+    implementation(libs.maplibre.android)
 
     implementation(platform(libs.compose.bom))
     implementation(libs.compose.ui)
