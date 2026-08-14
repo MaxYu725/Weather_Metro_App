@@ -11,6 +11,7 @@ import kotlin.math.abs
 class RainCache(context: Context) {
     private val capabilitiesFile = AtomicFile(File(context.filesDir, "rain_capabilities_v1.json"))
     private val pointFile = AtomicFile(File(context.filesDir, "rain_point_v1.json"))
+    private val nowcastFile = AtomicFile(File(context.filesDir, "rain_nowcast_v1.json"))
 
     suspend fun writeCapabilities(payload: String) = writeAtomic(capabilitiesFile, payload)
 
@@ -47,10 +48,15 @@ class RainCache(context: Context) {
         return record.optString("payload").takeIf { it.isNotBlank() }
     }
 
+    suspend fun writeNowcast(payload: String) = writeAtomic(nowcastFile, payload)
+
+    suspend fun readNowcast(): String? = readAtomic(nowcastFile)
+
     suspend fun clear() {
         withContext(Dispatchers.IO) {
             capabilitiesFile.delete()
             pointFile.delete()
+            nowcastFile.delete()
         }
     }
 
