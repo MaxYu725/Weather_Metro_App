@@ -4,6 +4,7 @@ import android.content.Intent
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -45,6 +46,7 @@ fun NativeToolsScreen(
     pageColour: Color,
     rainState: RainHostState,
     isActive: Boolean,
+    onFullscreenChanged: (Boolean) -> Unit,
     onRefreshPoint: (Int) -> Unit,
     onCancelPointRefresh: () -> Unit,
     onRefreshForecast: () -> Unit,
@@ -59,13 +61,20 @@ fun NativeToolsScreen(
     fun cancelDestinationRequests() {
         when (destination) {
             DESTINATION_POINT -> onCancelPointRefresh()
-            DESTINATION_FORECAST -> onCancelForecastRequests()
+            DESTINATION_FORECAST -> {
+                onCancelForecastRequests()
+                onCancelPointRefresh()
+            }
         }
     }
 
     BackHandler(enabled = destination != DESTINATION_HOME) {
         cancelDestinationRequests()
         destination = DESTINATION_HOME
+    }
+
+    LaunchedEffect(isActive, destination) {
+        if (isActive) onFullscreenChanged(destination != DESTINATION_HOME)
     }
 
     LaunchedEffect(
@@ -85,8 +94,16 @@ fun NativeToolsScreen(
             ) {
                 onRefreshPoint(selectedRadiusKm)
             }
-            DESTINATION_FORECAST -> if (rainState.forecast.status == RainResourceStatus.IDLE) {
-                onRefreshForecast()
+            DESTINATION_FORECAST -> {
+                if (
+                    rainState.location != null &&
+                    rainState.pointForecast.status == RainResourceStatus.IDLE
+                ) {
+                    onRefreshPoint(selectedRadiusKm)
+                }
+                if (rainState.forecast.status == RainResourceStatus.IDLE) {
+                    onRefreshForecast()
+                }
             }
         }
     }
@@ -114,6 +131,7 @@ fun NativeToolsScreen(
             onSelectFrame = onLoadForecastFrame,
             onBack = {
                 onCancelForecastRequests()
+                onCancelPointRefresh()
                 destination = DESTINATION_HOME
             },
         )
@@ -249,21 +267,16 @@ private fun ForecastToolScreen(
     onSelectFrame: (Int) -> Unit,
     onBack: () -> Unit,
 ) {
-    LazyColumn(
-        modifier = Modifier.fillMaxSize(),
-        contentPadding = androidx.compose.foundation.layout.PaddingValues(start = 22.dp, end = 16.dp, bottom = 48.dp),
-        verticalArrangement = Arrangement.spacedBy(9.dp),
-    ) {
-        item { ToolBackButton(pageColour, onBack) }
-        item {
-            RainForecastPanel(
-                state = rainState,
-                pageColour = pageColour,
-                isActive = isActive,
-                onRefresh = onRefresh,
-                onSelectFrame = onSelectFrame,
-            )
-        }
+    Box(modifier = Modifier.fillMaxSize()) {
+        RainForecastPanel(
+            state = rainState,
+            pageColour = pageColour,
+            isActive = isActive,
+            onRefresh = onRefresh,
+            onSelectFrame = onSelectFrame,
+            onBack = onBack,
+            modifier = Modifier.fillMaxSize(),
+        )
     }
 }
 
