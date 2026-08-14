@@ -7,6 +7,7 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -19,7 +20,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.itemsIndexed
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -31,16 +31,14 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.FilterQuality
 import androidx.compose.ui.graphics.ImageBitmap
-import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.asImageBitmap
-import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
@@ -59,11 +57,10 @@ import kotlinx.coroutines.withContext
 import java.net.HttpURLConnection
 import java.net.URI
 import kotlin.math.abs
-import kotlin.math.cos
-import kotlin.math.min
+import kotlin.math.ln
 import kotlin.math.roundToInt
 
-private val RAIN_MAP_ACCENT = Color(0xFF20A7D8)
+private val RAIN_MAP_FALLBACK_ACCENT = Color(0xFF20A7D8)
 private val RAIN_MUTED = Color(0xFF8E8E8E)
 private val RAIN_PANEL = Color(0xF20A0A0A)
 
@@ -79,11 +76,8 @@ fun RainForecastPanel(
 ) {
     val timeline = state.forecast.value
     val frame = state.forecastFrame.value
-    val pointModel = state.pointForecast.value?.let(::buildRainPointUiModel)
     var playing by rememberSaveable { mutableStateOf(false) }
-    var sheetExpanded by rememberSaveable { mutableStateOf(false) }
-    val sheetHeight = if (sheetExpanded) 300.dp else 132.dp
-    val accent = if (pageColour.alpha > 0f) RAIN_MAP_ACCENT else RAIN_MAP_ACCENT
+    val accent = if (pageColour.alpha > 0f) pageColour else RAIN_MAP_FALLBACK_ACCENT
 
     LaunchedEffect(isActive) {
         if (!isActive) playing = false
@@ -113,7 +107,6 @@ fun RainForecastPanel(
             ForecastMapCanvas(
                 frame = frame,
                 location = state.location,
-                radiusKm = state.pointRequest?.radiusKm ?: RainHostViewModel.DEFAULT_POINT_RADIUS_KM,
                 markerColour = accent,
                 modifier = Modifier.fillMaxSize(),
             )
@@ -128,7 +121,6 @@ fun RainForecastPanel(
 
         ForecastTopHud(
             state = state,
-            pointModel = pointModel,
             accent = accent,
             onBack = {
                 playing = false
@@ -138,23 +130,16 @@ fun RainForecastPanel(
                 playing = false
                 onRefresh()
             },
-            onToggleDetails = { sheetExpanded = !sheetExpanded },
             modifier = Modifier.align(Alignment.TopCenter),
         )
 
         if (timeline != null && frame != null) {
-            ForecastDataStatusChip(
-                state = state,
-                modifier = Modifier
-                    .align(Alignment.TopEnd)
-                    .padding(top = 88.dp, end = 14.dp),
-            )
-
             ForecastTimelineHud(
                 timeline = timeline,
                 frame = frame,
                 selectedIndex = state.forecastFrameIndex ?: frame.frameIndex,
                 frameLoading = state.forecastFrame.status == RainResourceStatus.LOADING,
+                isStale = state.forecast.isStale || state.forecastFrame.isStale,
                 playing = playing,
                 accent = accent,
                 onTogglePlay = { playing = !playing },
@@ -164,38 +149,22 @@ fun RainForecastPanel(
                 },
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
-                    .padding(start = 14.dp, end = 14.dp, bottom = sheetHeight + 10.dp),
+                    .padding(start = 14.dp, end = 14.dp, bottom = 14.dp),
             )
         }
-
-        RainPointBottomSheet(
-            state = state,
-            pointModel = pointModel,
-            expanded = sheetExpanded,
-            height = sheetHeight,
-            accent = accent,
-            onToggle = { sheetExpanded = !sheetExpanded },
-            modifier = Modifier.align(Alignment.BottomCenter),
-        )
     }
 }
 
 @Composable
 private fun ForecastTopHud(
     state: RainHostState,
-    pointModel: RainPointUiModel?,
     accent: Color,
     onBack: () -> Unit,
     onRefresh: () -> Unit,
-    onToggleDetails: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val location = state.location?.label ?: "目前位置"
-    val summary = pointModel?.headline ?: when (state.pointForecast.status) {
-        RainResourceStatus.LOADING -> "正在取得定點雨量"
-        RainResourceStatus.ERROR -> "定點雨量暫時無法更新"
-        else -> "香港定點雨量"
-    }
+    val refreshing = state.forecast.status == RainResourceStatus.LOADING
 
     Row(
         modifier = modifier
@@ -204,26 +173,30 @@ private fun ForecastTopHud(
             .padding(start = 18.dp, end = 14.dp, top = 13.dp, bottom = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Column(Modifier.weight(1f)) {
-            Text(
-                text = "香港定點雨量",
-                color = Color.White,
-                fontSize = 20.sp,
-                fontWeight = FontWeight.SemiBold,
-                maxLines = 1,
-            )
-            Text(
-                text = "$location · $summary",
-                color = RAIN_MUTED,
-                fontSize = 11.sp,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-        }
+        Text(
+            text = location,
+            color = Color.White,
+            fontSize = 21.sp,
+            fontWeight = FontWeight.SemiBold,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f),
+        )
         Row(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
-            HudActionButton("‹", accent, onBack)
-            HudActionButton("↻", accent, onRefresh)
-            HudActionButton("≡", accent, onToggleDetails)
+            HudActionButton(
+                label = "‹",
+                accent = accent,
+                emphasized = false,
+                accentLabel = false,
+                onClick = onBack,
+            )
+            HudActionButton(
+                label = "↻",
+                accent = accent,
+                emphasized = refreshing,
+                accentLabel = true,
+                onClick = onRefresh,
+            )
         }
     }
 }
@@ -232,46 +205,28 @@ private fun ForecastTopHud(
 private fun HudActionButton(
     label: String,
     accent: Color,
+    emphasized: Boolean,
+    accentLabel: Boolean,
     onClick: () -> Unit,
 ) {
     Box(
         modifier = Modifier
             .size(44.dp)
-            .background(Color(0xFF0D0D0D))
-            .border(1.dp, Color(0xFF3A3A3A))
+            .background(if (emphasized) accent else Color(0xFF0D0D0D))
+            .border(1.dp, if (emphasized) accent else Color(0xFF3A3A3A))
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
         Text(
             text = label,
-            color = if (label == "↻") accent else Color.White,
-            fontSize = if (label == "≡") 20.sp else 24.sp,
+            color = when {
+                emphasized -> Color.White
+                accentLabel -> accent
+                else -> Color.White
+            },
+            fontSize = 24.sp,
             fontWeight = FontWeight.Light,
         )
-    }
-}
-
-@Composable
-private fun ForecastDataStatusChip(
-    state: RainHostState,
-    modifier: Modifier = Modifier,
-) {
-    val (dot, text) = when {
-        state.forecast.status == RainResourceStatus.LOADING -> Color(0xFFFFB300) to "正在更新預報資料"
-        state.forecast.status == RainResourceStatus.ERROR -> Color(0xFFEF5350) to "預報資料暫時異常"
-        state.forecast.isStale || state.forecastFrame.isStale -> Color(0xFFFFB300) to "正在使用較舊預報資料"
-        else -> Color(0xFF35D47A) to "預報資料更新正常"
-    }
-    Row(
-        modifier = modifier
-            .background(Color(0xDD0A0A0A))
-            .border(1.dp, Color(0xFF4A4A4A))
-            .padding(horizontal = 11.dp, vertical = 8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        Box(Modifier.size(8.dp).background(dot, RoundedCornerShape(50)))
-        Text(text, color = Color.White.copy(alpha = 0.86f), fontSize = 11.sp)
     }
 }
 
@@ -279,22 +234,61 @@ private fun ForecastDataStatusChip(
 private fun ForecastMapCanvas(
     frame: RainForecastFrame,
     location: LocationInfo?,
-    radiusKm: Int,
     markerColour: Color,
     modifier: Modifier = Modifier,
 ) {
     val rainImage = remember(frame) { frame.toRainImageBitmap() }
     val renderBounds = remember(frame.grid) { forecastRenderBounds(frame.grid) }
-    var viewScale by rememberSaveable { mutableStateOf(FORECAST_DEFAULT_VIEW_SCALE) }
-    val viewport = remember(renderBounds, viewScale) {
-        forecastViewportBounds(renderBounds, viewScale)
+    val fallbackLatitude = (renderBounds.north + renderBounds.south) / 2.0
+    val fallbackLongitude = (renderBounds.east + renderBounds.west) / 2.0
+    var centerLatitude by rememberSaveable {
+        mutableStateOf(location?.latitude ?: fallbackLatitude)
     }
-    val tileSpecs = remember(viewport) { forecastBasemapTiles(viewport) }
+    var centerLongitude by rememberSaveable {
+        mutableStateOf(location?.longitude ?: fallbackLongitude)
+    }
+    var mapZoom by rememberSaveable { mutableStateOf(FORECAST_DEFAULT_MAP_ZOOM) }
+    var boundLatitude by rememberSaveable { mutableStateOf(Double.NaN) }
+    var boundLongitude by rememberSaveable { mutableStateOf(Double.NaN) }
+    var viewportSize by remember { mutableStateOf(IntSize.Zero) }
     var tileImages by remember { mutableStateOf<Map<String, ImageBitmap>>(emptyMap()) }
 
+    LaunchedEffect(location?.latitude, location?.longitude) {
+        val point = location ?: return@LaunchedEffect
+        val changed = !boundLatitude.isFinite() || !boundLongitude.isFinite() ||
+            abs(point.latitude - boundLatitude) > 0.000001 ||
+            abs(point.longitude - boundLongitude) > 0.000001
+        if (changed) {
+            centerLatitude = point.latitude
+            centerLongitude = point.longitude
+            mapZoom = FORECAST_DEFAULT_MAP_ZOOM
+            boundLatitude = point.latitude
+            boundLongitude = point.longitude
+        }
+    }
+
+    val tileSpecs = remember(
+        centerLatitude,
+        centerLongitude,
+        mapZoom,
+        viewportSize,
+    ) {
+        forecastBasemapTiles(
+            centerLatitude = centerLatitude,
+            centerLongitude = centerLongitude,
+            mapZoom = mapZoom,
+            viewportWidthPx = viewportSize.width,
+            viewportHeightPx = viewportSize.height,
+        )
+    }
+
     LaunchedEffect(tileSpecs) {
+        val activeKeys = tileSpecs.mapTo(mutableSetOf()) { it.key }
         val missingTiles = tileSpecs.filterNot { tileImages.containsKey(it.key) }
-        if (missingTiles.isEmpty()) return@LaunchedEffect
+        if (missingTiles.isEmpty()) {
+            tileImages = tileImages.filterKeys { it in activeKeys }
+            return@LaunchedEffect
+        }
         val loadedTiles = coroutineScope {
             missingTiles.map { spec ->
                 async {
@@ -303,23 +297,45 @@ private fun ForecastMapCanvas(
                 }
             }.awaitAll().mapNotNull { (key, image) -> image?.let { key to it } }.toMap()
         }
-        if (loadedTiles.isNotEmpty()) tileImages = tileImages + loadedTiles
+        if (loadedTiles.isNotEmpty()) {
+            tileImages = (tileImages + loadedTiles).filterKeys { it in activeKeys }
+        }
     }
 
     Box(modifier = modifier.background(Color(0xFF101010))) {
-        Canvas(Modifier.fillMaxSize()) {
-            val northWest = webMercatorPoint(viewport.north, viewport.west, FORECAST_BASEMAP_ZOOM)
-            val southEast = webMercatorPoint(viewport.south, viewport.east, FORECAST_BASEMAP_ZOOM)
-            val worldWidth = (southEast.x - northWest.x).coerceAtLeast(1.0)
-            val worldHeight = (southEast.y - northWest.y).coerceAtLeast(1.0)
-            val scale = min(size.width / worldWidth.toFloat(), size.height / worldHeight.toFloat())
-            val mapWidth = worldWidth.toFloat() * scale
-            val mapHeight = worldHeight.toFloat() * scale
-            val offsetX = (size.width - mapWidth) / 2f
-            val offsetY = (size.height - mapHeight) / 2f
+        Canvas(
+            modifier = Modifier
+                .fillMaxSize()
+                .onSizeChanged { viewportSize = it }
+                .pointerInput(Unit) {
+                    detectTransformGestures { _, pan, zoomChange, _ ->
+                        if (pan != Offset.Zero) {
+                            val moved = forecastMapCenterAfterPan(
+                                latitude = centerLatitude,
+                                longitude = centerLongitude,
+                                mapZoom = mapZoom,
+                                panX = pan.x,
+                                panY = pan.y,
+                            )
+                            centerLatitude = moved.latitude
+                            centerLongitude = moved.longitude
+                        }
+                        if (zoomChange > 0f && zoomChange != 1f) {
+                            val zoomDelta = ln(zoomChange.toDouble()) / ln(2.0)
+                            mapZoom = (mapZoom + zoomDelta)
+                                .coerceIn(FORECAST_MIN_MAP_ZOOM, FORECAST_MAX_MAP_ZOOM)
+                        }
+                    }
+                },
+        ) {
+            val tileZoom = forecastTileZoom(mapZoom)
+            val visualScale = forecastVisualScale(mapZoom)
+            val centerWorld = webMercatorPoint(centerLatitude, centerLongitude, tileZoom)
 
-            fun screenX(worldX: Double): Float = offsetX + ((worldX - northWest.x) * scale).toFloat()
-            fun screenY(worldY: Double): Float = offsetY + ((worldY - northWest.y) * scale).toFloat()
+            fun screenX(worldX: Double): Float =
+                size.width / 2f + ((worldX - centerWorld.x) * visualScale).toFloat()
+            fun screenY(worldY: Double): Float =
+                size.height / 2f + ((worldY - centerWorld.y) * visualScale).toFloat()
 
             tileSpecs.forEach { spec ->
                 val image = tileImages[spec.key] ?: return@forEach
@@ -327,21 +343,20 @@ private fun ForecastMapCanvas(
                 val tileTop = spec.y * FORECAST_TILE_SIZE_PX
                 val left = screenX(tileLeft)
                 val top = screenY(tileTop)
-                val right = screenX(tileLeft + FORECAST_TILE_SIZE_PX)
-                val bottom = screenY(tileTop + FORECAST_TILE_SIZE_PX)
+                val tileSize = (FORECAST_TILE_SIZE_PX * visualScale).toFloat()
                 drawImage(
                     image = image,
                     dstOffset = IntOffset(left.roundToInt(), top.roundToInt()),
                     dstSize = IntSize(
-                        (right - left).roundToInt().coerceAtLeast(1),
-                        (bottom - top).roundToInt().coerceAtLeast(1),
+                        tileSize.roundToInt().coerceAtLeast(1),
+                        tileSize.roundToInt().coerceAtLeast(1),
                     ),
                     filterQuality = FilterQuality.Low,
                 )
             }
 
-            val gridNorthWest = webMercatorPoint(renderBounds.north, renderBounds.west, FORECAST_BASEMAP_ZOOM)
-            val gridSouthEast = webMercatorPoint(renderBounds.south, renderBounds.east, FORECAST_BASEMAP_ZOOM)
+            val gridNorthWest = webMercatorPoint(renderBounds.north, renderBounds.west, tileZoom)
+            val gridSouthEast = webMercatorPoint(renderBounds.south, renderBounds.east, tileZoom)
             val rainLeft = screenX(gridNorthWest.x)
             val rainTop = screenY(gridNorthWest.y)
             val rainRight = screenX(gridSouthEast.x)
@@ -357,56 +372,38 @@ private fun ForecastMapCanvas(
             )
 
             location?.let { point ->
+                val world = webMercatorPoint(point.latitude, point.longitude, tileZoom)
+                val markerCenter = Offset(screenX(world.x), screenY(world.y))
                 if (
-                    point.latitude in viewport.south..viewport.north &&
-                    point.longitude in viewport.west..viewport.east
+                    markerCenter.x >= -30.dp.toPx() &&
+                    markerCenter.x <= size.width + 30.dp.toPx() &&
+                    markerCenter.y >= -30.dp.toPx() &&
+                    markerCenter.y <= size.height + 30.dp.toPx()
                 ) {
-                    val world = webMercatorPoint(point.latitude, point.longitude, FORECAST_BASEMAP_ZOOM)
-                    val center = Offset(screenX(world.x), screenY(world.y))
-                    val lonDelta = radiusKm.toDouble() /
-                        (111.32 * cos(Math.toRadians(point.latitude)).coerceAtLeast(0.2))
-                    val radiusWorld = webMercatorPoint(
-                        point.latitude,
-                        point.longitude + lonDelta,
-                        FORECAST_BASEMAP_ZOOM,
-                    )
-                    val radiusPx = abs(screenX(radiusWorld.x) - center.x).coerceAtLeast(8.dp.toPx())
-                    drawCircle(markerColour.copy(alpha = 0.055f), radius = radiusPx, center = center)
-                    drawCircle(
-                        markerColour.copy(alpha = 0.72f),
-                        radius = radiusPx,
-                        center = center,
-                        style = Stroke(
-                            width = 1.5.dp.toPx(),
-                            pathEffect = PathEffect.dashPathEffect(
-                                floatArrayOf(8.dp.toPx(), 7.dp.toPx()),
-                            ),
-                        ),
-                    )
-                    drawCircle(Color.White, radius = 10.dp.toPx(), center = center)
-                    drawCircle(markerColour, radius = 6.8.dp.toPx(), center = center)
+                    drawCircle(Color.White, radius = 10.dp.toPx(), center = markerCenter)
+                    drawCircle(markerColour, radius = 6.8.dp.toPx(), center = markerCenter)
                 }
             }
         }
 
         ForecastMapZoomControls(
-            viewScale = viewScale,
+            mapZoom = mapZoom,
             onZoomOut = {
-                viewScale = (viewScale - 0.12).coerceAtLeast(FORECAST_MIN_VIEW_SCALE)
+                mapZoom = (mapZoom - 1.0).coerceAtLeast(FORECAST_MIN_MAP_ZOOM)
             },
             onZoomIn = {
-                viewScale = (viewScale + 0.12).coerceAtMost(FORECAST_MAX_VIEW_SCALE)
+                mapZoom = (mapZoom + 1.0).coerceAtMost(FORECAST_MAX_MAP_ZOOM)
             },
             modifier = Modifier
                 .align(Alignment.TopStart)
-                .padding(start = 16.dp, top = 110.dp),
+                .padding(start = 16.dp, top = 82.dp),
         )
     }
 }
 
 @Composable
 private fun ForecastMapZoomControls(
-    viewScale: Double,
+    mapZoom: Double,
     onZoomOut: () -> Unit,
     onZoomIn: () -> Unit,
     modifier: Modifier = Modifier,
@@ -414,12 +411,12 @@ private fun ForecastMapZoomControls(
     Column(modifier = modifier) {
         ForecastMapControl(
             label = "+",
-            enabled = viewScale < FORECAST_MAX_VIEW_SCALE - 0.001,
+            enabled = mapZoom < FORECAST_MAX_MAP_ZOOM - 0.001,
             onClick = onZoomIn,
         )
         ForecastMapControl(
             label = "−",
-            enabled = viewScale > FORECAST_MIN_VIEW_SCALE + 0.001,
+            enabled = mapZoom > FORECAST_MIN_MAP_ZOOM + 0.001,
             onClick = onZoomOut,
         )
     }
@@ -454,6 +451,7 @@ private fun ForecastTimelineHud(
     frame: RainForecastFrame,
     selectedIndex: Int,
     frameLoading: Boolean,
+    isStale: Boolean,
     playing: Boolean,
     accent: Color,
     onTogglePlay: () -> Unit,
@@ -469,14 +467,14 @@ private fun ForecastTimelineHud(
         verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("兩小時預報 · ${timeline.cadenceMinutes}分鐘步進", color = Color.White, fontSize = 12.sp)
+            Text("${timeline.cadenceMinutes}分鐘步進", color = Color.White, fontSize = 12.sp)
             Spacer(Modifier.size(7.dp))
             Text(
                 "mm / ${timeline.accumulationMinutes}分鐘",
-                color = Color(0xFFB8DDEA),
+                color = accent,
                 fontSize = 10.sp,
                 modifier = Modifier
-                    .border(1.dp, accent.copy(alpha = 0.48f))
+                    .border(1.dp, accent.copy(alpha = 0.72f))
                     .padding(horizontal = 5.dp, vertical = 2.dp),
             )
             Spacer(Modifier.weight(1f))
@@ -510,15 +508,16 @@ private fun ForecastTimelineHud(
         } else {
             ""
         }
+        val stale = if (isStale) " · 舊資料" else ""
         Text(
-            text = "$source · 每${timeline.cadenceMinutes}分鐘一格 · 每格為${timeline.accumulationMinutes}分鐘累積$preload · © OSM © CARTO",
-            color = RAIN_MUTED,
+            text = "$source · 每${timeline.cadenceMinutes}分鐘一格 · 每格為${timeline.accumulationMinutes}分鐘累積$preload$stale · © OSM © CARTO",
+            color = if (isStale) Color(0xFFFFB300) else RAIN_MUTED,
             fontSize = 8.sp,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
         if (frameLoading) {
-            Text("正在準備選定時段，地圖保持目前畫面…", color = accent, fontSize = 8.sp)
+            Text("正在準備選定時段，地圖保持目前視野…", color = accent, fontSize = 8.sp)
         }
     }
 }
@@ -536,8 +535,8 @@ private fun ForecastTimeline(
         Box(
             modifier = Modifier
                 .size(width = 45.dp, height = 46.dp)
-                .background(Color(0xFF101010))
-                .border(1.dp, accent.copy(alpha = 0.65f))
+                .background(accent)
+                .border(1.dp, accent)
                 .clickable(onClick = onTogglePlay),
             contentAlignment = Alignment.Center,
         ) {
@@ -552,7 +551,7 @@ private fun ForecastTimeline(
                 val selected = index == selectedIndex
                 Column(
                     modifier = Modifier
-                        .background(Color(0xFF101010))
+                        .background(if (selected) accent else Color(0xFF101010))
                         .border(1.dp, if (selected) accent else Color(0xFF444444))
                         .clickable { onSelectFrame(index) }
                         .padding(horizontal = 10.dp, vertical = 6.dp),
@@ -560,12 +559,12 @@ private fun ForecastTimeline(
                 ) {
                     Text(
                         formatForecastTime(slot.validTime),
-                        color = if (selected) Color.White else Color.White.copy(alpha = 0.78f),
+                        color = Color.White,
                         fontSize = 11.sp,
                     )
                     Text(
                         "+${slot.leadMinutes} 分",
-                        color = if (selected) accent else RAIN_MUTED,
+                        color = if (selected) Color.White.copy(alpha = 0.78f) else RAIN_MUTED,
                         fontSize = 8.sp,
                     )
                 }
@@ -593,94 +592,6 @@ private fun ForecastLegendCompact() {
         }
         Spacer(Modifier.size(5.dp))
         Text("10+ mm", color = Color.White.copy(alpha = 0.74f), fontSize = 8.sp)
-    }
-}
-
-@Composable
-private fun RainPointBottomSheet(
-    state: RainHostState,
-    pointModel: RainPointUiModel?,
-    expanded: Boolean,
-    height: Dp,
-    accent: Color,
-    onToggle: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    val location = state.location?.label ?: "目前位置"
-    val headline = pointModel?.headline ?: when (state.pointForecast.status) {
-        RainResourceStatus.LOADING -> "正在載入定點降雨…"
-        RainResourceStatus.ERROR -> "定點降雨暫時無法使用"
-        else -> "未來兩小時定點降雨"
-    }
-    val total = pointModel?.total ?: "-- mm"
-
-    Column(
-        modifier = modifier
-            .fillMaxWidth()
-            .height(height)
-            .background(
-                color = Color(0xFA070707),
-                shape = RoundedCornerShape(topStart = 26.dp, topEnd = 26.dp),
-            )
-            .clickable(onClick = onToggle)
-            .padding(start = 22.dp, end = 22.dp, top = 10.dp, bottom = 16.dp),
-    ) {
-        Box(
-            modifier = Modifier
-                .align(Alignment.CenterHorizontally)
-                .size(width = 48.dp, height = 4.dp)
-                .background(Color(0xFF5A5A5A), RoundedCornerShape(50)),
-        )
-        Spacer(Modifier.height(10.dp))
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Column(Modifier.weight(1f)) {
-                Text(location, color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.SemiBold)
-                Text(
-                    headline,
-                    color = RAIN_MUTED,
-                    fontSize = 11.sp,
-                    maxLines = if (expanded) 2 else 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
-            Text(
-                text = total,
-                color = Color.White,
-                fontSize = 17.sp,
-                fontWeight = FontWeight.SemiBold,
-            )
-        }
-
-        if (expanded) {
-            Spacer(Modifier.height(12.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                Text("最高時段  ${pointModel?.peak ?: "-- mm"}", color = Color.White.copy(alpha = 0.80f), fontSize = 10.sp)
-                Text("開始下雨  ${pointModel?.rainStart ?: "--"}", color = Color.White.copy(alpha = 0.80f), fontSize = 10.sp)
-            }
-            Spacer(Modifier.height(10.dp))
-            pointModel?.periods?.take(4)?.forEach { period ->
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(vertical = 5.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Text(period.time, color = RAIN_MUTED, fontSize = 10.sp, modifier = Modifier.weight(0.8f))
-                    Text(period.amount, color = Color.White, fontSize = 12.sp, modifier = Modifier.weight(0.8f))
-                    Text(period.nearby, color = RAIN_MUTED, fontSize = 9.sp, modifier = Modifier.weight(1.5f))
-                }
-            }
-            state.pointForecast.errorMessage?.let {
-                Spacer(Modifier.height(4.dp))
-                Text(it, color = Color(0xFFFFB300), fontSize = 9.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            }
-            Spacer(Modifier.weight(1f))
-            Text(
-                "點擊收起 · 附近 ${state.pointRequest?.radiusKm ?: RainHostViewModel.DEFAULT_POINT_RADIUS_KM} km",
-                color = accent,
-                fontSize = 9.sp,
-            )
-        }
     }
 }
 
@@ -729,7 +640,7 @@ private fun RainForecastFrame.toRainImageBitmap(): ImageBitmap {
 }
 
 private object ForecastTileLoader {
-    private val cache = LruCache<String, Bitmap>(72)
+    private val cache = LruCache<String, Bitmap>(96)
 
     suspend fun load(spec: ForecastTileSpec): Bitmap? = withContext(Dispatchers.IO) {
         synchronized(cache) { cache.get(spec.key) }?.let { return@withContext it }
