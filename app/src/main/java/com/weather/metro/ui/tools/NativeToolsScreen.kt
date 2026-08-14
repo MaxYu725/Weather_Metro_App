@@ -21,6 +21,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
@@ -28,7 +29,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.net.toUri
-import com.weather.metro.data.tools.RainRadarMode
 import com.weather.metro.ui.components.MetroSectionLabel
 import com.weather.metro.ui.components.MetroTile
 import com.weather.metro.ui.rain.RainForecastMapLibrePanel
@@ -39,8 +39,10 @@ import com.weather.metro.ui.rain.RainPointPanel
 import com.weather.metro.ui.rain.RainRadarHostState
 import com.weather.metro.ui.rain.RainRadarMapLibrePanel
 import com.weather.metro.ui.rain.RainRadarPlaybackSpeed
+import com.weather.metro.ui.rain.RainRadarProductionStatus
 import com.weather.metro.ui.rain.RainResourceStatus
 import com.weather.metro.ui.theme.LocalMetroSubText
+import com.weather.metro.data.tools.RainRadarMode
 
 private const val DESTINATION_HOME = "home"
 private const val DESTINATION_POINT = "point"
@@ -225,8 +227,8 @@ private fun ToolsHome(
                 ToolTile(
                     seed = "native-radar",
                     title = "雷達",
-                    description = "MapLibre · 產品/播放控制",
-                    status = "M1C",
+                    description = "MapLibre · 即時觀測",
+                    status = "M1D",
                     background = pageColour,
                     modifier = Modifier.weight(1f).height(132.dp),
                     onClick = onOpenRadar,
@@ -346,6 +348,15 @@ private fun RadarMapLibreToolScreen(
             onJumpToLatest = onJumpToLatest,
             onBack = onBack,
             modifier = Modifier.fillMaxSize(),
+        )
+        RainRadarProductionStatus(
+            state = radarState,
+            isActive = isActive,
+            accent = pageColour,
+            onAutoRefresh = onRefresh,
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .padding(top = 72.dp),
         )
     }
 }
