@@ -28,6 +28,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.net.toUri
+import com.weather.metro.data.tools.RainRadarMode
 import com.weather.metro.ui.components.MetroSectionLabel
 import com.weather.metro.ui.components.MetroTile
 import com.weather.metro.ui.rain.RainForecastMapLibrePanel
@@ -37,6 +38,7 @@ import com.weather.metro.ui.rain.RainHostViewModel
 import com.weather.metro.ui.rain.RainPointPanel
 import com.weather.metro.ui.rain.RainRadarHostState
 import com.weather.metro.ui.rain.RainRadarMapLibrePanel
+import com.weather.metro.ui.rain.RainRadarPlaybackSpeed
 import com.weather.metro.ui.rain.RainResourceStatus
 import com.weather.metro.ui.theme.LocalMetroSubText
 
@@ -57,6 +59,12 @@ fun NativeToolsScreen(
     onCancelPointRefresh: () -> Unit,
     onRefreshRadar: () -> Unit,
     onSelectRadarFrame: (Int) -> Unit,
+    onSelectRadarRange: (Int) -> Unit,
+    onSelectRadarHeight: (Int) -> Unit,
+    onSelectRadarMode: (RainRadarMode) -> Unit,
+    onRadarOpacityChange: (Float) -> Unit,
+    onRadarPlaybackSpeedChange: (RainRadarPlaybackSpeed) -> Unit,
+    onJumpRadarToLatest: () -> Unit,
     onCancelRadarRequests: () -> Unit,
     onRefreshForecast: () -> Unit,
     onLoadForecastFrame: (Int) -> Unit,
@@ -136,6 +144,12 @@ fun NativeToolsScreen(
             isActive = isActive,
             onRefresh = onRefreshRadar,
             onSelectFrame = onSelectRadarFrame,
+            onSelectRange = onSelectRadarRange,
+            onSelectHeight = onSelectRadarHeight,
+            onSelectMode = onSelectRadarMode,
+            onOpacityChange = onRadarOpacityChange,
+            onPlaybackSpeedChange = onRadarPlaybackSpeedChange,
+            onJumpToLatest = onJumpRadarToLatest,
             onBack = {
                 onCancelRadarRequests()
                 destination = DESTINATION_HOME
@@ -211,8 +225,8 @@ private fun ToolsHome(
                 ToolTile(
                     seed = "native-radar",
                     title = "雷達",
-                    description = "MapLibre · 即時觀測",
-                    status = "M1B",
+                    description = "MapLibre · 產品/播放控制",
+                    status = "M1C",
                     background = pageColour,
                     modifier = Modifier.weight(1f).height(132.dp),
                     onClick = onOpenRadar,
@@ -309,6 +323,12 @@ private fun RadarMapLibreToolScreen(
     isActive: Boolean,
     onRefresh: () -> Unit,
     onSelectFrame: (Int) -> Unit,
+    onSelectRange: (Int) -> Unit,
+    onSelectHeight: (Int) -> Unit,
+    onSelectMode: (RainRadarMode) -> Unit,
+    onOpacityChange: (Float) -> Unit,
+    onPlaybackSpeedChange: (RainRadarPlaybackSpeed) -> Unit,
+    onJumpToLatest: () -> Unit,
     onBack: () -> Unit,
 ) {
     Box(modifier = Modifier.fillMaxSize()) {
@@ -318,6 +338,12 @@ private fun RadarMapLibreToolScreen(
             isActive = isActive,
             onRefresh = onRefresh,
             onSelectFrame = onSelectFrame,
+            onSelectRange = onSelectRange,
+            onSelectHeight = onSelectHeight,
+            onSelectMode = onSelectMode,
+            onOpacityChange = onOpacityChange,
+            onPlaybackSpeedChange = onPlaybackSpeedChange,
+            onJumpToLatest = onJumpToLatest,
             onBack = onBack,
             modifier = Modifier.fillMaxSize(),
         )
