@@ -89,6 +89,10 @@ class RainHostViewModel(application: Application) : AndroidViewModel(application
     private var forecastGeneration = 0L
     private var forecastFrameGeneration = 0L
     private var forecastPrefetchGeneration = 0L
+    private var pointAcceptedAtEpochMs: Long? = null
+    private var pointLastAttemptEpochMs: Long? = null
+    private var forecastAcceptedAtEpochMs: Long? = null
+    private var forecastLastAttemptEpochMs: Long? = null
 
     fun bindHostLocation(location: LocationInfo) {
         val current = _state.value.location
@@ -100,6 +104,8 @@ class RainHostViewModel(application: Application) : AndroidViewModel(application
         pointGeneration += 1
         pointJob?.cancel()
         pointJob = null
+        pointAcceptedAtEpochMs = null
+        pointLastAttemptEpochMs = null
         _state.update {
             it.copy(
                 location = location,
@@ -161,6 +167,29 @@ class RainHostViewModel(application: Application) : AndroidViewModel(application
         }
     }
 
+    fun refreshPointForecastIfStale(radiusKm: Int = DEFAULT_POINT_RADIUS_KM) {
+        require(radiusKm in SUPPORTED_POINT_RADII_KM) { "Unsupported nearby radius: $radiusKm km" }
+        val current = _state.value
+        val location = current.location ?: return
+        val request = RainPointRequestKey.from(location, radiusKm)
+        if (current.pointRequest != request) {
+            refreshPointForecast(radiusKm)
+            return
+        }
+        if (
+            shouldRefreshRainPoint(
+                status = current.pointForecast.status,
+                isStale = current.pointForecast.isStale,
+                forecast = current.pointForecast.value,
+                acceptedAtEpochMs = pointAcceptedAtEpochMs,
+                lastAttemptEpochMs = pointLastAttemptEpochMs,
+                nowEpochMs = System.currentTimeMillis(),
+            )
+        ) {
+            refreshPointForecast(radiusKm)
+        }
+    }
+
     fun refreshPointForecast(radiusKm: Int = DEFAULT_POINT_RADIUS_KM) {
         require(radiusKm in SUPPORTED_POINT_RADII_KM) { "Unsupported nearby radius: $radiusKm km" }
         val location = _state.value.location
@@ -180,6 +209,7 @@ class RainHostViewModel(application: Application) : AndroidViewModel(application
         val request = RainPointRequestKey.from(location, radiusKm)
         val generation = ++pointGeneration
         pointJob?.cancel()
+        pointLastAttemptEpochMs = System.currentTimeMillis()
         val currentState = _state.value
         val previous = currentState.pointForecast.takeIf { currentState.pointRequest == request }
             ?: RainResourceState()
@@ -202,6 +232,7 @@ class RainHostViewModel(application: Application) : AndroidViewModel(application
                     radiusKm = request.radiusKm,
                 )
                 if (!isCurrentPointRequest(generation, request)) return@launch
+                pointAcceptedAtEpochMs = System.currentTimeMillis()
                 _state.update {
                     it.copy(
                         pointForecast = RainResourceState(
@@ -237,6 +268,22 @@ class RainHostViewModel(application: Application) : AndroidViewModel(application
         }
     }
 
+    fun refreshForecastIfStale() {
+        val current = _state.value.forecast
+        if (
+            shouldRefreshRainForecast(
+                status = current.status,
+                isStale = current.isStale,
+                timeline = current.value,
+                acceptedAtEpochMs = forecastAcceptedAtEpochMs,
+                lastAttemptEpochMs = forecastLastAttemptEpochMs,
+                nowEpochMs = System.currentTimeMillis(),
+            )
+        ) {
+            refreshForecast()
+        }
+    }
+
     fun refreshForecast() {
         val generation = ++forecastGeneration
         forecastFrameGeneration += 1
@@ -246,6 +293,7 @@ class RainHostViewModel(application: Application) : AndroidViewModel(application
         forecastPrefetchJob?.cancel()
         forecastFrameJob = null
         forecastPrefetchJob = null
+        forecastLastAttemptEpochMs = System.currentTimeMillis()
         val previous = _state.value.forecast
         _state.update {
             it.copy(
@@ -263,6 +311,7 @@ class RainHostViewModel(application: Application) : AndroidViewModel(application
                 if (generation != forecastGeneration) return@launch
                 val firstFrame = result.value.frame(0)
                     ?: error("Rain forecast timeline did not provide an initial frame")
+                forecastAcceptedAtEpochMs = System.currentTimeMillis()
                 _state.update {
                     it.copy(
                         forecast = RainResourceState(
@@ -280,7 +329,7 @@ class RainHostViewModel(application: Application) : AndroidViewModel(application
                         forecastFrameIndex = 0,
                     )
                 }
-                startForecastPrefetch(result.value)
+                startForecastPrefetch(result.value, selectedIndex = 0)
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Throwable) {
@@ -337,11 +386,13 @@ class RainHostViewModel(application: Application) : AndroidViewModel(application
                     forecastFrameIndex = frameIndex,
                 )
             }
-            if (forecastPrefetchJob?.isActive != true) startForecastPrefetch(timeline)
+            startForecastPrefetch(_state.value.forecast.value ?: timeline, frameIndex)
             return
         }
 
-        if (forecastPrefetchJob?.isActive != true) startForecastPrefetch(timeline)
+        forecastPrefetchGeneration += 1
+        forecastPrefetchJob?.cancel()
+        forecastPrefetchJob = null
         val generation = ++forecastFrameGeneration
         forecastFrameJob?.cancel()
         val previous = _state.value.forecastFrame
@@ -373,6 +424,9 @@ class RainHostViewModel(application: Application) : AndroidViewModel(application
                         ),
                     )
                 }
+                _state.value.forecast.value?.let { updatedTimeline ->
+                    startForecastPrefetch(updatedTimeline, frameIndex)
+                }
             } catch (error: CancellationException) {
                 throw error
             } catch (error: RainForecastRunChangedException) {
@@ -403,9 +457,11 @@ class RainHostViewModel(application: Application) : AndroidViewModel(application
     }
 
     fun cancelPointRefresh() {
+        val cancelledActiveRefresh = pointJob?.isActive == true
         pointGeneration += 1
         pointJob?.cancel()
         pointJob = null
+        if (cancelledActiveRefresh) pointLastAttemptEpochMs = null
         _state.update {
             if (it.pointForecast.status != RainResourceStatus.LOADING) return@update it
             val retained = it.pointForecast.value
@@ -423,6 +479,7 @@ class RainHostViewModel(application: Application) : AndroidViewModel(application
     }
 
     fun cancelForecastRequests() {
+        val cancelledTimelineRefresh = forecastJob?.isActive == true
         forecastGeneration += 1
         forecastFrameGeneration += 1
         forecastPrefetchGeneration += 1
@@ -432,6 +489,7 @@ class RainHostViewModel(application: Application) : AndroidViewModel(application
         forecastJob = null
         forecastFrameJob = null
         forecastPrefetchJob = null
+        if (cancelledTimelineRefresh) forecastLastAttemptEpochMs = null
         _state.update {
             val settledFrame = settleCancelled(it.forecastFrame)
             it.copy(
@@ -443,6 +501,8 @@ class RainHostViewModel(application: Application) : AndroidViewModel(application
     }
 
     fun cancelTransientRequests() {
+        val cancelledPointRefresh = pointJob?.isActive == true
+        val cancelledForecastRefresh = forecastJob?.isActive == true
         capabilitiesGeneration += 1
         pointGeneration += 1
         forecastGeneration += 1
@@ -458,6 +518,8 @@ class RainHostViewModel(application: Application) : AndroidViewModel(application
         forecastJob = null
         forecastFrameJob = null
         forecastPrefetchJob = null
+        if (cancelledPointRefresh) pointLastAttemptEpochMs = null
+        if (cancelledForecastRefresh) forecastLastAttemptEpochMs = null
         _state.update {
             val settledFrame = settleCancelled(it.forecastFrame)
             it.copy(
@@ -486,6 +548,10 @@ class RainHostViewModel(application: Application) : AndroidViewModel(application
         forecastJob = null
         forecastFrameJob = null
         forecastPrefetchJob = null
+        pointAcceptedAtEpochMs = null
+        pointLastAttemptEpochMs = null
+        forecastAcceptedAtEpochMs = null
+        forecastLastAttemptEpochMs = null
         _state.update {
             it.copy(
                 capabilities = RainResourceState(),
@@ -499,27 +565,33 @@ class RainHostViewModel(application: Application) : AndroidViewModel(application
         viewModelScope.launch { repository.clearCache() }
     }
 
-    private fun startForecastPrefetch(timeline: RainForecastTimeline) {
+    private fun startForecastPrefetch(timeline: RainForecastTimeline, selectedIndex: Int) {
         if (timeline.source != RainForecastSource.SWIRLS) return
         if (timeline.loadedFrameCount >= timeline.frames.size) return
 
         forecastPrefetchJob?.cancel()
         val generation = ++forecastPrefetchGeneration
+        val candidateIndexes = forecastPrefetchIndexes(
+            frameCount = timeline.frames.size,
+            selectedIndex = selectedIndex,
+        )
+        if (candidateIndexes.isEmpty()) {
+            forecastPrefetchJob = null
+            return
+        }
+
         forecastPrefetchJob = viewModelScope.launch {
             try {
-                forecastPrefetchBatches(timeline.frames.size).forEach { batch ->
-                    if (generation != forecastPrefetchGeneration) return@launch
-                    coroutineScope {
-                        batch.map { frameIndex ->
-                            async {
-                                prefetchForecastFrame(
-                                    timeline = timeline,
-                                    frameIndex = frameIndex,
-                                    generation = generation,
-                                )
-                            }
-                        }.awaitAll()
-                    }
+                coroutineScope {
+                    candidateIndexes.map { frameIndex ->
+                        async {
+                            prefetchForecastFrame(
+                                timeline = timeline,
+                                frameIndex = frameIndex,
+                                generation = generation,
+                            )
+                        }
+                    }.awaitAll()
                 }
             } catch (error: CancellationException) {
                 throw error
@@ -598,17 +670,7 @@ class RainHostViewModel(application: Application) : AndroidViewModel(application
     companion object {
         val SUPPORTED_POINT_RADII_KM: Set<Int> = setOf(1, 2, 3, 5)
         const val DEFAULT_POINT_RADIUS_KM = 2
-        private const val FORECAST_PREFETCH_BATCH_SIZE = 4
     }
-}
-
-internal fun forecastPrefetchBatches(
-    frameCount: Int,
-    batchSize: Int = 4,
-): List<List<Int>> {
-    if (frameCount <= 1) return emptyList()
-    require(batchSize > 0) { "Prefetch batch size must be positive" }
-    return (1 until frameCount).toList().chunked(batchSize)
 }
 
 internal fun sameRainLocation(
