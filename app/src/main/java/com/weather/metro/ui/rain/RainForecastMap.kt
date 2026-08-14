@@ -11,9 +11,9 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.matchParentSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyRow
@@ -209,7 +209,7 @@ private fun ForecastMapCanvas(
     }
 
     Box(modifier = modifier.background(Color(0xFF101010))) {
-        Canvas(Modifier.matchParentSize()) {
+        Canvas(Modifier.fillMaxSize()) {
             val northWest = webMercatorPoint(viewport.north, viewport.west, FORECAST_BASEMAP_ZOOM)
             val southEast = webMercatorPoint(viewport.south, viewport.east, FORECAST_BASEMAP_ZOOM)
             val worldWidth = (southEast.x - northWest.x).coerceAtLeast(1.0)
