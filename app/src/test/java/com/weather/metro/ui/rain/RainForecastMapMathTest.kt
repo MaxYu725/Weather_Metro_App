@@ -39,6 +39,27 @@ class RainForecastMapMathTest {
     }
 
     @Test
+    fun zoomOutViewportShowsMoreGeographyWithoutChangingGridBounds() {
+        val gridBounds = RainGridBounds(
+            north = 22.7,
+            south = 22.0,
+            east = 114.6,
+            west = 113.7,
+        )
+
+        val defaultViewport = forecastViewportBounds(gridBounds, FORECAST_DEFAULT_VIEW_SCALE)
+        val zoomedOut = forecastViewportBounds(gridBounds, FORECAST_MIN_VIEW_SCALE)
+        val zoomedIn = forecastViewportBounds(gridBounds, FORECAST_MAX_VIEW_SCALE)
+
+        val defaultLatSpan = defaultViewport.north - defaultViewport.south
+        val defaultLonSpan = defaultViewport.east - defaultViewport.west
+        assertTrue(zoomedOut.north - zoomedOut.south > defaultLatSpan)
+        assertTrue(zoomedOut.east - zoomedOut.west > defaultLonSpan)
+        assertTrue(zoomedIn.north - zoomedIn.south < defaultLatSpan)
+        assertTrue(zoomedIn.east - zoomedIn.west < defaultLonSpan)
+    }
+
+    @Test
     fun webMercatorPlacesNorthAboveSouthAndProducesBasemapTiles() {
         val north = webMercatorPoint(22.6, 114.1, FORECAST_BASEMAP_ZOOM)
         val south = webMercatorPoint(22.1, 114.1, FORECAST_BASEMAP_ZOOM)
