@@ -607,7 +607,7 @@ internal class StormLiveLoader(
         runCatching { setFeature("http://xml.org/sax/features/external-general-entities", false) }
         runCatching { setFeature("http://xml.org/sax/features/external-parameter-entities", false) }
         runCatching { setFeature("http://apache.org/xml/features/nonvalidating/load-external-dtd", false) }
-        isXIncludeAware = false
+        runCatching { isXIncludeAware = false }
         isExpandEntityReferences = false
     }.newDocumentBuilder().parse(text.byteInputStream(StandardCharsets.UTF_8))
 
