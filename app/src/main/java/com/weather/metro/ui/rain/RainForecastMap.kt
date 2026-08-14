@@ -252,6 +252,7 @@ private fun ForecastMapCanvas(
     var boundLongitude by rememberSaveable { mutableStateOf(Double.NaN) }
     var viewportSize by remember { mutableStateOf(IntSize.Zero) }
     var tileImages by remember { mutableStateOf<Map<String, ImageBitmap>>(emptyMap()) }
+    var stableTileSpecs by remember { mutableStateOf<List<ForecastTileSpec>>(emptyList()) }
 
     LaunchedEffect(location?.latitude, location?.longitude) {
         val point = location ?: return@LaunchedEffect
@@ -264,6 +265,7 @@ private fun ForecastMapCanvas(
             mapZoom = FORECAST_DEFAULT_MAP_ZOOM
             boundLatitude = point.latitude
             boundLongitude = point.longitude
+            stableTileSpecs = emptyList()
         }
     }
 
@@ -283,10 +285,13 @@ private fun ForecastMapCanvas(
     }
 
     LaunchedEffect(tileSpecs) {
+        if (tileSpecs.isEmpty()) return@LaunchedEffect
         val activeKeys = tileSpecs.mapTo(mutableSetOf()) { it.key }
+        val stableKeys = stableTileSpecs.mapTo(mutableSetOf()) { it.key }
         val missingTiles = tileSpecs.filterNot { tileImages.containsKey(it.key) }
         if (missingTiles.isEmpty()) {
-            tileImages = tileImages.filterKeys { it in activeKeys }
+            tileImages = tileImages.filterKeys { it in activeKeys || it in stableKeys }
+            stableTileSpecs = tileSpecs
             return@LaunchedEffect
         }
         val loadedTiles = coroutineScope {
@@ -298,7 +303,14 @@ private fun ForecastMapCanvas(
             }.awaitAll().mapNotNull { (key, image) -> image?.let { key to it } }.toMap()
         }
         if (loadedTiles.isNotEmpty()) {
-            tileImages = (tileImages + loadedTiles).filterKeys { it in activeKeys }
+            val merged = tileImages + loadedTiles
+            val complete = tileSpecs.all { merged.containsKey(it.key) }
+            tileImages = if (complete) {
+                merged.filterKeys { it in activeKeys || it in stableKeys }
+            } else {
+                merged
+            }
+            if (complete) stableTileSpecs = tileSpecs
         }
     }
 
@@ -330,30 +342,53 @@ private fun ForecastMapCanvas(
         ) {
             val tileZoom = forecastTileZoom(mapZoom)
             val visualScale = forecastVisualScale(mapZoom)
-            val centerWorld = webMercatorPoint(centerLatitude, centerLongitude, tileZoom)
 
+            fun drawBasemapLayer(specs: List<ForecastTileSpec>) {
+                if (specs.isEmpty()) return
+                val layerZoom = specs.first().zoom
+                val zoomDifference = tileZoom - layerZoom
+                val zoomFactor = when {
+                    zoomDifference > 0 -> (1 shl zoomDifference).toDouble()
+                    zoomDifference < 0 -> 1.0 / (1 shl -zoomDifference).toDouble()
+                    else -> 1.0
+                }
+                val layerScale = visualScale * zoomFactor
+                val layerCenter = webMercatorPoint(centerLatitude, centerLongitude, layerZoom)
+
+                fun layerScreenX(worldX: Double): Float =
+                    size.width / 2f + ((worldX - layerCenter.x) * layerScale).toFloat()
+                fun layerScreenY(worldY: Double): Float =
+                    size.height / 2f + ((worldY - layerCenter.y) * layerScale).toFloat()
+
+                specs.forEach { spec ->
+                    val image = tileImages[spec.key] ?: return@forEach
+                    val tileLeft = spec.x * FORECAST_TILE_SIZE_PX
+                    val tileTop = spec.y * FORECAST_TILE_SIZE_PX
+                    val left = layerScreenX(tileLeft)
+                    val top = layerScreenY(tileTop)
+                    val tileSize = (FORECAST_TILE_SIZE_PX * layerScale).toFloat()
+                    drawImage(
+                        image = image,
+                        dstOffset = IntOffset(left.roundToInt(), top.roundToInt()),
+                        dstSize = IntSize(
+                            tileSize.roundToInt().coerceAtLeast(1),
+                            tileSize.roundToInt().coerceAtLeast(1),
+                        ),
+                        filterQuality = FilterQuality.Low,
+                    )
+                }
+            }
+
+            if (stableTileSpecs != tileSpecs) {
+                drawBasemapLayer(stableTileSpecs)
+            }
+            drawBasemapLayer(tileSpecs)
+
+            val centerWorld = webMercatorPoint(centerLatitude, centerLongitude, tileZoom)
             fun screenX(worldX: Double): Float =
                 size.width / 2f + ((worldX - centerWorld.x) * visualScale).toFloat()
             fun screenY(worldY: Double): Float =
                 size.height / 2f + ((worldY - centerWorld.y) * visualScale).toFloat()
-
-            tileSpecs.forEach { spec ->
-                val image = tileImages[spec.key] ?: return@forEach
-                val tileLeft = spec.x * FORECAST_TILE_SIZE_PX
-                val tileTop = spec.y * FORECAST_TILE_SIZE_PX
-                val left = screenX(tileLeft)
-                val top = screenY(tileTop)
-                val tileSize = (FORECAST_TILE_SIZE_PX * visualScale).toFloat()
-                drawImage(
-                    image = image,
-                    dstOffset = IntOffset(left.roundToInt(), top.roundToInt()),
-                    dstSize = IntSize(
-                        tileSize.roundToInt().coerceAtLeast(1),
-                        tileSize.roundToInt().coerceAtLeast(1),
-                    ),
-                    filterQuality = FilterQuality.Low,
-                )
-            }
 
             val gridNorthWest = webMercatorPoint(renderBounds.north, renderBounds.west, tileZoom)
             val gridSouthEast = webMercatorPoint(renderBounds.south, renderBounds.east, tileZoom)
