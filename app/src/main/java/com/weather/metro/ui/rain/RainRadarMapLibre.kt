@@ -329,7 +329,7 @@ private fun RadarTopHud(
                 text = when {
                     timeline == null -> "MapLibre native raster"
                     isStale -> "已保留上次成功雷達資料"
-                    else -> "HKO 即時觀測 · ${timeline.frameCount} 幀"
+                    else -> "HKO 即時觀測 · ${timeline.frames.size} 幀"
                 },
                 color = RADAR_MAPLIBRE_MUTED,
                 fontSize = 11.sp,
