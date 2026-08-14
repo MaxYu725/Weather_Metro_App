@@ -48,7 +48,9 @@ object ToolEndpoints {
     }
 
     fun rainRadarImage(relativePath: String): String {
-        require(relativePath.startsWith("/api/radar/image?")) { "Radar image must use the Worker image proxy" }
+        val allowed = relativePath.startsWith("/api/radar/image?") ||
+            relativePath.startsWith("/api/radar/test-image?")
+        require(allowed) { "Radar image must use an approved Rain Worker radar image route" }
         return RAIN_ORIGIN + relativePath
     }
 
