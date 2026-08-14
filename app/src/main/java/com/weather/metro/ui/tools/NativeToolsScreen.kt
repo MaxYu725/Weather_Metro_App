@@ -35,11 +35,14 @@ import com.weather.metro.ui.rain.RainForecastPanel
 import com.weather.metro.ui.rain.RainHostState
 import com.weather.metro.ui.rain.RainHostViewModel
 import com.weather.metro.ui.rain.RainPointPanel
+import com.weather.metro.ui.rain.RainRadarHostState
+import com.weather.metro.ui.rain.RainRadarMapLibrePanel
 import com.weather.metro.ui.rain.RainResourceStatus
 import com.weather.metro.ui.theme.LocalMetroSubText
 
 private const val DESTINATION_HOME = "home"
 private const val DESTINATION_POINT = "point"
+private const val DESTINATION_RADAR = "radar"
 private const val DESTINATION_FORECAST = "forecast"
 private const val DESTINATION_FORECAST_MAPLIBRE = "forecast-maplibre"
 
@@ -47,10 +50,14 @@ private const val DESTINATION_FORECAST_MAPLIBRE = "forecast-maplibre"
 fun NativeToolsScreen(
     pageColour: Color,
     rainState: RainHostState,
+    radarState: RainRadarHostState,
     isActive: Boolean,
     onFullscreenChanged: (Boolean) -> Unit,
     onRefreshPoint: (Int) -> Unit,
     onCancelPointRefresh: () -> Unit,
+    onRefreshRadar: () -> Unit,
+    onSelectRadarFrame: (Int) -> Unit,
+    onCancelRadarRequests: () -> Unit,
     onRefreshForecast: () -> Unit,
     onLoadForecastFrame: (Int) -> Unit,
     onCancelForecastRequests: () -> Unit,
@@ -63,6 +70,7 @@ fun NativeToolsScreen(
     fun cancelDestinationRequests() {
         when (destination) {
             DESTINATION_POINT -> onCancelPointRefresh()
+            DESTINATION_RADAR -> onCancelRadarRequests()
             DESTINATION_FORECAST,
             DESTINATION_FORECAST_MAPLIBRE,
             -> onCancelForecastRequests()
@@ -82,6 +90,7 @@ fun NativeToolsScreen(
         isActive,
         destination,
         rainState.pointForecast.status,
+        radarState.timeline.status,
         rainState.forecast.status,
     ) {
         if (!isActive) {
@@ -94,6 +103,9 @@ fun NativeToolsScreen(
                 rainState.pointForecast.status == RainResourceStatus.IDLE
             ) {
                 onRefreshPoint(selectedRadiusKm)
+            }
+            DESTINATION_RADAR -> if (radarState.timeline.status == RainResourceStatus.IDLE) {
+                onRefreshRadar()
             }
             DESTINATION_FORECAST,
             DESTINATION_FORECAST_MAPLIBRE,
@@ -115,6 +127,17 @@ fun NativeToolsScreen(
             onRefresh = { onRefreshPoint(selectedRadiusKm) },
             onBack = {
                 onCancelPointRefresh()
+                destination = DESTINATION_HOME
+            },
+        )
+        DESTINATION_RADAR -> RadarMapLibreToolScreen(
+            pageColour = pageColour,
+            radarState = radarState,
+            isActive = isActive,
+            onRefresh = onRefreshRadar,
+            onSelectFrame = onSelectRadarFrame,
+            onBack = {
+                onCancelRadarRequests()
                 destination = DESTINATION_HOME
             },
         )
@@ -143,6 +166,7 @@ fun NativeToolsScreen(
         else -> ToolsHome(
             pageColour = pageColour,
             onOpenPoint = { destination = DESTINATION_POINT },
+            onOpenRadar = { destination = DESTINATION_RADAR },
             onOpenForecast = { destination = DESTINATION_FORECAST },
             onOpenMapLibreForecast = { destination = DESTINATION_FORECAST_MAPLIBRE },
         )
@@ -153,6 +177,7 @@ fun NativeToolsScreen(
 private fun ToolsHome(
     pageColour: Color,
     onOpenPoint: () -> Unit,
+    onOpenRadar: () -> Unit,
     onOpenForecast: () -> Unit,
     onOpenMapLibreForecast: () -> Unit,
 ) {
@@ -186,10 +211,11 @@ private fun ToolsHome(
                 ToolTile(
                     seed = "native-radar",
                     title = "雷達",
-                    description = "觀測動畫",
-                    status = "next",
+                    description = "MapLibre · 即時觀測",
+                    status = "M1B",
                     background = pageColour,
                     modifier = Modifier.weight(1f).height(132.dp),
+                    onClick = onOpenRadar,
                 )
                 ToolTile(
                     seed = "native-forecast-map",
@@ -273,6 +299,28 @@ private fun PointToolScreen(
                 onRefresh = onRefresh,
             )
         }
+    }
+}
+
+@Composable
+private fun RadarMapLibreToolScreen(
+    pageColour: Color,
+    radarState: RainRadarHostState,
+    isActive: Boolean,
+    onRefresh: () -> Unit,
+    onSelectFrame: (Int) -> Unit,
+    onBack: () -> Unit,
+) {
+    Box(modifier = Modifier.fillMaxSize()) {
+        RainRadarMapLibrePanel(
+            state = radarState,
+            pageColour = pageColour,
+            isActive = isActive,
+            onRefresh = onRefresh,
+            onSelectFrame = onSelectFrame,
+            onBack = onBack,
+            modifier = Modifier.fillMaxSize(),
+        )
     }
 }
 
