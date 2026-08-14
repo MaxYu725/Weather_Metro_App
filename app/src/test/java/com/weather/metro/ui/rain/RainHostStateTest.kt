@@ -36,6 +36,19 @@ class RainHostStateTest {
         assertFalse(radiusTwo == radiusFive)
     }
 
+    @Test
+    fun forecastPrefetchSkipsInitialFrameAndUsesBoundedBatches() {
+        assertEquals(
+            listOf(
+                listOf(1, 2, 3, 4),
+                listOf(5, 6, 7, 8),
+                listOf(9),
+            ),
+            forecastPrefetchBatches(frameCount = 10, batchSize = 4),
+        )
+        assertTrue(forecastPrefetchBatches(frameCount = 1).isEmpty())
+    }
+
     private fun location(latitude: Double, longitude: Double, label: String) = LocationInfo(
         latitude = latitude,
         longitude = longitude,

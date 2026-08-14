@@ -10,10 +10,14 @@ import com.weather.metro.domain.LocationInfo
 import com.weather.metro.domain.rain.RainCapabilities
 import com.weather.metro.domain.rain.RainForecastFrame
 import com.weather.metro.domain.rain.RainForecastRunChangedException
+import com.weather.metro.domain.rain.RainForecastSource
 import com.weather.metro.domain.rain.RainForecastTimeline
 import com.weather.metro.domain.rain.RainPointForecast
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -79,10 +83,12 @@ class RainHostViewModel(application: Application) : AndroidViewModel(application
     private var pointJob: Job? = null
     private var forecastJob: Job? = null
     private var forecastFrameJob: Job? = null
+    private var forecastPrefetchJob: Job? = null
     private var capabilitiesGeneration = 0L
     private var pointGeneration = 0L
     private var forecastGeneration = 0L
     private var forecastFrameGeneration = 0L
+    private var forecastPrefetchGeneration = 0L
 
     fun bindHostLocation(location: LocationInfo) {
         val current = _state.value.location
@@ -234,9 +240,12 @@ class RainHostViewModel(application: Application) : AndroidViewModel(application
     fun refreshForecast() {
         val generation = ++forecastGeneration
         forecastFrameGeneration += 1
+        forecastPrefetchGeneration += 1
         forecastJob?.cancel()
         forecastFrameJob?.cancel()
+        forecastPrefetchJob?.cancel()
         forecastFrameJob = null
+        forecastPrefetchJob = null
         val previous = _state.value.forecast
         _state.update {
             it.copy(
@@ -271,6 +280,7 @@ class RainHostViewModel(application: Application) : AndroidViewModel(application
                         forecastFrameIndex = 0,
                     )
                 }
+                startForecastPrefetch(result.value)
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Throwable) {
@@ -327,13 +337,14 @@ class RainHostViewModel(application: Application) : AndroidViewModel(application
                     forecastFrameIndex = frameIndex,
                 )
             }
+            if (forecastPrefetchJob?.isActive != true) startForecastPrefetch(timeline)
             return
         }
 
+        if (forecastPrefetchJob?.isActive != true) startForecastPrefetch(timeline)
         val generation = ++forecastFrameGeneration
         forecastFrameJob?.cancel()
-        val previous = _state.value.forecastFrame.takeIf { _state.value.forecastFrameIndex == frameIndex }
-            ?: RainResourceState()
+        val previous = _state.value.forecastFrame
         _state.update {
             it.copy(
                 forecastFrame = previous.copy(
@@ -384,6 +395,7 @@ class RainHostViewModel(application: Application) : AndroidViewModel(application
                                 errorMessage = error.message ?: "Rain forecast frame unavailable",
                             )
                         },
+                        forecastFrameIndex = existing?.frameIndex ?: frameIndex,
                     )
                 }
             }
@@ -413,14 +425,19 @@ class RainHostViewModel(application: Application) : AndroidViewModel(application
     fun cancelForecastRequests() {
         forecastGeneration += 1
         forecastFrameGeneration += 1
+        forecastPrefetchGeneration += 1
         forecastJob?.cancel()
         forecastFrameJob?.cancel()
+        forecastPrefetchJob?.cancel()
         forecastJob = null
         forecastFrameJob = null
+        forecastPrefetchJob = null
         _state.update {
+            val settledFrame = settleCancelled(it.forecastFrame)
             it.copy(
                 forecast = settleCancelled(it.forecast),
-                forecastFrame = settleCancelled(it.forecastFrame),
+                forecastFrame = settledFrame,
+                forecastFrameIndex = settledFrame.value?.frameIndex ?: it.forecastFrameIndex,
             )
         }
     }
@@ -430,20 +447,25 @@ class RainHostViewModel(application: Application) : AndroidViewModel(application
         pointGeneration += 1
         forecastGeneration += 1
         forecastFrameGeneration += 1
+        forecastPrefetchGeneration += 1
         capabilitiesJob?.cancel()
         pointJob?.cancel()
         forecastJob?.cancel()
         forecastFrameJob?.cancel()
+        forecastPrefetchJob?.cancel()
         capabilitiesJob = null
         pointJob = null
         forecastJob = null
         forecastFrameJob = null
+        forecastPrefetchJob = null
         _state.update {
+            val settledFrame = settleCancelled(it.forecastFrame)
             it.copy(
                 capabilities = settleCancelled(it.capabilities),
                 pointForecast = settleCancelled(it.pointForecast),
                 forecast = settleCancelled(it.forecast),
-                forecastFrame = settleCancelled(it.forecastFrame),
+                forecastFrame = settledFrame,
+                forecastFrameIndex = settledFrame.value?.frameIndex ?: it.forecastFrameIndex,
             )
         }
     }
@@ -453,14 +475,17 @@ class RainHostViewModel(application: Application) : AndroidViewModel(application
         pointGeneration += 1
         forecastGeneration += 1
         forecastFrameGeneration += 1
+        forecastPrefetchGeneration += 1
         capabilitiesJob?.cancel()
         pointJob?.cancel()
         forecastJob?.cancel()
         forecastFrameJob?.cancel()
+        forecastPrefetchJob?.cancel()
         capabilitiesJob = null
         pointJob = null
         forecastJob = null
         forecastFrameJob = null
+        forecastPrefetchJob = null
         _state.update {
             it.copy(
                 capabilities = RainResourceState(),
@@ -472,6 +497,79 @@ class RainHostViewModel(application: Application) : AndroidViewModel(application
             )
         }
         viewModelScope.launch { repository.clearCache() }
+    }
+
+    private fun startForecastPrefetch(timeline: RainForecastTimeline) {
+        if (timeline.source != RainForecastSource.SWIRLS) return
+        if (timeline.loadedFrameCount >= timeline.frames.size) return
+
+        forecastPrefetchJob?.cancel()
+        val generation = ++forecastPrefetchGeneration
+        forecastPrefetchJob = viewModelScope.launch {
+            try {
+                forecastPrefetchBatches(timeline.frames.size).forEach { batch ->
+                    if (generation != forecastPrefetchGeneration) return@launch
+                    coroutineScope {
+                        batch.map { frameIndex ->
+                            async {
+                                prefetchForecastFrame(
+                                    timeline = timeline,
+                                    frameIndex = frameIndex,
+                                    generation = generation,
+                                )
+                            }
+                        }.awaitAll()
+                    }
+                }
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: RainForecastRunChangedException) {
+                if (generation == forecastPrefetchGeneration) refreshForecast()
+            }
+        }
+    }
+
+    private suspend fun prefetchForecastFrame(
+        timeline: RainForecastTimeline,
+        frameIndex: Int,
+        generation: Long,
+    ) {
+        if (generation != forecastPrefetchGeneration) return
+        val activeTimeline = _state.value.forecast.value ?: return
+        if (!sameForecastTimeline(activeTimeline, timeline)) return
+        if (activeTimeline.frame(frameIndex) != null) return
+
+        try {
+            val result = repository.loadForecastFrame(activeTimeline, frameIndex)
+            if (generation != forecastPrefetchGeneration) return
+            _state.update { currentState ->
+                val currentTimeline = currentState.forecast.value ?: return@update currentState
+                if (!sameForecastTimeline(currentTimeline, timeline)) return@update currentState
+                val updatedTimeline = currentTimeline.withLoadedFrame(result.value)
+                val selectedFrameWasWaiting =
+                    currentState.forecastFrameIndex == frameIndex &&
+                        currentState.forecastFrame.status == RainResourceStatus.LOADING
+                currentState.copy(
+                    forecast = currentState.forecast.copy(value = updatedTimeline),
+                    forecastFrame = if (selectedFrameWasWaiting) {
+                        RainResourceState(
+                            status = RainResourceStatus.READY,
+                            value = result.value,
+                            isStale = result.isStale,
+                            errorMessage = result.networkError,
+                        )
+                    } else {
+                        currentState.forecastFrame
+                    },
+                )
+            }
+        } catch (error: CancellationException) {
+            throw error
+        } catch (error: RainForecastRunChangedException) {
+            throw error
+        } catch (_: Throwable) {
+            // Prefetch is opportunistic. A foreground selection can retry this frame later.
+        }
     }
 
     private fun isCurrentPointRequest(generation: Long, request: RainPointRequestKey): Boolean =
@@ -500,7 +598,17 @@ class RainHostViewModel(application: Application) : AndroidViewModel(application
     companion object {
         val SUPPORTED_POINT_RADII_KM: Set<Int> = setOf(1, 2, 3, 5)
         const val DEFAULT_POINT_RADIUS_KM = 2
+        private const val FORECAST_PREFETCH_BATCH_SIZE = 4
     }
+}
+
+internal fun forecastPrefetchBatches(
+    frameCount: Int,
+    batchSize: Int = 4,
+): List<List<Int>> {
+    if (frameCount <= 1) return emptyList()
+    require(batchSize > 0) { "Prefetch batch size must be positive" }
+    return (1 until frameCount).toList().chunked(batchSize)
 }
 
 internal fun sameRainLocation(
