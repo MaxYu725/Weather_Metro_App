@@ -8,6 +8,9 @@ import com.weather.metro.data.rain.RainRepository
 import com.weather.metro.data.rain.RainTrackClient
 import com.weather.metro.domain.LocationInfo
 import com.weather.metro.domain.rain.RainCapabilities
+import com.weather.metro.domain.rain.RainForecastFrame
+import com.weather.metro.domain.rain.RainForecastRunChangedException
+import com.weather.metro.domain.rain.RainForecastTimeline
 import com.weather.metro.domain.rain.RainPointForecast
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
@@ -51,6 +54,9 @@ data class RainHostState(
     val capabilities: RainResourceState<RainCapabilities> = RainResourceState(),
     val pointForecast: RainResourceState<RainPointForecast> = RainResourceState(),
     val pointRequest: RainPointRequestKey? = null,
+    val forecast: RainResourceState<RainForecastTimeline> = RainResourceState(),
+    val forecastFrame: RainResourceState<RainForecastFrame> = RainResourceState(),
+    val forecastFrameIndex: Int? = null,
 )
 
 /**
@@ -71,8 +77,12 @@ class RainHostViewModel(application: Application) : AndroidViewModel(application
 
     private var capabilitiesJob: Job? = null
     private var pointJob: Job? = null
+    private var forecastJob: Job? = null
+    private var forecastFrameJob: Job? = null
     private var capabilitiesGeneration = 0L
     private var pointGeneration = 0L
+    private var forecastGeneration = 0L
+    private var forecastFrameGeneration = 0L
 
     fun bindHostLocation(location: LocationInfo) {
         val current = _state.value.location
@@ -221,6 +231,165 @@ class RainHostViewModel(application: Application) : AndroidViewModel(application
         }
     }
 
+    fun refreshForecast() {
+        val generation = ++forecastGeneration
+        forecastFrameGeneration += 1
+        forecastJob?.cancel()
+        forecastFrameJob?.cancel()
+        forecastFrameJob = null
+        val previous = _state.value.forecast
+        _state.update {
+            it.copy(
+                forecast = previous.copy(
+                    status = RainResourceStatus.LOADING,
+                    errorMessage = null,
+                ),
+                forecastFrame = settleCancelled(it.forecastFrame),
+            )
+        }
+
+        forecastJob = viewModelScope.launch {
+            try {
+                val result = repository.loadForecastTimeline()
+                if (generation != forecastGeneration) return@launch
+                val firstFrame = result.value.frame(0)
+                    ?: error("Rain forecast timeline did not provide an initial frame")
+                _state.update {
+                    it.copy(
+                        forecast = RainResourceState(
+                            status = RainResourceStatus.READY,
+                            value = result.value,
+                            isStale = result.isStale,
+                            errorMessage = result.networkError,
+                        ),
+                        forecastFrame = RainResourceState(
+                            status = RainResourceStatus.READY,
+                            value = firstFrame,
+                            isStale = result.isStale,
+                            errorMessage = result.networkError,
+                        ),
+                        forecastFrameIndex = 0,
+                    )
+                }
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Throwable) {
+                if (generation != forecastGeneration) return@launch
+                _state.update {
+                    val existing = it.forecast.value
+                    it.copy(
+                        forecast = if (existing != null) {
+                            it.forecast.copy(
+                                status = RainResourceStatus.READY,
+                                isStale = true,
+                                errorMessage = error.message ?: "Rain forecast unavailable",
+                            )
+                        } else {
+                            RainResourceState(
+                                status = RainResourceStatus.ERROR,
+                                errorMessage = error.message ?: "Rain forecast unavailable",
+                            )
+                        },
+                    )
+                }
+            }
+        }
+    }
+
+    fun loadForecastFrame(frameIndex: Int) {
+        val timeline = _state.value.forecast.value
+        if (timeline == null) {
+            _state.update {
+                it.copy(
+                    forecastFrame = RainResourceState(
+                        status = RainResourceStatus.ERROR,
+                        errorMessage = "尚未載入兩小時預報",
+                    ),
+                    forecastFrameIndex = frameIndex,
+                )
+            }
+            return
+        }
+        require(frameIndex in timeline.frames.indices) { "Forecast frame index outside active timeline" }
+
+        timeline.frame(frameIndex)?.let { frame ->
+            forecastFrameGeneration += 1
+            forecastFrameJob?.cancel()
+            forecastFrameJob = null
+            _state.update {
+                it.copy(
+                    forecastFrame = RainResourceState(
+                        status = RainResourceStatus.READY,
+                        value = frame,
+                        isStale = it.forecast.isStale,
+                        errorMessage = it.forecast.errorMessage,
+                    ),
+                    forecastFrameIndex = frameIndex,
+                )
+            }
+            return
+        }
+
+        val generation = ++forecastFrameGeneration
+        forecastFrameJob?.cancel()
+        val previous = _state.value.forecastFrame.takeIf { _state.value.forecastFrameIndex == frameIndex }
+            ?: RainResourceState()
+        _state.update {
+            it.copy(
+                forecastFrame = previous.copy(
+                    status = RainResourceStatus.LOADING,
+                    errorMessage = null,
+                ),
+                forecastFrameIndex = frameIndex,
+            )
+        }
+
+        forecastFrameJob = viewModelScope.launch {
+            try {
+                val result = repository.loadForecastFrame(timeline, frameIndex)
+                if (!isCurrentForecastFrameRequest(generation, timeline, frameIndex)) return@launch
+                _state.update {
+                    val currentTimeline = it.forecast.value ?: return@update it
+                    it.copy(
+                        forecast = it.forecast.copy(
+                            value = currentTimeline.withLoadedFrame(result.value),
+                        ),
+                        forecastFrame = RainResourceState(
+                            status = RainResourceStatus.READY,
+                            value = result.value,
+                            isStale = result.isStale,
+                            errorMessage = result.networkError,
+                        ),
+                    )
+                }
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: RainForecastRunChangedException) {
+                if (!isCurrentForecastFrameRequest(generation, timeline, frameIndex)) return@launch
+                refreshForecast()
+            } catch (error: Throwable) {
+                if (!isCurrentForecastFrameRequest(generation, timeline, frameIndex)) return@launch
+                _state.update {
+                    val existing = it.forecastFrame.value
+                    it.copy(
+                        forecastFrame = if (existing != null) {
+                            it.forecastFrame.copy(
+                                status = RainResourceStatus.READY,
+                                isStale = true,
+                                errorMessage = error.message ?: "Rain forecast frame unavailable",
+                            )
+                        } else {
+                            RainResourceState(
+                                status = RainResourceStatus.ERROR,
+                                errorMessage = error.message ?: "Rain forecast frame unavailable",
+                            )
+                        },
+                    )
+                }
+            }
+        }
+    }
+
     fun cancelPointRefresh() {
         pointGeneration += 1
         pointJob?.cancel()
@@ -241,17 +410,40 @@ class RainHostViewModel(application: Application) : AndroidViewModel(application
         }
     }
 
+    fun cancelForecastRequests() {
+        forecastGeneration += 1
+        forecastFrameGeneration += 1
+        forecastJob?.cancel()
+        forecastFrameJob?.cancel()
+        forecastJob = null
+        forecastFrameJob = null
+        _state.update {
+            it.copy(
+                forecast = settleCancelled(it.forecast),
+                forecastFrame = settleCancelled(it.forecastFrame),
+            )
+        }
+    }
+
     fun cancelTransientRequests() {
         capabilitiesGeneration += 1
         pointGeneration += 1
+        forecastGeneration += 1
+        forecastFrameGeneration += 1
         capabilitiesJob?.cancel()
         pointJob?.cancel()
+        forecastJob?.cancel()
+        forecastFrameJob?.cancel()
         capabilitiesJob = null
         pointJob = null
+        forecastJob = null
+        forecastFrameJob = null
         _state.update {
             it.copy(
                 capabilities = settleCancelled(it.capabilities),
                 pointForecast = settleCancelled(it.pointForecast),
+                forecast = settleCancelled(it.forecast),
+                forecastFrame = settleCancelled(it.forecastFrame),
             )
         }
     }
@@ -259,15 +451,24 @@ class RainHostViewModel(application: Application) : AndroidViewModel(application
     fun clearCache() {
         capabilitiesGeneration += 1
         pointGeneration += 1
+        forecastGeneration += 1
+        forecastFrameGeneration += 1
         capabilitiesJob?.cancel()
         pointJob?.cancel()
+        forecastJob?.cancel()
+        forecastFrameJob?.cancel()
         capabilitiesJob = null
         pointJob = null
+        forecastJob = null
+        forecastFrameJob = null
         _state.update {
             it.copy(
                 capabilities = RainResourceState(),
                 pointForecast = RainResourceState(),
                 pointRequest = null,
+                forecast = RainResourceState(),
+                forecastFrame = RainResourceState(),
+                forecastFrameIndex = null,
             )
         }
         viewModelScope.launch { repository.clearCache() }
@@ -275,6 +476,17 @@ class RainHostViewModel(application: Application) : AndroidViewModel(application
 
     private fun isCurrentPointRequest(generation: Long, request: RainPointRequestKey): Boolean =
         generation == pointGeneration && _state.value.pointRequest == request
+
+    private fun isCurrentForecastFrameRequest(
+        generation: Long,
+        timeline: RainForecastTimeline,
+        frameIndex: Int,
+    ): Boolean {
+        val activeTimeline = _state.value.forecast.value ?: return false
+        return generation == forecastFrameGeneration &&
+            _state.value.forecastFrameIndex == frameIndex &&
+            sameForecastTimeline(activeTimeline, timeline)
+    }
 
     private fun <T> settleCancelled(resource: RainResourceState<T>): RainResourceState<T> {
         if (resource.status != RainResourceStatus.LOADING) return resource
@@ -298,3 +510,8 @@ internal fun sameRainLocation(
 ): Boolean =
     abs(first.latitude - second.latitude) <= epsilon &&
         abs(first.longitude - second.longitude) <= epsilon
+
+internal fun sameForecastTimeline(
+    first: RainForecastTimeline,
+    second: RainForecastTimeline,
+): Boolean = first.source == second.source && first.issueTime == second.issueTime
