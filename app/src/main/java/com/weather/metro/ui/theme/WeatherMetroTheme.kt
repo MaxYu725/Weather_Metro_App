@@ -19,7 +19,6 @@ val LocalMetroAccent = staticCompositionLocalOf { Color(0xFF1BA1E2) }
 val LocalMetroSubText = staticCompositionLocalOf { Color(0xFFAAAAAA) }
 val LocalMetroSurface = staticCompositionLocalOf { Color(0xD911161A) }
 val LocalMetroOutline = staticCompositionLocalOf { Color.White.copy(alpha = 0.12f) }
-val LocalPatternIntensity = staticCompositionLocalOf { 0.18f }
 val LocalReduceMotion = staticCompositionLocalOf { false }
 
 @Composable
@@ -50,7 +49,6 @@ fun WeatherMetroTheme(settings: UiSettings, content: @Composable () -> Unit) {
         LocalMetroSubText provides subText,
         LocalMetroSurface provides metroSurface,
         LocalMetroOutline provides metroOutline,
-        LocalPatternIntensity provides settings.patternIntensity,
         LocalReduceMotion provides settings.reduceMotion,
         LocalDensity provides scaledDensity,
     ) {

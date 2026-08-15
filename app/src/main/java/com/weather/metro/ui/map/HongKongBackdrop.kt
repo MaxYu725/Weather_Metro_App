@@ -42,7 +42,7 @@ import org.maplibre.android.snapshotter.MapSnapshotter
 import java.io.File
 import java.io.FileOutputStream
 
-private const val BACKDROP_CACHE_VERSION = 1
+private const val BACKDROP_CACHE_VERSION = 2
 private const val BACKDROP_MAX_EDGE_PX = 1_600
 private const val BACKDROP_MIN_EDGE_PX = 320
 private const val BACKDROP_REFRESH_MS = 7L * 24L * 60L * 60L * 1_000L
@@ -145,16 +145,16 @@ fun HongKongBackdrop(modifier: Modifier = Modifier) {
                 .fillMaxSize()
                 .background(
                     Brush.verticalGradient(
-                        0f to Color.Black.copy(alpha = 0.38f),
-                        0.40f to Color.Black.copy(alpha = 0.20f),
-                        1f to Color.Black.copy(alpha = 0.58f),
+                        0f to Color.Black.copy(alpha = 0.16f),
+                        0.40f to Color.Black.copy(alpha = 0.06f),
+                        1f to Color.Black.copy(alpha = 0.28f),
                     ),
                 )
                 .drawWithContent {
                     drawContent()
                     drawRect(
                         brush = Brush.radialGradient(
-                            colors = listOf(Color.Transparent, Color.Black.copy(alpha = 0.34f)),
+                            colors = listOf(Color.Transparent, Color.Black.copy(alpha = 0.15f)),
                             center = Offset(size.width * 0.52f, size.height * 0.42f),
                             radius = size.maxDimension * 0.72f,
                         ),

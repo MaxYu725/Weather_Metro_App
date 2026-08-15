@@ -81,7 +81,6 @@ class WeatherViewModel(application: Application) : AndroidViewModel(application)
 
     fun setPageColour(slot: PageColourSlot, value: Long) = settingsRepository.setPageColour(slot, value)
     fun setTextScale(value: Float) = settingsRepository.setTextScale(value)
-    fun setPatternIntensity(value: Float) = settingsRepository.setPatternIntensity(value)
     fun setReduceMotion(value: Boolean) = settingsRepository.setReduceMotion(value)
     fun setHighContrast(value: Boolean) = settingsRepository.setHighContrast(value)
 

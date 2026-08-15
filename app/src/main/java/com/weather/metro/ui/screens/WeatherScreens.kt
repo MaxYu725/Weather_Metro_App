@@ -562,7 +562,6 @@ fun SettingsScreen(
     pageColour: Color,
     onPageColourChange: (PageColourSlot, Long) -> Unit,
     onTextScaleChange: (Float) -> Unit,
-    onPatternIntensityChange: (Float) -> Unit,
     onReduceMotionChange: (Boolean) -> Unit,
     onHighContrastChange: (Boolean) -> Unit,
     onPreciseLocationChange: (Boolean) -> Unit,
@@ -639,20 +638,6 @@ fun SettingsScreen(
                         onValueChange = onTextScaleChange,
                         valueRange = 0.9f..1.5f,
                         steps = 5,
-                        colors = metroSliderColors(),
-                    )
-                }
-            }
-        }
-        item {
-            MetroTile("pattern-settings", pageColour, Modifier.fillMaxWidth()) {
-                Column {
-                    SettingTitle("geometric pattern", "${(settings.patternIntensity / 0.32f * 100).roundToInt()}% intensity")
-                    Slider(
-                        value = settings.patternIntensity,
-                        onValueChange = onPatternIntensityChange,
-                        valueRange = 0f..0.32f,
-                        steps = 9,
                         colors = metroSliderColors(),
                     )
                 }

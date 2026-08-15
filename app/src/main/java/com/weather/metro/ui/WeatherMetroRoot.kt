@@ -226,7 +226,6 @@ fun WeatherMetroRoot(
                             pageColour = pageColour,
                             onPageColourChange = viewModel::setPageColour,
                             onTextScaleChange = viewModel::setTextScale,
-                            onPatternIntensityChange = viewModel::setPatternIntensity,
                             onReduceMotionChange = viewModel::setReduceMotion,
                             onHighContrastChange = viewModel::setHighContrast,
                             onPreciseLocationChange = viewModel::setPreciseLocation,
