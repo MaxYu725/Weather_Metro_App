@@ -77,7 +77,7 @@ private val MAPLIBRE_PANEL = Color(0xF20A0A0A)
 private val MAPLIBRE_WARNING = Color(0xFFFFB300)
 private const val MAPLIBRE_RAIN_SOURCE = "weather-metro-rain-image"
 private const val MAPLIBRE_RAIN_LAYER = "weather-metro-rain-layer"
-private const val MAPLIBRE_TIMELINE_VISIBLE_WINDOW = 5
+private const val MAPLIBRE_TIMELINE_VISIBLE_WINDOW = 1
 // MapLibre Native uses a 512 px world-tile scale while the Canvas renderer uses 256 px.
 // Offset MapLibre camera zoom by -1 so the A/B views cover the same geographic extent.
 private const val MAPLIBRE_ZOOM_OFFSET_FROM_CANVAS = -1.0
