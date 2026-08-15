@@ -706,7 +706,7 @@ private fun MapLibreTimelineHud(
     modifier: Modifier = Modifier,
 ) {
     val timelineListState = rememberLazyListState()
-    LaunchedEffect(selectedIndex, timeline.frames.size) {
+    LaunchedEffect(selectedIndex, timeline.source, timeline.issueTime, timeline.frames.size) {
         if (timeline.frames.isEmpty() || selectedIndex !in timeline.frames.indices) return@LaunchedEffect
         val maxAnchor = (timeline.frames.size - MAPLIBRE_TIMELINE_VISIBLE_WINDOW).coerceAtLeast(0)
         val centeredAnchor = (selectedIndex - MAPLIBRE_TIMELINE_VISIBLE_WINDOW / 2).coerceAtLeast(0)
