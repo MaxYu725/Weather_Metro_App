@@ -17,13 +17,16 @@ import com.weather.metro.data.settings.UiSettings
 
 val LocalMetroAccent = staticCompositionLocalOf { Color(0xFF1BA1E2) }
 val LocalMetroSubText = staticCompositionLocalOf { Color(0xFFAAAAAA) }
-val LocalPatternIntensity = staticCompositionLocalOf { 0.18f }
+val LocalMetroSurface = staticCompositionLocalOf { Color(0xD911161A) }
+val LocalMetroOutline = staticCompositionLocalOf { Color.White.copy(alpha = 0.12f) }
 val LocalReduceMotion = staticCompositionLocalOf { false }
 
 @Composable
 fun WeatherMetroTheme(settings: UiSettings, content: @Composable () -> Unit) {
     val accent = argbColor(settings.pageColours.currentArgb)
     val subText = if (settings.highContrast) Color.White else Color(0xFFAAAAAA)
+    val metroSurface = if (settings.highContrast) Color(0xF20B0F12) else Color(0xD911161A)
+    val metroOutline = Color.White.copy(alpha = if (settings.highContrast) 0.26f else 0.12f)
     val systemDensity = LocalDensity.current
     val scaledDensity = Density(
         density = systemDensity.density,
@@ -44,7 +47,8 @@ fun WeatherMetroTheme(settings: UiSettings, content: @Composable () -> Unit) {
     CompositionLocalProvider(
         LocalMetroAccent provides accent,
         LocalMetroSubText provides subText,
-        LocalPatternIntensity provides settings.patternIntensity,
+        LocalMetroSurface provides metroSurface,
+        LocalMetroOutline provides metroOutline,
         LocalReduceMotion provides settings.reduceMotion,
         LocalDensity provides scaledDensity,
     ) {

@@ -44,6 +44,8 @@ import com.weather.metro.data.settings.PageColourSlot
 import com.weather.metro.data.tools.RainRadarMode
 import com.weather.metro.domain.WeatherLoadState
 import com.weather.metro.ui.components.MetroProgress
+import com.weather.metro.ui.map.HongKongBackdrop
+import com.weather.metro.ui.map.HongKongMapAttribution
 import com.weather.metro.ui.rain.RainHostViewModel
 import com.weather.metro.ui.rain.RainRadarHostViewModel
 import com.weather.metro.ui.screens.CurrentScreen
@@ -138,11 +140,13 @@ fun WeatherMetroRoot(
             if (!request.showAlerts) viewModel.consumeNavigation(request.token)
         }
 
-        Column(
+        Box(
             modifier = Modifier
                 .fillMaxSize()
-                .background(Color.Black),
+                .background(Color(0xFF080B0D)),
         ) {
+            HongKongBackdrop(Modifier.fillMaxSize())
+            Column(modifier = Modifier.fillMaxSize()) {
             AnimatedVisibility(
                 visible = !fullscreenTool,
                 enter = if (reduceMotion) {
@@ -223,7 +227,6 @@ fun WeatherMetroRoot(
                             pageColour = pageColour,
                             onPageColourChange = viewModel::setPageColour,
                             onTextScaleChange = viewModel::setTextScale,
-                            onPatternIntensityChange = viewModel::setPatternIntensity,
                             onReduceMotionChange = viewModel::setReduceMotion,
                             onHighContrastChange = viewModel::setHighContrast,
                             onPreciseLocationChange = viewModel::setPreciseLocation,
@@ -266,6 +269,10 @@ fun WeatherMetroRoot(
                         }
                     }
                 }
+            }
+            }
+            if (!fullscreenTool) {
+                HongKongMapAttribution(modifier = Modifier.align(Alignment.BottomEnd))
             }
         }
     }
