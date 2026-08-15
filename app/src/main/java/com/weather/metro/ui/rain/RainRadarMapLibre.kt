@@ -1,5 +1,11 @@
 package com.weather.metro.ui.rain
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -42,7 +48,8 @@ import com.weather.metro.domain.LocationInfo
 import com.weather.metro.domain.rain.RainRadarBounds
 import com.weather.metro.domain.rain.RainRadarFrame
 import com.weather.metro.domain.rain.RainRadarTimeline
-import com.weather.metro.ui.components.MetroProgress
+import com.weather.metro.ui.theme.LocalReduceMotion
+import com.weather.metro.ui.tools.ToolLoadingPanel
 import kotlinx.coroutines.delay
 import org.maplibre.android.MapLibre
 import org.maplibre.android.camera.CameraPosition
@@ -128,8 +135,10 @@ fun RainRadarMapLibrePanel(
 ) {
     val timeline = state.timeline.value
     val frame = state.selectedFrame
+    val contentReady = timeline != null && frame != null
     var playing by rememberSaveable { mutableStateOf(false) }
     val accent = if (pageColour.alpha > 0f) pageColour else RADAR_MAPLIBRE_FALLBACK_ACCENT
+    val reduceMotion = LocalReduceMotion.current
 
     LaunchedEffect(isActive) {
         if (!isActive) playing = false
@@ -162,15 +171,26 @@ fun RainRadarMapLibrePanel(
             .fillMaxSize()
             .background(Color.Black),
     ) {
-        if (timeline != null && frame != null) {
+        AnimatedVisibility(
+            visible = contentReady,
+            enter = fadeIn(tween(if (reduceMotion) 1 else 320)),
+            exit = fadeOut(tween(if (reduceMotion) 1 else 160)),
+        ) {
+            val activeTimeline = timeline ?: return@AnimatedVisibility
+            val activeFrame = frame ?: return@AnimatedVisibility
             RadarMapLibreSurface(
-                timeline = timeline,
-                frame = frame,
+                timeline = activeTimeline,
+                frame = activeFrame,
                 location = state.location,
                 opacity = state.opacity,
                 modifier = Modifier.fillMaxSize(),
             )
-        } else {
+        }
+        AnimatedVisibility(
+            visible = !contentReady,
+            enter = fadeIn(tween(if (reduceMotion) 1 else 220)),
+            exit = fadeOut(tween(if (reduceMotion) 1 else 140)),
+        ) {
             RadarCenteredState(
                 status = state.timeline.status,
                 errorMessage = state.timeline.errorMessage,
@@ -194,16 +214,26 @@ fun RainRadarMapLibrePanel(
             modifier = Modifier.align(Alignment.TopCenter),
         )
 
-        if (isActive && timeline != null && frame != null) {
+        AnimatedVisibility(
+            visible = isActive && contentReady,
+            enter = fadeIn(tween(if (reduceMotion) 1 else 260)) +
+                slideInVertically(tween(if (reduceMotion) 1 else 320)) { height -> height / 4 },
+            exit = fadeOut(tween(if (reduceMotion) 1 else 140)) +
+                slideOutVertically(tween(if (reduceMotion) 1 else 180)) { height -> height / 5 },
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .padding(start = 10.dp, end = 10.dp, bottom = 10.dp),
+        ) {
+            val activeTimeline = timeline ?: return@AnimatedVisibility
             RadarControlsHud(
                 state = state,
-                timeline = timeline,
-                selectedIndex = state.selectedFrameIndex ?: timeline.frames.lastIndex,
+                timeline = activeTimeline,
+                selectedIndex = state.selectedFrameIndex ?: activeTimeline.frames.lastIndex,
                 playing = playing,
                 accent = accent,
                 onTogglePlay = {
-                    if (timeline.frames.size >= 2) {
-                        if (!playing && (state.selectedFrameIndex ?: timeline.frames.lastIndex) >= timeline.frames.lastIndex) {
+                    if (activeTimeline.frames.size >= 2) {
+                        if (!playing && (state.selectedFrameIndex ?: activeTimeline.frames.lastIndex) >= activeTimeline.frames.lastIndex) {
                             onSelectFrame(0)
                         }
                         playing = !playing
@@ -234,9 +264,7 @@ fun RainRadarMapLibrePanel(
                     playing = false
                     onJumpToLatest()
                 },
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .padding(start = 10.dp, end = 10.dp, bottom = 10.dp),
+                modifier = Modifier.fillMaxWidth(),
             )
         }
     }
@@ -712,14 +740,17 @@ private fun RadarCenteredState(
     onRefresh: () -> Unit,
 ) {
     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            if (status == RainResourceStatus.LOADING) {
-                Box(Modifier.fillMaxWidth(0.55f)) { MetroProgress(colour = accent) }
-                Text("正在載入雷達…", color = Color.White, fontSize = 14.sp)
-            } else {
+        if (status == RainResourceStatus.LOADING) {
+            ToolLoadingPanel(
+                title = "正在載入雷達",
+                detail = "正在取得最新觀測影像與時間軸",
+                accent = accent,
+            )
+        } else {
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
                 Text(
                     text = errorMessage ?: "尚未載入雷達",
                     color = Color.White,
