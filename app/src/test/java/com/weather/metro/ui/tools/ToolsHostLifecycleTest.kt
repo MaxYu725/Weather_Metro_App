@@ -1,5 +1,6 @@
 package com.weather.metro.ui.tools
 
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -11,5 +12,10 @@ class ToolsHostLifecycleTest {
         assertFalse(toolHostIsActive(pageActive = true, lifecycleResumed = false))
         assertFalse(toolHostIsActive(pageActive = false, lifecycleResumed = true))
         assertFalse(toolHostIsActive(pageActive = false, lifecycleResumed = false))
+    }
+
+    @Test
+    fun `production forecast renderer is MapLibre`() {
+        assertEquals("maplibre", productionForecastRenderer())
     }
 }
