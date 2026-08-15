@@ -41,6 +41,8 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.viewmodel.compose.viewModel
 import com.weather.metro.domain.LocationInfo
 import com.weather.metro.domain.rain.RainForecastFrame
 import com.weather.metro.domain.rain.RainForecastSource
@@ -60,10 +62,12 @@ import org.maplibre.android.maps.MapView
 import org.maplibre.android.maps.Style
 import org.maplibre.android.style.layers.Property
 import org.maplibre.android.style.layers.PropertyFactory.rasterFadeDuration
+import org.maplibre.android.style.layers.PropertyFactory.rasterOpacity
 import org.maplibre.android.style.layers.PropertyFactory.rasterResampling
 import org.maplibre.android.style.layers.RasterLayer
 import org.maplibre.android.style.sources.ImageSource
 import kotlin.math.abs
+import kotlin.math.roundToInt
 
 private val MAPLIBRE_FALLBACK_ACCENT = Color(0xFF20A7D8)
 private val MAPLIBRE_MUTED = Color(0xFF8E8E8E)
@@ -122,9 +126,12 @@ fun RainForecastMapLibrePanel(
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val settingsViewModel: RainForecastSettingsViewModel = viewModel()
+    val displaySettings by settingsViewModel.state.collectAsStateWithLifecycle()
     val timeline = state.forecast.value
     val frame = state.forecastFrame.value
     var playing by rememberSaveable { mutableStateOf(false) }
+    var recenterRequest by rememberSaveable { mutableStateOf(0) }
     val accent = if (pageColour.alpha > 0f) pageColour else MAPLIBRE_FALLBACK_ACCENT
 
     LaunchedEffect(isActive) {
@@ -135,12 +142,13 @@ fun RainForecastMapLibrePanel(
         isActive,
         state.forecastFrame.status,
         state.forecastFrameIndex,
+        displaySettings.playbackSpeed,
         timeline?.issueTime,
         timeline?.frames?.size,
     ) {
         if (!playing || !isActive || timeline == null) return@LaunchedEffect
         if (state.forecastFrame.status != RainResourceStatus.READY) return@LaunchedEffect
-        delay(1_000)
+        delay(displaySettings.playbackSpeed.delayMs)
         val current = state.forecastFrameIndex ?: 0
         val next = if (current >= timeline.frames.lastIndex) 0 else current + 1
         onSelectFrame(next)
@@ -156,6 +164,8 @@ fun RainForecastMapLibrePanel(
                 frame = frame,
                 location = state.location,
                 markerColour = accent,
+                opacity = displaySettings.opacity,
+                recenterRequest = recenterRequest,
                 modifier = Modifier.fillMaxSize(),
             )
         } else {
@@ -190,11 +200,20 @@ fun RainForecastMapLibrePanel(
                 isStale = state.forecast.isStale || state.forecastFrame.isStale,
                 playing = playing,
                 accent = accent,
+                opacity = displaySettings.opacity,
+                playbackSpeed = displaySettings.playbackSpeed,
+                canRecenter = state.location != null,
                 onTogglePlay = { playing = !playing },
                 onSelectFrame = { index ->
                     playing = false
                     onSelectFrame(index)
                 },
+                onOpacityChange = settingsViewModel::setOpacity,
+                onPlaybackSpeedChange = { speed ->
+                    playing = false
+                    settingsViewModel.setPlaybackSpeed(speed)
+                },
+                onRecenter = { recenterRequest += 1 },
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
                     .padding(start = 14.dp, end = 14.dp, bottom = 14.dp),
@@ -208,6 +227,8 @@ private fun MapLibreForecastSurface(
     frame: RainForecastFrame,
     location: LocationInfo?,
     markerColour: Color,
+    opacity: Float,
+    recenterRequest: Int,
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
@@ -215,15 +236,18 @@ private fun MapLibreForecastSurface(
     val latestFrame by rememberUpdatedState(frame)
     val latestLocation by rememberUpdatedState(location)
     val latestMarkerColour by rememberUpdatedState(markerColour)
+    val latestOpacity by rememberUpdatedState(opacity)
     var map by remember { mutableStateOf<MapLibreMap?>(null) }
     var rainSource by remember { mutableStateOf<ImageSource?>(null) }
+    var rainLayer by remember { mutableStateOf<RasterLayer?>(null) }
     var marker by remember { mutableStateOf<Marker?>(null) }
     var cameraBoundLatitude by remember { mutableStateOf(Double.NaN) }
     var cameraBoundLongitude by remember { mutableStateOf(Double.NaN) }
 
-    fun bindCameraToLocation(readyMap: MapLibreMap, point: LocationInfo?) {
+    fun bindCameraToLocation(readyMap: MapLibreMap, point: LocationInfo?, force: Boolean = false) {
         if (point == null) return
-        val changed = !cameraBoundLatitude.isFinite() ||
+        val changed = force ||
+            !cameraBoundLatitude.isFinite() ||
             !cameraBoundLongitude.isFinite() ||
             abs(point.latitude - cameraBoundLatitude) > MAPLIBRE_LOCATION_EPSILON ||
             abs(point.longitude - cameraBoundLongitude) > MAPLIBRE_LOCATION_EPSILON
@@ -300,14 +324,15 @@ private fun MapLibreForecastSurface(
                     currentFrame.toAndroidRainBitmap(),
                 )
                 style.addSource(source)
-                style.addLayer(
-                    RasterLayer(MAPLIBRE_RAIN_LAYER, MAPLIBRE_RAIN_SOURCE)
-                        .withProperties(
-                            rasterFadeDuration(0f),
-                            rasterResampling(Property.RASTER_RESAMPLING_LINEAR),
-                        ),
-                )
+                val layer = RasterLayer(MAPLIBRE_RAIN_LAYER, MAPLIBRE_RAIN_SOURCE)
+                    .withProperties(
+                        rasterFadeDuration(0f),
+                        rasterResampling(Property.RASTER_RESAMPLING_LINEAR),
+                        rasterOpacity(latestOpacity),
+                    )
+                style.addLayer(layer)
                 rainSource = source
+                rainLayer = layer
                 marker = readyMap.replaceLocationMarker(
                     current = marker,
                     location = latestLocation,
@@ -325,6 +350,10 @@ private fun MapLibreForecastSurface(
         source.setImage(frame.toAndroidRainBitmap())
     }
 
+    LaunchedEffect(opacity, rainLayer) {
+        rainLayer?.setProperties(rasterOpacity(opacity))
+    }
+
     LaunchedEffect(location?.latitude, location?.longitude, markerColour, map) {
         val readyMap = map ?: return@LaunchedEffect
         marker = readyMap.replaceLocationMarker(
@@ -334,6 +363,12 @@ private fun MapLibreForecastSurface(
             context = context,
         )
         bindCameraToLocation(readyMap, location)
+    }
+
+    LaunchedEffect(recenterRequest, map) {
+        if (recenterRequest <= 0) return@LaunchedEffect
+        val readyMap = map ?: return@LaunchedEffect
+        bindCameraToLocation(readyMap, location, force = true)
     }
 
     Box(modifier = modifier.background(Color(0xFF101010))) {
@@ -393,8 +428,10 @@ private fun RainForecastFrame.mapLibreQuad(): LatLngQuad {
 private fun RainForecastFrame.toAndroidRainBitmap(): Bitmap {
     require(values.size == grid.rows * grid.cols) { "Rain raster shape does not match grid" }
     val pixels = IntArray(values.size) { index -> rainfallArgb(values[index]) }
-    return Bitmap.createBitmap(pixels, grid.cols, grid.rows, Bitmap.Config.ARGB_8888)
+    return Bitmap.createBitmap(pixels, grid.cols, grid.rows, Bitmap.Config.ARGB_8888).asImageBitmapCompat()
 }
+
+private fun Bitmap.asImageBitmapCompat(): Bitmap = this
 
 @Composable
 private fun MapLibreZoomControls(
@@ -510,8 +547,14 @@ private fun MapLibreTimelineHud(
     isStale: Boolean,
     playing: Boolean,
     accent: Color,
+    opacity: Float,
+    playbackSpeed: RainForecastPlaybackSpeed,
+    canRecenter: Boolean,
     onTogglePlay: () -> Unit,
     onSelectFrame: (Int) -> Unit,
+    onOpacityChange: (Float) -> Unit,
+    onPlaybackSpeedChange: (RainForecastPlaybackSpeed) -> Unit,
+    onRecenter: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Column(
@@ -576,19 +619,53 @@ private fun MapLibreTimelineHud(
             }
         }
 
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(5.dp),
+        ) {
+            Text("速度", color = MAPLIBRE_MUTED, fontSize = 10.sp)
+            MapLibreCompactButton(
+                label = "${playbackSpeed.label}速",
+                accent = accent,
+                onClick = { onPlaybackSpeedChange(nextForecastPlaybackSpeed(playbackSpeed)) },
+            )
+            Spacer(Modifier.size(4.dp))
+            Text("雨層", color = MAPLIBRE_MUTED, fontSize = 10.sp)
+            MapLibreMiniButton(
+                label = "−",
+                accent = accent,
+                enabled = opacity > 0.001f,
+                onClick = { onOpacityChange(opacity - FORECAST_OPACITY_STEP) },
+            )
+            Text("${(opacity * 100).roundToInt()}%", color = Color.White, fontSize = 10.sp)
+            MapLibreMiniButton(
+                label = "+",
+                accent = accent,
+                enabled = opacity < 0.999f,
+                onClick = { onOpacityChange(opacity + FORECAST_OPACITY_STEP) },
+            )
+            Spacer(Modifier.weight(1f))
+            MapLibreCompactButton(
+                label = "定位",
+                accent = accent,
+                enabled = canRecenter,
+                onClick = onRecenter,
+            )
+        }
+
         MapLibreLegendCompact()
         val source = when (timeline.source) {
             RainForecastSource.SWIRLS -> "HKO SWIRLS 基準 ${formatForecastTime(timeline.issueTime)}"
             RainForecastSource.NOWCAST -> "HKO nowcast 後備預報"
         }
-        val preload = if (timeline.source == RainForecastSource.SWIRLS && timeline.loadedFrameCount < timeline.frames.size) {
-            " · 背景預載中"
+        val loadingMode = if (timeline.source == RainForecastSource.SWIRLS && timeline.loadedFrameCount < timeline.frames.size) {
+            " · 時段按需要載入"
         } else {
             ""
         }
         val stale = if (isStale) " · 舊資料" else ""
         Text(
-            text = "$source · 每${timeline.cadenceMinutes}分鐘一格 · 每格為${timeline.accumulationMinutes}分鐘累積$preload$stale · MapLibre · © OSM © CARTO",
+            text = "$source · 每${timeline.cadenceMinutes}分鐘一格 · 每格為${timeline.accumulationMinutes}分鐘累積$loadingMode$stale · MapLibre · © OSM © CARTO",
             color = if (isStale) Color(0xFFFFB300) else MAPLIBRE_MUTED,
             fontSize = 8.sp,
             maxLines = 1,
@@ -597,6 +674,42 @@ private fun MapLibreTimelineHud(
         if (frameLoading) {
             Text("正在準備選定時段，MapLibre 地圖保持目前視野…", color = accent, fontSize = 8.sp)
         }
+    }
+}
+
+@Composable
+private fun MapLibreCompactButton(
+    label: String,
+    accent: Color,
+    enabled: Boolean = true,
+    onClick: () -> Unit,
+) {
+    Text(
+        text = label,
+        color = if (enabled) accent else MAPLIBRE_MUTED.copy(alpha = 0.45f),
+        fontSize = 10.sp,
+        modifier = Modifier
+            .border(1.dp, if (enabled) accent.copy(alpha = 0.7f) else Color(0xFF2B2B2B))
+            .clickable(enabled = enabled, onClick = onClick)
+            .padding(horizontal = 7.dp, vertical = 7.dp),
+    )
+}
+
+@Composable
+private fun MapLibreMiniButton(
+    label: String,
+    accent: Color,
+    enabled: Boolean = true,
+    onClick: () -> Unit,
+) {
+    Box(
+        modifier = Modifier
+            .size(26.dp)
+            .border(1.dp, if (enabled) accent.copy(alpha = 0.7f) else Color(0xFF2B2B2B))
+            .clickable(enabled = enabled, onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(label, color = if (enabled) accent else MAPLIBRE_MUTED.copy(alpha = 0.45f), fontSize = 14.sp)
     }
 }
 
