@@ -120,7 +120,7 @@ internal fun ToolInitialLoadingOverlay(
     modifier: Modifier = Modifier,
 ) {
     val reduceMotion = LocalReduceMotion.current
-    val duration = if (reduceMotion) 1 else 240
+    val duration = if (reduceMotion) 120 else 240
     AnimatedVisibility(
         visible = visible,
         enter = fadeIn(tween(duration)) + scaleIn(tween(duration), initialScale = 0.985f),

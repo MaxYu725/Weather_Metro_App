@@ -1,9 +1,12 @@
 package com.weather.metro.ui
 
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
@@ -112,7 +115,7 @@ fun WeatherMetroRoot(
         var fullscreenTool by remember { mutableStateOf(false) }
         val pagerFlingBehavior = PagerDefaults.flingBehavior(
             state = pagerState,
-            snapAnimationSpec = tween(durationMillis = if (reduceMotion) 1 else 520),
+            snapAnimationSpec = tween(durationMillis = if (reduceMotion) 180 else 520),
         )
 
         LaunchedEffect(pageIndex) {
@@ -127,8 +130,10 @@ fun WeatherMetroRoot(
             if (delta > pages.size / 2) delta -= pages.size
             if (delta < -pages.size / 2) delta += pages.size
             val destinationPage = pagerState.currentPage + delta
-            if (reduceMotion) pagerState.scrollToPage(destinationPage)
-            else pagerState.animateScrollToPage(destinationPage, animationSpec = tween(520))
+            pagerState.animateScrollToPage(
+                destinationPage,
+                animationSpec = tween(if (reduceMotion) 180 else 520),
+            )
             if (!request.showAlerts) viewModel.consumeNavigation(request.token)
         }
 
@@ -137,22 +142,36 @@ fun WeatherMetroRoot(
                 .fillMaxSize()
                 .background(Color.Black),
         ) {
-            if (!fullscreenTool) {
+            AnimatedVisibility(
+                visible = !fullscreenTool,
+                enter = if (reduceMotion) {
+                    fadeIn(tween(120))
+                } else {
+                    fadeIn(tween(220, delayMillis = 80)) + expandVertically(tween(360))
+                },
+                exit = if (reduceMotion) {
+                    fadeOut(tween(100))
+                } else {
+                    fadeOut(tween(180)) + shrinkVertically(tween(360))
+                },
+            ) {
                 val showWeatherProgress = pageRequiresWeatherData(activePage) && (
                     loadState is WeatherLoadState.Loading ||
                         (loadState as? WeatherLoadState.Ready)?.refreshing == true
                     )
-                if (showWeatherProgress) {
-                    MetroProgress(colour = activePageColour)
-                } else {
-                    Spacer(Modifier.height(10.dp))
-                }
+                Column {
+                    if (showWeatherProgress) {
+                        MetroProgress(colour = activePageColour)
+                    } else {
+                        Spacer(Modifier.height(10.dp))
+                    }
 
-                PivotHeader(
-                    current = activePage.label,
-                    next = pages[(pageIndex + 1) % pages.size].label,
-                    reduceMotion = reduceMotion,
-                )
+                    PivotHeader(
+                        current = activePage.label,
+                        next = pages[(pageIndex + 1) % pages.size].label,
+                        reduceMotion = reduceMotion,
+                    )
+                }
             }
 
             HorizontalPager(
@@ -262,7 +281,7 @@ private fun PivotHeader(current: String, next: String, reduceMotion: Boolean) {
         AnimatedContent(
             targetState = current to next,
             transitionSpec = {
-                if (reduceMotion) fadeIn(tween(1)) togetherWith fadeOut(tween(1))
+                if (reduceMotion) fadeIn(tween(120)) togetherWith fadeOut(tween(100))
                 else fadeIn(tween(420)) togetherWith fadeOut(tween(320))
             },
             label = "pivot header",

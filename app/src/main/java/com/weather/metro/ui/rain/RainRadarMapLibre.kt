@@ -173,8 +173,8 @@ fun RainRadarMapLibrePanel(
     ) {
         AnimatedVisibility(
             visible = contentReady,
-            enter = fadeIn(tween(if (reduceMotion) 1 else 320)),
-            exit = fadeOut(tween(if (reduceMotion) 1 else 160)),
+            enter = fadeIn(tween(if (reduceMotion) 120 else 320)),
+            exit = fadeOut(tween(if (reduceMotion) 100 else 160)),
         ) {
             val activeTimeline = timeline ?: return@AnimatedVisibility
             val activeFrame = frame ?: return@AnimatedVisibility
@@ -188,8 +188,8 @@ fun RainRadarMapLibrePanel(
         }
         AnimatedVisibility(
             visible = !contentReady,
-            enter = fadeIn(tween(if (reduceMotion) 1 else 220)),
-            exit = fadeOut(tween(if (reduceMotion) 1 else 140)),
+            enter = fadeIn(tween(if (reduceMotion) 120 else 220)),
+            exit = fadeOut(tween(if (reduceMotion) 100 else 140)),
         ) {
             RadarCenteredState(
                 status = state.timeline.status,
@@ -216,10 +216,10 @@ fun RainRadarMapLibrePanel(
 
         AnimatedVisibility(
             visible = isActive && contentReady,
-            enter = fadeIn(tween(if (reduceMotion) 1 else 260)) +
-                slideInVertically(tween(if (reduceMotion) 1 else 320)) { height -> height / 4 },
-            exit = fadeOut(tween(if (reduceMotion) 1 else 140)) +
-                slideOutVertically(tween(if (reduceMotion) 1 else 180)) { height -> height / 5 },
+            enter = fadeIn(tween(if (reduceMotion) 120 else 260)) +
+                slideInVertically(tween(if (reduceMotion) 120 else 320)) { height -> height / 4 },
+            exit = fadeOut(tween(if (reduceMotion) 100 else 140)) +
+                slideOutVertically(tween(if (reduceMotion) 100 else 180)) { height -> height / 5 },
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .padding(start = 10.dp, end = 10.dp, bottom = 10.dp),

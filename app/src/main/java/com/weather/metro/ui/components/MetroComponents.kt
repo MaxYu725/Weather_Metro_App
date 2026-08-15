@@ -123,7 +123,7 @@ fun ExpandableMetroTile(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .animateContentSize(tween(if (reduceMotion) 1 else 620)),
+                .animateContentSize(tween(if (reduceMotion) 160 else 620)),
         ) {
             collapsed()
             if (expanded) {
