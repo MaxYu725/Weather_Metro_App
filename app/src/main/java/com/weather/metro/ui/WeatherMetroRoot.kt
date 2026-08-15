@@ -69,6 +69,7 @@ fun WeatherMetroRoot(
     rainViewModel: RainHostViewModel,
     requestLocationPermission: () -> Unit,
     requestNotificationPermission: () -> Unit,
+    openNotificationSettings: () -> Unit,
 ) {
     val radarViewModel: RainRadarHostViewModel = viewModel()
     val stormViewModel: StormHostViewModel = viewModel()
@@ -230,6 +231,7 @@ fun WeatherMetroRoot(
                                 viewModel.setNotificationsEnabled(enabled)
                                 if (enabled) requestNotificationPermission()
                             },
+                            onOpenNotificationSettings = openNotificationSettings,
                             onClearCache = {
                                 viewModel.clearCache()
                                 rainViewModel.clearCache()

@@ -9,15 +9,26 @@
 
 const CONFIG = Object.freeze({
   topic: 'hko_alerts',
-  stateKey: 'HKO_ALERT_STATE_V3',
+  stateKey: 'HKO_ALERT_STATE_V4',
+  legacyStateKey: 'HKO_ALERT_STATE_V3',
+  stateIndexKey: 'HKO_ALERT_STATE_INDEX_V5',
+  stateItemPrefix: 'HKO_ALERT_STATE_ITEM_V5_',
+  outboxKey: 'HKO_ALERT_OUTBOX_V1',
+  outboxIndexKey: 'HKO_ALERT_OUTBOX_INDEX_V2',
+  outboxEventPrefix: 'HKO_ALERT_OUTBOX_EVENT_V2_',
   triggerFunction: 'checkWeatherUpdates',
   hkoBase: 'https://data.weather.gov.hk/weatherAPI/opendata/weather.php',
   tokenUrl: 'https://oauth2.googleapis.com/token',
   fcmScope: 'https://www.googleapis.com/auth/firebase.messaging',
+  androidPackage: 'com.weather.metro',
+  maxTitleBytes: 180,
+  maxBodyBytes: 900,
+  maxStateBodyBytes: 3000,
+  maxOutboxEvents: 100,
 });
 
-/** Installs exactly one five-minute trigger. Run this once from the Apps Script editor. */
-function installFiveMinuteTrigger() {
+/** Installs exactly one one-minute trigger. Run this once from the Apps Script editor. */
+function installOneMinuteTrigger() {
   ScriptApp.getProjectTriggers()
     .filter(function (trigger) {
       return trigger.getHandlerFunction() === CONFIG.triggerFunction;
@@ -28,8 +39,13 @@ function installFiveMinuteTrigger() {
 
   ScriptApp.newTrigger(CONFIG.triggerFunction)
     .timeBased()
-    .everyMinutes(5)
+    .everyMinutes(1)
     .create();
+}
+
+/** Backwards-compatible setup entry point retained for existing deployments. */
+function installFiveMinuteTrigger() {
+  installOneMinuteTrigger();
 }
 
 /** Polls official HKO warning endpoints, diffs stable state, and sends FCM v1 updates. */
@@ -42,6 +58,10 @@ function checkWeatherUpdates() {
 
   try {
     assertConfiguration_();
+    const properties = PropertiesService.getScriptProperties();
+    // Retry accepted work before contacting HKO, so an HKO outage cannot block
+    // recovery from an unrelated earlier FCM outage.
+    const retryResult = flushOutbox_(properties, Date.now());
     const responses = UrlFetchApp.fetchAll([
       hkoRequest_('warnsum'),
       hkoRequest_('warningInfo'),
@@ -49,34 +69,33 @@ function checkWeatherUpdates() {
     ]);
     const payloads = responses.map(parseHkoResponse_);
     const current = normaliseState_(payloads[0], payloads[1], payloads[2]);
-    const properties = PropertiesService.getScriptProperties();
-    const previousText = properties.getProperty(CONFIG.stateKey);
+    const previous = readState_(properties);
+    const events = previous === null ? initialEvents_(current) : diffStates_(previous, current);
+    const outbox = enqueueEvents_(readOutbox_(properties), events, Date.now());
+    // Persist the outbox first. If the state write fails, the next execution can
+    // safely enqueue the same deterministic IDs without duplicating events.
+    writeOutbox_(properties, outbox);
+    writeState_(properties, current);
 
-    // First execution establishes a baseline and intentionally sends no historical alerts.
-    if (!previousText) {
-      properties.setProperty(CONFIG.stateKey, JSON.stringify(current));
-      console.log('Initial HKO alert baseline stored.');
-      return;
+    const result = flushOutbox_(properties, Date.now());
+    const sent = retryResult.sent + result.sent;
+    const failed = retryResult.failed + result.failed;
+    console.log(
+      'Detected ' + events.length + ' HKO change(s); sent ' + sent +
+      ', pending ' + result.pending + '.',
+    );
+    if (failed > 0) {
+      throw new Error(failed + ' queued FCM send attempt(s) failed and will be retried.');
     }
-
-    const previous = safeParse_(previousText, {});
-    const events = diffStates_(previous, current);
-    if (events.length === 0) {
-      console.log('No HKO alert changes.');
-      return;
-    }
-
-    events.forEach(sendEvent_);
-    properties.setProperty(CONFIG.stateKey, JSON.stringify(current));
-    console.log('Sent ' + events.length + ' HKO alert change(s).');
   } finally {
     lock.releaseLock();
   }
 }
 
-/** Clears only the saved alert baseline. The next check becomes a silent initialisation. */
+/** Clears saved alert state. The next check reissues every alert still in force. */
 function resetAlertBaseline() {
-  PropertiesService.getScriptProperties().deleteProperty(CONFIG.stateKey);
+  const properties = PropertiesService.getScriptProperties();
+  clearState_(properties);
 }
 
 /** Sends a harmless connectivity check to subscribed test devices. */
@@ -133,7 +152,7 @@ function normaliseState_(summary, detailPayload, tipPayload) {
       id: id,
       code: code,
       title: title,
-      body: content || title,
+      body: truncateUtf8_(content || title, CONFIG.maxStateBodyBytes),
       updatedAt: updatedAt,
       severity: severity_(code, false),
       isTip: false,
@@ -151,7 +170,7 @@ function normaliseState_(summary, detailPayload, tipPayload) {
       id: id,
       code: 'SWT',
       title: '特別天氣提示',
-      body: body,
+      body: truncateUtf8_(body, CONFIG.maxStateBodyBytes),
       updatedAt: updatedAt,
       severity: severity_(body, true),
       isTip: true,
@@ -176,24 +195,181 @@ function diffStates_(previous, current) {
   return events;
 }
 
-function sendEvent_(event) {
+function initialEvents_(current) {
+  return Object.keys(current).sort().map(function (id) {
+    return { kind: 'ISSUE', item: current[id] };
+  });
+}
+
+function readState_(properties) {
+  const indexText = properties.getProperty(CONFIG.stateIndexKey);
+  if (indexText === null) {
+    const legacyText = properties.getProperty(CONFIG.stateKey) ||
+      properties.getProperty(CONFIG.legacyStateKey);
+    return legacyText === null ? null : safeParse_(legacyText, {});
+  }
+  const ids = safeParse_(indexText, []);
+  if (!Array.isArray(ids)) return {};
+  const state = {};
+  ids.forEach(function (id) {
+    const value = properties.getProperty(statePropertyKey_(id));
+    if (value === null) throw new Error('Missing alert state property for ' + id);
+    const item = safeParse_(value, null);
+    if (!item) throw new Error('Invalid alert state property for ' + id);
+    state[id] = item;
+  });
+  return state;
+}
+
+function writeState_(properties, state) {
+  const previousIds = safeParse_(properties.getProperty(CONFIG.stateIndexKey), []);
+  const nextIds = Object.keys(state).sort();
+  const nextIdSet = {};
+  const values = {};
+  nextIds.forEach(function (id) {
+    nextIdSet[id] = true;
+    values[statePropertyKey_(id)] = JSON.stringify(state[id]);
+  });
+  values[CONFIG.stateIndexKey] = JSON.stringify(nextIds);
+  properties.setProperties(values, false);
+  (Array.isArray(previousIds) ? previousIds : []).forEach(function (id) {
+    if (!nextIdSet[id]) properties.deleteProperty(statePropertyKey_(id));
+  });
+  properties.deleteProperty(CONFIG.stateKey);
+  properties.deleteProperty(CONFIG.legacyStateKey);
+}
+
+function clearState_(properties) {
+  const ids = safeParse_(properties.getProperty(CONFIG.stateIndexKey), []);
+  (Array.isArray(ids) ? ids : []).forEach(function (id) {
+    properties.deleteProperty(statePropertyKey_(id));
+  });
+  properties.deleteProperty(CONFIG.stateIndexKey);
+  properties.deleteProperty(CONFIG.stateKey);
+  properties.deleteProperty(CONFIG.legacyStateKey);
+}
+
+function statePropertyKey_(id) {
+  return CONFIG.stateItemPrefix + digest_(id);
+}
+
+function messageForEvent_(event, queuedAtEpochMs) {
   const item = event.item;
   const prefix = event.kind === 'CANCEL' ? '已取消' : event.kind === 'UPDATE' ? '已更新' : '已發出';
-  const eventId = 'hko:' + digest_([event.kind, item.id, item.fingerprint].join('|'));
+  const eventId = 'hko:' + digest_([
+    event.kind,
+    item.id,
+    item.fingerprint,
+    item.updatedAt || '',
+  ].join('|'));
   const target = 'weathermetro://current/alerts' +
     '?alertId=' + encodeURIComponent(item.id) +
     '&code=' + encodeURIComponent(item.code) +
     '&kind=' + encodeURIComponent(event.kind);
-  sendFcm_({
-    title: prefix + '：' + item.title,
-    body: item.body,
+  const fullBody = String(item.body || item.title || '香港天文台天氣更新');
+  const body = truncateUtf8_(fullBody, CONFIG.maxBodyBytes);
+  return {
+    title: truncateUtf8_(prefix + '：' + item.title, CONFIG.maxTitleBytes),
+    body: body,
+    bodyTruncated: body !== fullBody ? 'true' : 'false',
     channel: channelFor_(item.severity, item.isTip),
     eventId: eventId,
     alertId: item.id,
     alertCode: item.code,
     eventKind: event.kind,
     target: target,
+    sentAtEpochMs: String(queuedAtEpochMs),
+    schemaVersion: '2',
+  };
+}
+
+function readOutbox_(properties) {
+  const indexText = properties.getProperty(CONFIG.outboxIndexKey);
+  if (indexText === null) {
+    const legacy = safeParse_(properties.getProperty(CONFIG.outboxKey), []);
+    return Array.isArray(legacy) ? legacy : [];
+  }
+  const ids = safeParse_(indexText, []);
+  if (!Array.isArray(ids)) return [];
+  return ids.map(function (id) {
+    const value = properties.getProperty(CONFIG.outboxEventPrefix + id);
+    if (value === null) throw new Error('Missing FCM outbox property for ' + id);
+    const entry = safeParse_(value, null);
+    if (!entry) throw new Error('Invalid FCM outbox property for ' + id);
+    return entry;
   });
+}
+
+function writeOutbox_(properties, outbox) {
+  const previousIds = safeParse_(properties.getProperty(CONFIG.outboxIndexKey), []);
+  const nextIds = outbox.map(function (entry) { return entry.id; });
+  const nextIdSet = {};
+  const values = {};
+  outbox.forEach(function (entry) {
+    nextIdSet[entry.id] = true;
+    values[CONFIG.outboxEventPrefix + entry.id] = JSON.stringify(entry);
+  });
+  values[CONFIG.outboxIndexKey] = JSON.stringify(nextIds);
+  properties.setProperties(values, false);
+  (Array.isArray(previousIds) ? previousIds : []).forEach(function (id) {
+    if (!nextIdSet[id]) properties.deleteProperty(CONFIG.outboxEventPrefix + id);
+  });
+  properties.deleteProperty(CONFIG.outboxKey);
+}
+
+function enqueueEvents_(outbox, events, nowEpochMs) {
+  const queued = outbox.slice();
+  const knownIds = {};
+  queued.forEach(function (entry) { knownIds[entry.id] = true; });
+  events.forEach(function (event) {
+    const message = messageForEvent_(event, nowEpochMs);
+    if (knownIds[message.eventId]) return;
+    queued.push({
+      id: message.eventId,
+      message: message,
+      attempts: 0,
+      queuedAtEpochMs: nowEpochMs,
+      nextAttemptEpochMs: 0,
+      lastError: '',
+    });
+    knownIds[message.eventId] = true;
+  });
+  if (queued.length > CONFIG.maxOutboxEvents) {
+    throw new Error('FCM outbox capacity exceeded; refusing to discard weather events.');
+  }
+  return queued;
+}
+
+function flushOutbox_(properties, nowEpochMs) {
+  const pending = readOutbox_(properties);
+  const remaining = [];
+  let sent = 0;
+  let failed = 0;
+  pending.forEach(function (entry) {
+    if (Number(entry.nextAttemptEpochMs || 0) > nowEpochMs) {
+      remaining.push(entry);
+      return;
+    }
+    try {
+      sendFcm_(entry.message);
+      sent += 1;
+    } catch (error) {
+      const attempts = Number(entry.attempts || 0) + 1;
+      entry.attempts = attempts;
+      entry.lastError = String(error && error.message ? error.message : error).slice(0, 500);
+      entry.nextAttemptEpochMs = nowEpochMs + retryDelayMillis_(attempts);
+      remaining.push(entry);
+      failed += 1;
+      console.error('FCM outbox event ' + entry.id + ' failed: ' + entry.lastError);
+    }
+  });
+  writeOutbox_(properties, remaining);
+  return { sent: sent, failed: failed, pending: remaining.length };
+}
+
+function retryDelayMillis_(attempts) {
+  const exponential = Math.min(60 * 60 * 1000, 60 * 1000 * Math.pow(2, Math.min(attempts - 1, 6)));
+  return exponential + Math.floor(Math.random() * 30000);
 }
 
 function sendFcm_(message) {
@@ -212,11 +388,14 @@ function sendFcm_(message) {
         alertCode: message.alertCode || '',
         eventKind: message.eventKind || '',
         target: message.target,
+        bodyTruncated: message.bodyTruncated || 'false',
+        sentAtEpochMs: message.sentAtEpochMs || String(Date.now()),
+        schemaVersion: message.schemaVersion || '2',
       },
       android: {
-        priority: message.channel === 'weather_alert_urgent' ? 'HIGH' : 'NORMAL',
-        ttl: '3600s',
-        collapse_key: message.alertId || message.eventId,
+        priority: message.channel === 'weather_service_status' ? 'NORMAL' : 'HIGH',
+        ttl: '86400s',
+        restrictedPackageName: CONFIG.androidPackage,
       },
     },
   };
@@ -281,6 +460,21 @@ function safeParse_(text, fallback) {
 
 function cleanText_(value) {
   return String(value || '').replace(/\s+/g, ' ').trim();
+}
+
+function truncateUtf8_(value, maxBytes) {
+  const text = String(value || '').trim();
+  if (Utilities.newBlob(text).getBytes().length <= maxBytes) return text;
+  const suffix = '…';
+  let low = 0;
+  let high = text.length;
+  while (low < high) {
+    const middle = Math.ceil((low + high) / 2);
+    const candidate = text.slice(0, middle).replace(/[\uD800-\uDBFF]$/, '') + suffix;
+    if (Utilities.newBlob(candidate).getBytes().length <= maxBytes) low = middle;
+    else high = middle - 1;
+  }
+  return text.slice(0, low).replace(/[\uD800-\uDBFF]$/, '').trimEnd() + suffix;
 }
 
 function digest_(value) {

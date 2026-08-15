@@ -7,10 +7,10 @@ import com.weather.metro.R
 import com.weather.metro.domain.AlertSeverity
 
 object NotificationChannels {
-    const val URGENT = "weather_alert_urgent"
-    const val GENERAL = "weather_alert_general"
-    const val TIPS = "weather_tips"
-    const val STATUS = "weather_service_status"
+    const val URGENT = NotificationContract.URGENT
+    const val GENERAL = NotificationContract.GENERAL
+    const val TIPS = NotificationContract.TIPS
+    const val STATUS = NotificationContract.STATUS
     const val TOPIC_PRODUCTION = "hko_alerts"
 
     fun create(context: Context) {

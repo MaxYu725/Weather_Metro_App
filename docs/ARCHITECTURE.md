@@ -26,12 +26,31 @@ uploaded, logged, or included in FCM subscriptions.
 The app derives active alert tiles from HKO `warnsum`; `warningInfo` supplies the
 long text and `swt` supplies special tips. Rows marked `CANCEL` are excluded.
 
-Apps Script performs the same active-state normalisation every five minutes.
-IDs are warning-code based (tips use a content digest), while fingerprints also
-contain update time and text. A script lock prevents overlapping executions.
-The first run is a silent baseline. Later issue/update/cancel differences are
-grouped by Android notification channel and sent to the `hko_alerts` FCM topic
-using short-lived OAuth 2.0 credentials and the FCM HTTP v1 endpoint.
+Apps Script performs the same active-state normalisation every minute. IDs are
+warning-code based (tips use a content digest), while fingerprints contain the
+stable warning code, title, and text. A script lock prevents overlapping
+executions. New deployments emit alerts already in force; V3/V4 state migrates
+without replaying unchanged alerts.
+
+Alert baselines and issue/update/cancel events use per-item Script Properties,
+so no value exceeds Apps Script's 9 KB quota. Events enter the outbox before FCM
+delivery and failed sends remain queued with exponential backoff. Messages use
+high Android priority, a 24-hour TTL, no collapse key, deterministic event IDs,
+and byte-bounded text so topic payloads remain below the FCM limit.
+
+Android validates each data message, commits it to a local inbox, and only then
+posts the system notification. Permission- or channel-blocked events remain
+pending and are replayed when the app resumes after access is restored. Posted
+event IDs provide durable deduplication for server retries. If FCM reports that
+pending messages were deleted, the app marks a full weather refresh for its next
+resume. Users can open Android's app notification settings directly from the
+settings page.
+
+This is an at-least-once, compensating design rather than an absolute delivery
+guarantee: FCM topics, Android user controls, device force-stop, and OEM power
+management remain outside the app's control. A stronger service would add a
+server event journal, per-installation cursors/acknowledgements, and client
+reconciliation over an authenticated API.
 
 ## Security boundaries
 
