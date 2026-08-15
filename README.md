@@ -22,13 +22,33 @@ estimates that HKO does not publish at the same granularity.
   nearest HKO observation station, and nearest tide station selection.
 - Native Tools modules for point rainfall, observed Radar, two-hour SWIRLS
   forecast, and multi-agency tropical-cyclone Live tracks from HKO/CMA/JMA/CWA.
-- MapLibre-native Radar and tropical-cyclone rendering with independent tool
-  lifecycle, cache and refresh state; no WebView/Leaflet runtime is embedded.
+- MapLibre-native Radar, two-hour Forecast and tropical-cyclone rendering with
+  independent tool lifecycle, cache and refresh state; no WebView/Leaflet
+  runtime is embedded.
 - Accent colour, text scaling, geometric pattern strength, motion, contrast,
   precise-location and notification settings.
 - Offline atomic cache and stale-data indication, with independent Rain and
   Storm caches alongside the normal weather cache.
 - FCM HTTP v1 alert delivery backed by a five-minute Apps Script monitor.
+
+## Integration status
+
+The native Tools integration is still under active refinement and is **not yet
+considered complete**.
+
+- Point rainfall: integrated and under regression review.
+- Radar: MapLibre production path validated on real devices.
+- Two-hour Forecast: **MapLibre is the production-visible renderer**. The Canvas
+  renderer remains in the repository only as a hidden reference/safety
+  implementation. Forecast still requires further product and real-device
+  refinement before the overall Tools integration can be closed.
+- Storm Live: HKO/CMA/JMA/CWA MapLibre path validated on real devices.
+- Storm Archive: deferred TODO. Storm-Track is still accumulating historical
+  storm/advisory records and the Archive feature has not yet completed formal
+  functional/real-device validation, so it must not be treated as
+  production-ready in Weather Metro.
+
+See [docs/TOOLS_TODO.md](docs/TOOLS_TODO.md) for the active remaining work.
 
 ## Architecture
 
