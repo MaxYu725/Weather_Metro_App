@@ -71,6 +71,7 @@ fun WeatherMetroRoot(
     val stormViewModel: StormHostViewModel = viewModel()
     val settings by viewModel.settings.collectAsStateWithLifecycle()
     val loadState by viewModel.loadState.collectAsStateWithLifecycle()
+    val toolLocation by viewModel.toolLocation.collectAsStateWithLifecycle()
     val navigationRequest by viewModel.navigationRequest.collectAsStateWithLifecycle()
     val rainState by rainViewModel.state.collectAsStateWithLifecycle()
     val radarState by radarViewModel.state.collectAsStateWithLifecycle()
@@ -84,14 +85,9 @@ fun WeatherMetroRoot(
             },
         ),
     )
-    val rainHostLocation = when (val state = loadState) {
-        is WeatherLoadState.Ready -> state.snapshot.location
-        is WeatherLoadState.Error -> state.cached?.location
-        WeatherLoadState.Loading -> null
-    }
 
-    LaunchedEffect(rainHostLocation) {
-        rainHostLocation?.let { location ->
+    LaunchedEffect(toolLocation) {
+        toolLocation?.let { location ->
             rainViewModel.bindHostLocation(location)
             radarViewModel.bindHostLocation(location)
             stormViewModel.bindHostLocation(location)

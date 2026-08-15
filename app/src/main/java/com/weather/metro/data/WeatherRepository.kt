@@ -3,6 +3,7 @@ package com.weather.metro.data
 import com.weather.metro.data.cache.WeatherCache
 import com.weather.metro.data.hko.HkoClient
 import com.weather.metro.data.location.LocationRepository
+import com.weather.metro.domain.LocationInfo
 import com.weather.metro.domain.WeatherSnapshot
 
 data class RefreshResult(
@@ -17,13 +18,17 @@ class WeatherRepository(
 ) {
     fun hasLocationPermission(): Boolean = locationRepository.hasLocationPermission()
 
-    suspend fun refresh(usePreciseLocation: Boolean): RefreshResult {
-        val location = if (usePreciseLocation) {
+    suspend fun resolveLocation(usePreciseLocation: Boolean): LocationInfo =
+        if (usePreciseLocation) {
             runCatching { locationRepository.currentLocation() }.getOrElse { locationRepository.defaultLocation() }
         } else {
             locationRepository.defaultLocation()
         }
 
+    suspend fun refresh(usePreciseLocation: Boolean): RefreshResult =
+        refreshAt(resolveLocation(usePreciseLocation))
+
+    suspend fun refreshAt(location: LocationInfo): RefreshResult {
         return try {
             val result = hkoClient.load(location)
             runCatching { cache.write(result.cachePayload) }
