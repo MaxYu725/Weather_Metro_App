@@ -72,6 +72,7 @@ import kotlin.math.roundToInt
 private val MAPLIBRE_FALLBACK_ACCENT = Color(0xFF20A7D8)
 private val MAPLIBRE_MUTED = Color(0xFF8E8E8E)
 private val MAPLIBRE_PANEL = Color(0xF20A0A0A)
+private val MAPLIBRE_WARNING = Color(0xFFFFB300)
 private const val MAPLIBRE_RAIN_SOURCE = "weather-metro-rain-image"
 private const val MAPLIBRE_RAIN_LAYER = "weather-metro-rain-layer"
 // MapLibre Native uses a 512 px world-tile scale while the Canvas renderer uses 256 px.
@@ -130,19 +131,90 @@ fun RainForecastMapLibrePanel(
     val displaySettings by settingsViewModel.state.collectAsStateWithLifecycle()
     val timeline = state.forecast.value
     val frame = state.forecastFrame.value
+    val runKey = timeline?.let { "${it.source.name}:${it.issueTime}" }
     var playing by rememberSaveable { mutableStateOf(false) }
     var recenterRequest by rememberSaveable { mutableStateOf(0) }
+    var observedRunKey by rememberSaveable { mutableStateOf<String?>(null) }
+    var desiredLeadMinutes by rememberSaveable { mutableStateOf<Int?>(null) }
+    var failedPlaybackIndexes by remember(runKey) { mutableStateOf(emptySet<Int>()) }
+    var pendingPlaybackIndex by remember(runKey) { mutableStateOf<Int?>(null) }
+    var playbackNotice by remember(runKey) { mutableStateOf<String?>(null) }
     val accent = if (pageColour.alpha > 0f) pageColour else MAPLIBRE_FALLBACK_ACCENT
 
     LaunchedEffect(isActive) {
-        if (!isActive) playing = false
+        if (!isActive) {
+            playing = false
+            pendingPlaybackIndex = null
+        }
     }
+
+    LaunchedEffect(runKey) {
+        val activeTimeline = timeline ?: return@LaunchedEffect
+        val activeRunKey = runKey ?: return@LaunchedEffect
+        val currentIndex = state.forecastFrameIndex ?: 0
+        if (observedRunKey == null) {
+            observedRunKey = activeRunKey
+            if (desiredLeadMinutes == null) {
+                desiredLeadMinutes = activeTimeline.frames.getOrNull(currentIndex)?.leadMinutes
+            }
+            return@LaunchedEffect
+        }
+        if (observedRunKey == activeRunKey) return@LaunchedEffect
+
+        observedRunKey = activeRunKey
+        val alignedIndex = alignedForecastFrameIndex(
+            leadMinutes = activeTimeline.frames.map { it.leadMinutes },
+            preferredLeadMinutes = desiredLeadMinutes,
+        )
+        if (alignedIndex >= 0) {
+            desiredLeadMinutes = activeTimeline.frames[alignedIndex].leadMinutes
+            if (alignedIndex != currentIndex) {
+                if (playing) pendingPlaybackIndex = alignedIndex
+                onSelectFrame(alignedIndex)
+            }
+        }
+    }
+
+    LaunchedEffect(
+        pendingPlaybackIndex,
+        state.forecastFrame.status,
+        state.forecastFrameIndex,
+        state.forecastFrame.errorMessage,
+        state.forecastFrame.value?.frameIndex,
+    ) {
+        val pending = pendingPlaybackIndex ?: return@LaunchedEffect
+        when {
+            state.forecastFrame.status == RainResourceStatus.LOADING -> Unit
+            state.forecastFrame.status == RainResourceStatus.READY &&
+                state.forecastFrameIndex == pending &&
+                state.forecastFrame.value?.frameIndex == pending -> {
+                failedPlaybackIndexes = failedPlaybackIndexes - pending
+                pendingPlaybackIndex = null
+                playbackNotice = null
+            }
+            state.forecastFrame.status == RainResourceStatus.ERROR ||
+                state.forecastFrame.errorMessage != null -> {
+                failedPlaybackIndexes = failedPlaybackIndexes + pending
+                val label = timeline?.frames?.getOrNull(pending)?.let { formatForecastTime(it.validTime) }
+                    ?: "選定"
+                playbackNotice = "$label 時段載入失敗，播放已略過"
+                pendingPlaybackIndex = null
+                desiredLeadMinutes = timeline
+                    ?.frames
+                    ?.getOrNull(state.forecastFrameIndex ?: -1)
+                    ?.leadMinutes
+                    ?: desiredLeadMinutes
+            }
+        }
+    }
+
     LaunchedEffect(
         playing,
         isActive,
         state.forecastFrame.status,
         state.forecastFrameIndex,
         displaySettings.playbackSpeed,
+        failedPlaybackIndexes,
         timeline?.issueTime,
         timeline?.frames?.size,
     ) {
@@ -150,7 +222,19 @@ fun RainForecastMapLibrePanel(
         if (state.forecastFrame.status != RainResourceStatus.READY) return@LaunchedEffect
         delay(displaySettings.playbackSpeed.delayMs)
         val current = state.forecastFrameIndex ?: 0
-        val next = if (current >= timeline.frames.lastIndex) 0 else current + 1
+        val next = nextForecastPlaybackIndex(
+            currentIndex = current,
+            frameCount = timeline.frames.size,
+            failedIndexes = failedPlaybackIndexes,
+        )
+        if (next == null) {
+            playing = false
+            playbackNotice = "其餘時段暫時無法載入，播放已停止"
+            return@LaunchedEffect
+        }
+        desiredLeadMinutes = timeline.frames[next].leadMinutes
+        pendingPlaybackIndex = next
+        playbackNotice = null
         onSelectFrame(next)
     }
 
@@ -186,6 +270,8 @@ fun RainForecastMapLibrePanel(
             },
             onRefresh = {
                 playing = false
+                playbackNotice = null
+                failedPlaybackIndexes = emptySet()
                 onRefresh()
             },
             modifier = Modifier.align(Alignment.TopCenter),
@@ -203,9 +289,17 @@ fun RainForecastMapLibrePanel(
                 opacity = displaySettings.opacity,
                 playbackSpeed = displaySettings.playbackSpeed,
                 canRecenter = state.location != null,
-                onTogglePlay = { playing = !playing },
+                failedPlaybackIndexes = failedPlaybackIndexes,
+                playbackNotice = playbackNotice,
+                onTogglePlay = {
+                    if (timeline.frames.size >= 2) playing = !playing
+                },
                 onSelectFrame = { index ->
                     playing = false
+                    pendingPlaybackIndex = null
+                    failedPlaybackIndexes = failedPlaybackIndexes - index
+                    playbackNotice = null
+                    desiredLeadMinutes = timeline.frames.getOrNull(index)?.leadMinutes ?: desiredLeadMinutes
                     onSelectFrame(index)
                 },
                 onOpacityChange = settingsViewModel::setOpacity,
@@ -550,6 +644,8 @@ private fun MapLibreTimelineHud(
     opacity: Float,
     playbackSpeed: RainForecastPlaybackSpeed,
     canRecenter: Boolean,
+    failedPlaybackIndexes: Set<Int>,
+    playbackNotice: String?,
     onTogglePlay: () -> Unit,
     onSelectFrame: (Int) -> Unit,
     onOpacityChange: (Float) -> Unit,
@@ -600,18 +696,32 @@ private fun MapLibreTimelineHud(
             ) {
                 itemsIndexed(timeline.frames) { index, slot ->
                     val selected = index == selectedIndex
+                    val failed = index in failedPlaybackIndexes
+                    val borderColour = when {
+                        selected -> accent
+                        failed -> MAPLIBRE_WARNING
+                        else -> Color(0xFF444444)
+                    }
                     Column(
                         modifier = Modifier
                             .background(if (selected) accent else Color(0xFF101010))
-                            .border(1.dp, if (selected) accent else Color(0xFF444444))
+                            .border(1.dp, borderColour)
                             .clickable { onSelectFrame(index) }
                             .padding(horizontal = 10.dp, vertical = 6.dp),
                         horizontalAlignment = Alignment.CenterHorizontally,
                     ) {
-                        Text(formatForecastTime(slot.validTime), color = Color.White, fontSize = 11.sp)
                         Text(
-                            "+${slot.leadMinutes} 分",
-                            color = if (selected) Color.White.copy(alpha = 0.78f) else MAPLIBRE_MUTED,
+                            formatForecastTime(slot.validTime),
+                            color = if (failed && !selected) MAPLIBRE_WARNING else Color.White,
+                            fontSize = 11.sp,
+                        )
+                        Text(
+                            if (failed && !selected) "略過 · 點按重試" else "+${slot.leadMinutes} 分",
+                            color = when {
+                                selected -> Color.White.copy(alpha = 0.78f)
+                                failed -> MAPLIBRE_WARNING
+                                else -> MAPLIBRE_MUTED
+                            },
                             fontSize = 8.sp,
                         )
                     }
@@ -666,13 +776,18 @@ private fun MapLibreTimelineHud(
         val stale = if (isStale) " · 舊資料" else ""
         Text(
             text = "$source · 每${timeline.cadenceMinutes}分鐘一格 · 每格為${timeline.accumulationMinutes}分鐘累積$loadingMode$stale · MapLibre · © OSM © CARTO",
-            color = if (isStale) Color(0xFFFFB300) else MAPLIBRE_MUTED,
+            color = if (isStale) MAPLIBRE_WARNING else MAPLIBRE_MUTED,
             fontSize = 8.sp,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
-        if (frameLoading) {
-            Text("正在準備選定時段，MapLibre 地圖保持目前視野…", color = accent, fontSize = 8.sp)
+        when {
+            playbackNotice != null -> {
+                Text(playbackNotice, color = MAPLIBRE_WARNING, fontSize = 8.sp)
+            }
+            frameLoading -> {
+                Text("正在準備選定時段，MapLibre 地圖保持目前視野…", color = accent, fontSize = 8.sp)
+            }
         }
     }
 }
