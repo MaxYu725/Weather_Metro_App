@@ -11,7 +11,12 @@ internal fun rainUserFacingError(rawMessage: String?): String {
             raw.contains("xml") ||
             raw.contains("malformed") ||
             raw.contains("invalid payload") ||
-            raw.contains("unexpected payload") -> "資料格式暫時無法讀取"
+            raw.contains("unexpected payload") ||
+            raw.contains(" grid missing") ||
+            raw.contains(" contract missing") ||
+            raw.contains(" field missing") ||
+            raw.contains("frame index must be") ||
+            raw.contains("frame count must be") -> "資料格式暫時無法讀取"
         raw.contains("http") ||
             raw.contains("network") ||
             raw.contains("connection") ||
