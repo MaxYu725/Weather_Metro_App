@@ -13,6 +13,7 @@ import com.weather.metro.data.location.LocationRepository
 import com.weather.metro.data.settings.PageColourSlot
 import com.weather.metro.data.settings.SettingsRepository
 import com.weather.metro.data.settings.UiSettings
+import com.weather.metro.domain.LocationInfo
 import com.weather.metro.domain.WeatherLoadState
 import com.weather.metro.notification.NotificationChannels
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -31,14 +32,17 @@ data class AppNavigationRequest(
 
 class WeatherViewModel(application: Application) : AndroidViewModel(application) {
     private val settingsRepository = SettingsRepository(application)
+    private val locationRepository = LocationRepository(application)
     private val weatherRepository = WeatherRepository(
         hkoClient = HkoClient(),
-        locationRepository = LocationRepository(application),
+        locationRepository = locationRepository,
         cache = WeatherCache(application),
     )
 
     private val _loadState = MutableStateFlow<WeatherLoadState>(WeatherLoadState.Loading)
     val loadState: StateFlow<WeatherLoadState> = _loadState.asStateFlow()
+    private val _toolLocation = MutableStateFlow<LocationInfo?>(null)
+    val toolLocation: StateFlow<LocationInfo?> = _toolLocation.asStateFlow()
     val settings: StateFlow<UiSettings> = settingsRepository.settings
     private val _navigationRequest = MutableStateFlow<AppNavigationRequest?>(null)
     val navigationRequest: StateFlow<AppNavigationRequest?> = _navigationRequest.asStateFlow()
@@ -46,7 +50,10 @@ class WeatherViewModel(application: Application) : AndroidViewModel(application)
     init {
         viewModelScope.launch {
             val cached = weatherRepository.cached()
-            if (cached != null) _loadState.value = WeatherLoadState.Ready(cached, refreshing = true)
+            if (cached != null) {
+                _toolLocation.value = cached.location
+                _loadState.value = WeatherLoadState.Ready(cached, refreshing = true)
+            }
             refresh()
         }
     }
@@ -56,8 +63,11 @@ class WeatherViewModel(application: Application) : AndroidViewModel(application)
             val existing = (_loadState.value as? WeatherLoadState.Ready)?.snapshot
             if (existing != null) _loadState.value = WeatherLoadState.Ready(existing, refreshing = true)
             else _loadState.value = WeatherLoadState.Loading
+
+            val location = weatherRepository.resolveLocation(settings.value.preciseLocation)
+            _toolLocation.value = location
             runCatching {
-                weatherRepository.refresh(settings.value.preciseLocation)
+                weatherRepository.refreshAt(location)
             }.onSuccess(::showResult).onFailure { error ->
                 _loadState.value = WeatherLoadState.Error(
                     message = error.message ?: "未能取得天氣資料",
