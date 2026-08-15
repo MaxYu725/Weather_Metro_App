@@ -57,6 +57,7 @@ import androidx.lifecycle.repeatOnLifecycle
 import com.weather.metro.data.tools.RainRadarMode
 import com.weather.metro.ui.components.MetroSectionLabel
 import com.weather.metro.ui.components.MetroTile
+import com.weather.metro.ui.components.MetroTileTreatment
 import com.weather.metro.ui.rain.RAIN_TOOL_POLICY_TICK_MS
 import com.weather.metro.ui.rain.RainForecastMapLibrePanel
 import com.weather.metro.ui.rain.RainHostState
@@ -572,6 +573,7 @@ private fun ToolTile(
         },
         onClick = onClick,
         interactionSource = interactionSource,
+        treatment = MetroTileTreatment.NEUTRAL_SURFACE,
     ) {
         Column(Modifier.fillMaxSize()) {
             Text(status, color = Color.White.copy(alpha = 0.68f), fontSize = 10.sp)

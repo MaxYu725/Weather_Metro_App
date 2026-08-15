@@ -51,6 +51,7 @@ import com.weather.metro.domain.WeatherAlert
 import com.weather.metro.domain.WeatherSnapshot
 import com.weather.metro.ui.AppNavigationRequest
 import com.weather.metro.ui.components.ExpandableMetroTile
+import com.weather.metro.ui.components.MetroTileTreatment
 import com.weather.metro.ui.components.HkoRemoteImage
 import com.weather.metro.ui.components.MetroSectionLabel
 import com.weather.metro.ui.components.MetroStat
@@ -129,6 +130,7 @@ fun CurrentScreen(
             ExpandableMetroTile(
                 seed = "current:${snapshot.location.district}",
                 background = pageColour,
+                treatment = MetroTileTreatment.NEUTRAL_SURFACE,
                 expanded = heroExpanded,
                 onExpandedChange = {
                     heroExpanded = it
@@ -208,6 +210,7 @@ fun CurrentScreen(
             ExpandableMetroTile(
                 seed = "local-forecast",
                 background = pageColour,
+                treatment = MetroTileTreatment.NEUTRAL_SURFACE,
                 expanded = localForecastExpanded,
                 onExpandedChange = {
                     localForecastExpanded = it
@@ -335,7 +338,12 @@ private fun AlertsSection(
         if (selected != null || request.eventKind == "CANCEL") onNavigationHandled(request.token)
     }
     if (alerts.isEmpty()) {
-        MetroTile(seed = "no-alerts", background = pageColour, modifier = Modifier.fillMaxWidth()) {
+        MetroTile(
+            seed = "no-alerts",
+            background = pageColour,
+            modifier = Modifier.fillMaxWidth(),
+            treatment = MetroTileTreatment.NEUTRAL_SURFACE,
+        ) {
             Text("現時沒有生效的天氣警告或特別提示。", color = LocalMetroSubText.current)
         }
         return
@@ -571,7 +579,7 @@ fun SettingsScreen(
         item {
             MetroTile("page-colours", pageColour, Modifier.fillMaxWidth()) {
                 Column {
-                    SettingTitle("page colours", "為每個 Pivot 頁面設定自己的磁貼顏色")
+                    SettingTitle("page accents", "為每個 Pivot 頁面設定局部強調色")
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(4.dp),

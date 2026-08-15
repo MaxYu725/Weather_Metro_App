@@ -12,6 +12,7 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
@@ -49,6 +50,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.weather.metro.ui.theme.LocalMetroSubText
+import com.weather.metro.ui.theme.LocalMetroOutline
+import com.weather.metro.ui.theme.LocalMetroSurface
 import com.weather.metro.ui.theme.LocalPatternIntensity
 import com.weather.metro.ui.theme.LocalReduceMotion
 import kotlinx.coroutines.Dispatchers
@@ -56,6 +59,11 @@ import kotlinx.coroutines.withContext
 import java.net.HttpURLConnection
 import java.net.URI
 import kotlin.random.Random
+
+enum class MetroTileTreatment {
+    ACCENT_FILL,
+    NEUTRAL_SURFACE,
+}
 
 @Composable
 fun MetroSectionLabel(text: String, modifier: Modifier = Modifier) {
@@ -77,9 +85,13 @@ fun MetroTile(
     interactionSource: MutableInteractionSource? = null,
     contentPadding: androidx.compose.foundation.layout.PaddingValues =
         androidx.compose.foundation.layout.PaddingValues(12.dp),
+    treatment: MetroTileTreatment = MetroTileTreatment.ACCENT_FILL,
+    selected: Boolean = false,
     content: @Composable BoxScope.() -> Unit,
 ) {
     val patternIntensity = LocalPatternIntensity.current
+    val neutralSurface = LocalMetroSurface.current
+    val neutralOutline = LocalMetroOutline.current
     val resolvedInteractionSource = interactionSource ?: remember { MutableInteractionSource() }
     val indication = LocalIndication.current
     val clickableModifier = if (onClick != null) {
@@ -92,11 +104,35 @@ fun MetroTile(
     } else {
         Modifier
     }
+    val chromeModifier = if (treatment == MetroTileTreatment.NEUTRAL_SURFACE) {
+        Modifier
+            .background(neutralSurface)
+            .background(background.copy(alpha = if (selected) 0.14f else 0.035f))
+            .border(
+                width = 1.dp,
+                color = if (selected) background.copy(alpha = 0.72f) else neutralOutline,
+            )
+            .drawBehind {
+                drawRect(
+                    color = background.copy(alpha = 0.92f),
+                    size = Size(3.dp.toPx(), size.height),
+                )
+            }
+    } else {
+        Modifier.background(background)
+    }
     Box(
         modifier = modifier
             .clip(androidx.compose.ui.graphics.RectangleShape)
-            .background(background)
-            .metroPattern(seed, patternIntensity)
+            .then(chromeModifier)
+            .metroPattern(
+                seed = seed,
+                intensity = if (treatment == MetroTileTreatment.NEUTRAL_SURFACE) {
+                    patternIntensity * 0.12f
+                } else {
+                    patternIntensity
+                },
+            )
             .then(clickableModifier)
             .padding(contentPadding),
         content = content,
@@ -110,6 +146,7 @@ fun ExpandableMetroTile(
     expanded: Boolean,
     onExpandedChange: (Boolean) -> Unit,
     modifier: Modifier = Modifier,
+    treatment: MetroTileTreatment = MetroTileTreatment.ACCENT_FILL,
     collapsed: @Composable ColumnScope.() -> Unit,
     expandedContent: @Composable ColumnScope.() -> Unit,
 ) {
@@ -119,6 +156,7 @@ fun ExpandableMetroTile(
         background = background,
         onClick = { onExpandedChange(!expanded) },
         modifier = modifier,
+        treatment = treatment,
     ) {
         Column(
             modifier = Modifier
