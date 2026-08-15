@@ -12,6 +12,7 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
@@ -39,9 +40,7 @@ import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.asImageBitmap
-import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
@@ -49,13 +48,13 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.weather.metro.ui.theme.LocalMetroSubText
-import com.weather.metro.ui.theme.LocalPatternIntensity
+import com.weather.metro.ui.theme.LocalMetroOutline
+import com.weather.metro.ui.theme.LocalMetroSurface
 import com.weather.metro.ui.theme.LocalReduceMotion
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.net.HttpURLConnection
 import java.net.URI
-import kotlin.random.Random
 
 @Composable
 fun MetroSectionLabel(text: String, modifier: Modifier = Modifier) {
@@ -77,9 +76,11 @@ fun MetroTile(
     interactionSource: MutableInteractionSource? = null,
     contentPadding: androidx.compose.foundation.layout.PaddingValues =
         androidx.compose.foundation.layout.PaddingValues(12.dp),
+    selected: Boolean = false,
     content: @Composable BoxScope.() -> Unit,
 ) {
-    val patternIntensity = LocalPatternIntensity.current
+    val neutralSurface = LocalMetroSurface.current
+    val neutralOutline = LocalMetroOutline.current
     val resolvedInteractionSource = interactionSource ?: remember { MutableInteractionSource() }
     val indication = LocalIndication.current
     val clickableModifier = if (onClick != null) {
@@ -92,11 +93,23 @@ fun MetroTile(
     } else {
         Modifier
     }
+    val chromeModifier = Modifier
+        .background(neutralSurface)
+        .background(background.copy(alpha = if (selected) 0.14f else 0.035f))
+        .border(
+            width = 1.dp,
+            color = if (selected) background.copy(alpha = 0.72f) else neutralOutline,
+        )
+        .drawBehind {
+            drawRect(
+                color = background.copy(alpha = 0.92f),
+                size = Size(3.dp.toPx(), size.height),
+            )
+        }
     Box(
         modifier = modifier
             .clip(androidx.compose.ui.graphics.RectangleShape)
-            .background(background)
-            .metroPattern(seed, patternIntensity)
+            .then(chromeModifier)
             .then(clickableModifier)
             .padding(contentPadding),
         content = content,
@@ -217,36 +230,6 @@ fun MetroProgress(modifier: Modifier = Modifier, colour: Color = MaterialTheme.c
                 radius = radius,
                 center = Offset(x, size.height / 2f),
             )
-        }
-    }
-}
-
-private fun Modifier.metroPattern(seed: String, intensity: Float): Modifier = drawBehind {
-    if (intensity <= 0f) return@drawBehind
-    val random = Random(seed.hashCode())
-    val virtualHeight = 1100.dp.toPx()
-    repeat(10) { index ->
-        val x = random.nextFloat() * size.width
-        val y = random.nextFloat() * virtualHeight - 90.dp.toPx()
-        val width = (70 + random.nextInt(160)).dp.toPx()
-        val height = (55 + random.nextInt(150)).dp.toPx()
-        val color = if (index % 3 == 0) Color.Black.copy(alpha = intensity * 0.65f)
-        else Color.White.copy(alpha = intensity)
-        when (index % 3) {
-            0 -> rotate(random.nextFloat() * 70f, Offset(x, y)) {
-                drawRect(color, topLeft = Offset(x, y), size = Size(width, height))
-            }
-            1 -> drawCircle(color, radius = width * 0.42f, center = Offset(x, y))
-            else -> {
-                val path = Path().apply {
-                    moveTo(x, y)
-                    lineTo(x + width, y + height * 0.22f)
-                    lineTo(x + width * 0.62f, y + height)
-                    lineTo(x - width * 0.18f, y + height * 0.64f)
-                    close()
-                }
-                drawPath(path, color)
-            }
         }
     }
 }

@@ -335,7 +335,11 @@ private fun AlertsSection(
         if (selected != null || request.eventKind == "CANCEL") onNavigationHandled(request.token)
     }
     if (alerts.isEmpty()) {
-        MetroTile(seed = "no-alerts", background = pageColour, modifier = Modifier.fillMaxWidth()) {
+        MetroTile(
+            seed = "no-alerts",
+            background = pageColour,
+            modifier = Modifier.fillMaxWidth(),
+        ) {
             Text("現時沒有生效的天氣警告或特別提示。", color = LocalMetroSubText.current)
         }
         return
@@ -376,6 +380,7 @@ private fun AlertSmallTile(
         background = alertColor(alert.severity),
         modifier = modifier.aspectRatio(0.70f),
         onClick = onClick,
+        selected = selected,
         contentPadding = androidx.compose.foundation.layout.PaddingValues(8.dp),
     ) {
         Column(Modifier.fillMaxSize()) {
@@ -554,7 +559,6 @@ fun SettingsScreen(
     pageColour: Color,
     onPageColourChange: (PageColourSlot, Long) -> Unit,
     onTextScaleChange: (Float) -> Unit,
-    onPatternIntensityChange: (Float) -> Unit,
     onReduceMotionChange: (Boolean) -> Unit,
     onHighContrastChange: (Boolean) -> Unit,
     onPreciseLocationChange: (Boolean) -> Unit,
@@ -571,7 +575,7 @@ fun SettingsScreen(
         item {
             MetroTile("page-colours", pageColour, Modifier.fillMaxWidth()) {
                 Column {
-                    SettingTitle("page colours", "為每個 Pivot 頁面設定自己的磁貼顏色")
+                    SettingTitle("page accents", "為每個 Pivot 頁面設定局部強調色")
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(4.dp),
@@ -631,20 +635,6 @@ fun SettingsScreen(
                         onValueChange = onTextScaleChange,
                         valueRange = 0.9f..1.5f,
                         steps = 5,
-                        colors = metroSliderColors(),
-                    )
-                }
-            }
-        }
-        item {
-            MetroTile("pattern-settings", pageColour, Modifier.fillMaxWidth()) {
-                Column {
-                    SettingTitle("geometric pattern", "${(settings.patternIntensity / 0.32f * 100).roundToInt()}% intensity")
-                    Slider(
-                        value = settings.patternIntensity,
-                        onValueChange = onPatternIntensityChange,
-                        valueRange = 0f..0.32f,
-                        steps = 9,
                         colors = metroSliderColors(),
                     )
                 }

@@ -45,7 +45,6 @@ data class PageColours(
 data class UiSettings(
     val pageColours: PageColours = PageColours(),
     val textScale: Float = 1f,
-    val patternIntensity: Float = 0.18f,
     val reduceMotion: Boolean = false,
     val highContrast: Boolean = false,
     val preciseLocation: Boolean = true,
@@ -65,11 +64,6 @@ class SettingsRepository(context: Context) {
     fun setTextScale(value: Float) {
         val coerced = quantizeTextScale(value)
         update(_settings.value.copy(textScale = coerced)) { putFloat(KEY_TEXT_SCALE, coerced) }
-    }
-
-    fun setPatternIntensity(value: Float) {
-        val coerced = quantizePatternIntensity(value)
-        update(_settings.value.copy(patternIntensity = coerced)) { putFloat(KEY_PATTERN, coerced) }
     }
 
     fun setReduceMotion(value: Boolean) =
@@ -95,7 +89,6 @@ class SettingsRepository(context: Context) {
             settingsArgb = preferences.getLong(KEY_SETTINGS_COLOUR, DefaultPageColours.SETTINGS),
         ),
         textScale = quantizeTextScale(preferences.getFloat(KEY_TEXT_SCALE, 1f)),
-        patternIntensity = quantizePatternIntensity(preferences.getFloat(KEY_PATTERN, 0.18f)),
         reduceMotion = preferences.getBoolean(KEY_REDUCE_MOTION, false),
         highContrast = preferences.getBoolean(KEY_HIGH_CONTRAST, false),
         preciseLocation = preferences.getBoolean(KEY_PRECISE_LOCATION, true),
@@ -121,11 +114,6 @@ class SettingsRepository(context: Context) {
     private fun quantizeTextScale(value: Float): Float =
         ((value.coerceIn(0.9f, 1.5f) * 10f).roundToInt() / 10f)
 
-    private fun quantizePatternIntensity(value: Float): Float {
-        val percentStep = ((value.coerceIn(0f, 0.32f) / 0.32f) * 10f).roundToInt()
-        return percentStep / 10f * 0.32f
-    }
-
     companion object {
         private const val PREFERENCES_NAME = "weather_metro_settings"
         private const val KEY_LEGACY_ACCENT = "accent"
@@ -134,7 +122,6 @@ class SettingsRepository(context: Context) {
         private const val KEY_TOOLS_COLOUR = "page_colour_tools"
         private const val KEY_SETTINGS_COLOUR = "page_colour_settings"
         private const val KEY_TEXT_SCALE = "text_scale"
-        private const val KEY_PATTERN = "pattern_intensity"
         private const val KEY_REDUCE_MOTION = "reduce_motion"
         private const val KEY_HIGH_CONTRAST = "high_contrast"
         private const val KEY_PRECISE_LOCATION = "precise_location"
