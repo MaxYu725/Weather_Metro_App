@@ -2,29 +2,39 @@
 
 This file tracks work that is intentionally **not yet closed**.
 
-## P0 — 2-hour Forecast MapLibre refinement
+## P0 — 2-hour Forecast MapLibre final closure
 
 MapLibre is the production-visible Forecast renderer. Canvas is retained only as
 a hidden reference/safety implementation.
 
-Remaining Forecast work:
+Completed Forecast refinement:
 
-- complete another real-device pass using MapLibre only;
-- verify repeated 16-slot playback with lazy/bounded frame loading;
-- review map/HUD spacing and controls on phone-sized screens;
-- verify stale-aware re-entry after longer idle periods;
-- verify frame/run rollover behavior when a new SWIRLS run appears while the
-  Forecast tool is open;
-- test slow/failed individual frame loads without blanking the last-good frame;
-- review memory use during repeated playback and map interaction;
-- verify background/resume behavior with MapLibre map lifecycle;
-- test real rain cases before declaring Forecast production-complete.
+- MapLibre-only production path and real-device renderer validation;
+- persistent playback-speed and rainfall-opacity settings plus recenter control;
+- 16-slot lazy/bounded playback with failed-frame skip/manual retry behavior;
+- last-good raster retention while a requested frame is loading or fails;
+- SWIRLS run rollover alignment by forecast lead time;
+- 15-minute stale-aware re-entry and 5-minute failed-refresh backoff;
+- run-scoped bitmap reuse with a 2 MiB rendering-memory budget;
+- background/inactive bitmap-cache release and async lifecycle race hardening;
+- repeated 16-frame playback, pan/zoom and background/resume real-device tests;
+- real-rain MapLibre raster validation with LINEAR resampling.
 
-Do not close overall Tools integration until Forecast has passed this work.
+F4 final polish adds automatic timeline following so the currently selected
+frame remains visible as playback reaches the later slots.
+
+Remaining before P0 can be closed:
+
+- one real-device confirmation that the timeline follows the active frame while
+  playback still permits normal manual horizontal browsing when selection is
+  unchanged.
+
+Do not close overall Tools integration until the P1 cross-tool review below has
+also passed.
 
 ## P1 — Cross-tool final integration review
 
-After Forecast is complete:
+After Forecast P0 is confirmed:
 
 - Point rainfall regression;
 - Radar regression;
