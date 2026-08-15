@@ -563,6 +563,7 @@ fun SettingsScreen(
     onHighContrastChange: (Boolean) -> Unit,
     onPreciseLocationChange: (Boolean) -> Unit,
     onNotificationsChange: (Boolean) -> Unit,
+    onOpenNotificationSettings: () -> Unit,
     onClearCache: () -> Unit,
 ) {
     val accents = listOf(0xFF1BA1E2, 0xFF00A300, 0xFFA200FF, 0xFFE671B8, 0xFFF09609, 0xFFE51400)
@@ -644,6 +645,14 @@ fun SettingsScreen(
         item { SettingToggleTile("contrast", "high contrast", "提高次要文字對比度", pageColour, settings.highContrast, onHighContrastChange) }
         item { SettingToggleTile("location", "precise location", "使用精確定位及香港街區解析", pageColour, settings.preciseLocation, onPreciseLocationChange) }
         item { SettingToggleTile("notifications", "weather notifications", "訂閱香港天文台警告更新", pageColour, settings.notificationsEnabled, onNotificationsChange) }
+        item {
+            MetroTile("notification-settings", pageColour, Modifier.fillMaxWidth(), onClick = onOpenNotificationSettings) {
+                Column {
+                    SettingTitle("system notification settings", "檢查通知權限及各重要程度頻道是否已開啟")
+                    Text("open settings ↗", color = Color.White.copy(alpha = 0.78f), fontSize = 14.sp)
+                }
+            }
+        }
         item {
             MetroTile("cache", pageColour, Modifier.fillMaxWidth(), onClick = onClearCache) {
                 Column {
