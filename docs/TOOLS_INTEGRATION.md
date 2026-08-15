@@ -1,7 +1,8 @@
 # Weather Metro — native Tools integration contract
 
-Status: **P1 code/static closure complete — final real-device smoke pending**  
-Runtime baseline reviewed: `main@18a70a465461618bb682ca6afe2cfd0cea72cc6c`  
+Status: **COMPLETE for the current production Tools scope**  
+P1 final real-device smoke: **PASS**  
+Merged P1 baseline tested: `main@981a0d0d95c020bd59a8f7658bc4f7b25cc3bc1d`  
 Rain-Track reference: `MaxYu725/Rain-Track`  
 Storm-Track reference: `MaxYu725/Storm-Track`
 
@@ -34,11 +35,10 @@ There is no production A/B renderer card.
 
 ## 2. Integration completion status
 
-The runtime implementation has completed P1 zero-base code/static closure
-review. One final continuous real-device smoke on the merged P1 runtime remains
-before the overall native Tools integration is marked complete.
+The current production native Tools scope is **complete**. P1 zero-base
+code/static closure and the final continuous real-device smoke both passed.
 
-Current state:
+Completed production scope:
 
 - Point rainfall: integrated with independent host-location binding, stale-data
   retention and foreground refresh policy.
@@ -49,9 +49,9 @@ Current state:
   following validation. Canvas is hidden reference/safety code only.
 - Storm Live: HKO/CMA/JMA/CWA MapLibre path validated on real devices with
   independent per-agency state and last-good fallback.
-- Storm Archive: deferred TODO; not production-ready and not a P1 blocker.
 
-The final P1 smoke matrix is maintained in `docs/TOOLS_TODO.md`.
+Storm Archive is deliberately **deferred**. It is outside the completed P1
+production scope and must not be described as production-ready.
 
 ## 3. Renderer ownership
 
@@ -130,7 +130,7 @@ Weather Metro owns the only Android location pipeline. Tool modules must not
 create another fused-location owner or independently request location
 permission.
 
-The P1R2 ownership/data-flow contract is:
+The final ownership/data-flow contract is:
 
 ```text
 LocationRepository  (single fused-location owner)
@@ -216,11 +216,29 @@ While a fullscreen tool is active:
 - Storm Live agencies keep independent last-success snapshots and selective
   refresh/backoff state.
 - Failed refresh never deletes good last-known data.
-- Settings cache clear must leave every native Tool able to reload cleanly.
+- Settings cache clear leaves every native Tool able to reload cleanly.
 
-## 9. Storm Archive status
+## 9. P1 closure record
 
-Storm Archive is explicitly **deferred** and is not part of P1 closure.
+P1 final device smoke passed on the merged P1 baseline. The continuous pass
+covered:
+
+- ToolsHome → Point → Radar → Forecast → Storm navigation;
+- fullscreen Pivot hide/restore and Android Back;
+- Point radius/refresh/background-resume;
+- Radar LIVE-only controls, range/height/timeline/playback and background-resume;
+- Forecast MapLibre playback, timeline following, pan/zoom/recenter and
+  background-resume;
+- Storm HKO/CMA/JMA/CWA toggles, track/point interaction and background-resume;
+- Settings cache clear followed by clean native Tool reload while Radar
+  preferences remained intact.
+
+No new runtime blocker was found.
+
+## 10. Storm Archive status
+
+Storm Archive is explicitly **deferred** and is not part of the completed P1
+scope.
 
 Reasons:
 
@@ -235,7 +253,7 @@ When resumed, Archive must reuse the normalized History APIs already present in
 the Android data layer. It must not reintroduce Leaflet, WebView, a second app
 shell, or unrestricted Worker access.
 
-## 10. Security invariants
+## 11. Security invariants
 
 - HTTPS only.
 - No WebView or JavaScript bridge for native Tools.
@@ -245,13 +263,14 @@ shell, or unrestricted Worker access.
 - HKO/CMA/JMA/CWA remain independently identified sources.
 - An external-agency forecast must never be presented as HKO output.
 
-## 11. Current priority
+## 12. Current priority
 
-Current priority is the **single final P1 cross-tool real-device smoke on the
-merged production runtime**, not additional Forecast refinement and not Storm
-Archive.
+There is no open P0/P1 blocker for the current production native Tools scope.
+Treat Point rainfall, Radar, 2-hour Forecast and Storm Live as a completed
+integration baseline and avoid speculative refactoring that reopens validated
+behavior.
 
-If that smoke passes without a new blocker, mark the current native Tools
-integration complete and leave Storm Archive in Deferred status.
+Storm Archive remains deferred until the standalone source archive has enough
+real accumulated records and completes formal functional/real-device testing.
 
-See `docs/TOOLS_TODO.md` for the exact smoke matrix.
+See `docs/TOOLS_TODO.md` for the deferred queue and historical closure record.

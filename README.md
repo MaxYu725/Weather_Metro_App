@@ -33,12 +33,14 @@ estimates that HKO does not publish at the same granularity.
 
 ## Integration status
 
-The native Tools integration has completed its P1 code/static closure review.
-One final cross-tool real-device smoke on the merged P1 runtime baseline remains
-before the overall integration is marked closed.
+The current production native Tools scope is **complete**. P1 code/static closure
+and the final continuous cross-tool real-device smoke both passed on the merged
+P1 baseline.
+
+Completed production scope:
 
 - Point rainfall: integrated with host-location independence, stale-data
-  retention and foreground-only refresh behavior; included in the final smoke.
+  retention and foreground-only refresh behavior.
 - Radar: MapLibre production path validated on real devices. Production always
   opens in LIVE mode; TEST transport remains internal and is not exposed by the
   normal Tools surface.
@@ -48,13 +50,14 @@ before the overall integration is marked closed.
   hidden reference/safety implementation.
 - Storm Live: HKO/CMA/JMA/CWA MapLibre path validated on real devices with
   independent source state and last-good fallback.
-- Storm Archive: deferred TODO. Storm-Track is still accumulating historical
-  storm/advisory records and the Archive feature has not yet completed formal
-  functional/real-device validation, so it is not production-ready in Weather
-  Metro.
 
-See [docs/TOOLS_TODO.md](docs/TOOLS_TODO.md) for the final P1 smoke matrix and
-remaining deferred work.
+Storm Archive is intentionally **deferred** and is not part of the completed
+production scope. Storm-Track is still accumulating historical storm/advisory
+records and the Archive feature has not yet completed formal standalone
+functional/real-device validation.
+
+See [docs/TOOLS_TODO.md](docs/TOOLS_TODO.md) for deferred work and the completed
+P0/P1 record.
 
 ## Architecture
 

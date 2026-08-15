@@ -1,6 +1,7 @@
 # Native Tools TODO
 
-This file tracks work that is intentionally **not yet closed**.
+This file records completed native Tools milestones and work that remains
+intentionally deferred.
 
 ## P0 — 2-hour Forecast MapLibre — COMPLETE
 
@@ -23,16 +24,21 @@ Completed Forecast refinement:
 
 Forecast P0 is closed.
 
-## P1 — Cross-tool final integration review — FINAL DEVICE SMOKE
+## P1 — Cross-tool final integration review — COMPLETE
 
-P1 code/static closure review is complete. Runtime baseline before this docs-only
-closure batch:
+P1 code/static closure review and the final continuous real-device smoke both
+passed. The current production native Tools integration is therefore closed for:
 
-`main@18a70a465461618bb682ca6afe2cfd0cea72cc6c`
+- Point rainfall;
+- Radar;
+- 2-hour Forecast;
+- Storm Live.
 
-Completed P1 batches:
+Merged P1 baseline used for the final real-device smoke:
 
-### P1R1 — production Radar cleanup
+`main@981a0d0d95c020bd59a8f7658bc4f7b25cc3bc1d`
+
+### P1R1 — production Radar cleanup — COMPLETE
 
 - production Radar always starts in LIVE mode;
 - persisted legacy TEST mode is normalized back to LIVE;
@@ -40,7 +46,7 @@ Completed P1 batches:
 - Settings cache clearing also releases Radar transient prefetched image bytes
   without resetting range, opacity or playback-speed preferences.
 
-### P1R2 — host-location independence
+### P1R2 — host-location independence — COMPLETE
 
 - Weather Metro still owns exactly one `LocationRepository` / fused-location
   pipeline;
@@ -52,7 +58,7 @@ Completed P1 batches:
 - a first-load HKO Weather failure with no cached Weather snapshot no longer
   prevents native Tools from receiving a host location.
 
-### P1R3 — Rain/Radar production error isolation
+### P1R3 — Rain/Radar production error isolation — COMPLETE
 
 - Rain, Radar and Forecast transport/parser/schema failures are normalized to
   stable user-facing messages at the repository boundary;
@@ -62,7 +68,7 @@ Completed P1 batches:
 - parser-validation patterns such as missing grid/contract fields and invalid
   frame indexes are covered by regression tests.
 
-### P1R4 — zero-base closure scan
+### P1R4 — zero-base closure scan — COMPLETE
 
 Static production review found no further runtime blocker in:
 
@@ -76,56 +82,47 @@ Static production review found no further runtime blocker in:
 - production Forecast renderer selection;
 - production Radar LIVE-only surface.
 
-The remaining P1 gate is one final real-device smoke on the merged P1 runtime.
-It should be run as one continuous pass rather than repeating deep feature
-validation already completed in earlier phases.
+### Final real-device smoke — PASS
 
-### Final real-device smoke matrix
+One continuous pass on the merged P1 baseline verified:
 
 1. **ToolsHome / host navigation**
-   - open ToolsHome;
-   - enter each fullscreen tool and confirm host Pivot chrome disappears;
-   - Android Back and each tool's own back control return to ToolsHome;
-   - no freeze when repeatedly entering/leaving tools.
+   - all four fullscreen tools open normally;
+   - host Pivot chrome hides while inside a tool;
+   - Android Back and tool back controls return to ToolsHome;
+   - repeated tool entry/exit does not freeze.
 
 2. **Point rainfall**
-   - correct current/default host location label appears;
-   - change nearby radius and refresh once;
-   - data or clean stale/error state remains readable;
-   - background/resume does not leave a permanent loading state.
+   - host location is available;
+   - nearby radius change and manual refresh work;
+   - background/resume does not leave permanent loading.
 
 3. **Radar**
-   - opens in LIVE; no TEST chip/control is visible;
-   - range/height selection, timeline selection and playback work;
-   - refresh preserves a usable last-good timeline if the update is unavailable;
-   - background/resume and Back do not freeze or keep animation running.
+   - production opens in LIVE and no TEST control is exposed;
+   - range/height, timeline, playback and refresh work;
+   - background/resume and Back remain stable.
 
 4. **2-hour Forecast**
    - MapLibre is the only production-visible renderer;
-   - playback traverses the timeline and selected-frame following remains correct;
-   - manual horizontal timeline browsing still works when selection is unchanged;
-   - pan/zoom/recenter and background/resume remain stable.
+   - playback traverses the timeline and selected-frame following works;
+   - manual timeline browsing, pan/zoom/recenter and background/resume remain
+     stable.
 
 5. **Storm Live**
    - HKO/CMA/JMA/CWA source chips remain independently usable;
-   - paths/points render correctly and point details open/close;
-   - refresh failure of one source does not remove other successful sources;
+   - paths/points and point-detail interaction work;
    - background/resume and Back remain stable.
 
 6. **Settings cache clear**
-   - clear cache once from Settings;
-   - return to Tools and confirm modules can reload cleanly;
-   - Radar user preferences remain while transient image cache is discarded.
+   - native Tools reload cleanly after cache clear;
+   - Radar preferences remain while transient image cache is discarded.
 
-### P1 closure condition
-
-If the final smoke passes without a new blocker, mark P1 and the current native
-Tools integration **COMPLETE**. Do not reopen already validated feature phases
-for cosmetic or speculative refactoring.
+No new runtime blocker was found. P1 is closed. Do not reopen validated P0/P1
+behavior for cosmetic or speculative refactoring.
 
 ## Deferred — Storm Archive
 
-Storm Archive remains a future task and is not part of P1 closure.
+Storm Archive remains a future task and is not part of the completed P1 scope.
 
 Current reasons for deferral:
 
