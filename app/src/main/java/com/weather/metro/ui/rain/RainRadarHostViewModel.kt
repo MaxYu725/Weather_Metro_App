@@ -61,11 +61,7 @@ class RainRadarHostViewModel(application: Application) : AndroidViewModel(applic
         RainRadarHostState(
             rangeKm = preferences.getInt(KEY_RANGE_KM, DEFAULT_RANGE_KM).takeIf { it > 0 } ?: DEFAULT_RANGE_KM,
             heightKm = preferences.getInt(KEY_HEIGHT_KM, DEFAULT_HEIGHT_KM).takeIf { it > 0 } ?: DEFAULT_HEIGHT_KM,
-            mode = if (preferences.getString(KEY_MODE, RainRadarMode.LIVE.wireValue) == RainRadarMode.TEST.wireValue) {
-                RainRadarMode.TEST
-            } else {
-                RainRadarMode.LIVE
-            },
+            mode = RainRadarMode.LIVE,
             opacity = preferences.getFloat(KEY_OPACITY, DEFAULT_OPACITY).coerceIn(0f, 1f),
             playbackSpeed = RainRadarPlaybackSpeed.fromDelay(
                 preferences.getLong(KEY_PLAYBACK_DELAY_MS, RainRadarPlaybackSpeed.NORMAL.delayMs),
@@ -81,6 +77,12 @@ class RainRadarHostViewModel(application: Application) : AndroidViewModel(applic
     private val prefetchedImages = object : LinkedHashMap<String, ByteArray>(PREFETCH_CACHE_FRAME_LIMIT, 0.75f, true) {
         override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, ByteArray>?): Boolean =
             size > PREFETCH_CACHE_FRAME_LIMIT
+    }
+
+    init {
+        if (preferences.getString(KEY_MODE, RainRadarMode.LIVE.wireValue) != RainRadarMode.LIVE.wireValue) {
+            preferences.edit().putString(KEY_MODE, RainRadarMode.LIVE.wireValue).apply()
+        }
     }
 
     fun bindHostLocation(location: LocationInfo) {
@@ -179,6 +181,13 @@ class RainRadarHostViewModel(application: Application) : AndroidViewModel(applic
         val index = timeline.frames.lastIndex
         _state.update { it.copy(selectedFrameIndex = index) }
         scheduleFramePrefetch(timeline, index)
+    }
+
+    fun clearTransientCache() {
+        cancelRequests()
+        synchronized(prefetchedImages) {
+            prefetchedImages.clear()
+        }
     }
 
     fun cancelRequests() {

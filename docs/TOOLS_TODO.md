@@ -2,7 +2,7 @@
 
 This file tracks work that is intentionally **not yet closed**.
 
-## P0 — 2-hour Forecast MapLibre final closure
+## P0 — 2-hour Forecast MapLibre — COMPLETE
 
 MapLibre is the production-visible Forecast renderer. Canvas is retained only as
 a hidden reference/safety implementation.
@@ -18,23 +18,14 @@ Completed Forecast refinement:
 - run-scoped bitmap reuse with a 2 MiB rendering-memory budget;
 - background/inactive bitmap-cache release and async lifecycle race hardening;
 - repeated 16-frame playback, pan/zoom and background/resume real-device tests;
-- real-rain MapLibre raster validation with LINEAR resampling.
+- real-rain MapLibre raster validation with LINEAR resampling;
+- F4 selected-frame timeline following on real devices.
 
-F4 final polish adds automatic timeline following so the currently selected
-frame remains visible as playback reaches the later slots.
+Forecast P0 is closed. Overall Tools integration remains open until P1 passes.
 
-Remaining before P0 can be closed:
+## P1 — Cross-tool final integration review — IN PROGRESS
 
-- one real-device confirmation that the timeline follows the active frame while
-  playback still permits normal manual horizontal browsing when selection is
-  unchanged.
-
-Do not close overall Tools integration until the P1 cross-tool review below has
-also passed.
-
-## P1 — Cross-tool final integration review
-
-After Forecast P0 is confirmed:
+Review scope:
 
 - Point rainfall regression;
 - Radar regression;
@@ -43,7 +34,20 @@ After Forecast P0 is confirmed:
 - fullscreen/back/navigation regression;
 - foreground/background lifecycle regression;
 - cache clearing and stale-data regression;
+- production-only surface cleanup;
 - final documentation/status cleanup.
+
+P1R1 production cleanup findings:
+
+- production Radar must never reopen in persisted TEST mode;
+- TEST transport/test fixtures may remain internally, but production UI exposes
+  LIVE only;
+- Settings cache clearing must also release Radar transient prefetched image
+  bytes while preserving user preferences such as range, opacity and playback
+  speed.
+
+Do not close overall Tools integration until the remaining P1 regression review
+has passed on the merged production baseline.
 
 ## Deferred — Storm Archive
 

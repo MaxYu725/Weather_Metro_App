@@ -38,6 +38,7 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.weather.metro.data.settings.PageColourSlot
+import com.weather.metro.data.tools.RainRadarMode
 import com.weather.metro.domain.WeatherLoadState
 import com.weather.metro.ui.components.MetroProgress
 import com.weather.metro.ui.rain.RainHostViewModel
@@ -74,6 +75,15 @@ fun WeatherMetroRoot(
     val rainState by rainViewModel.state.collectAsStateWithLifecycle()
     val radarState by radarViewModel.state.collectAsStateWithLifecycle()
     val stormState by stormViewModel.state.collectAsStateWithLifecycle()
+    val productionRadarState = radarState.copy(
+        contract = radarState.contract.copy(
+            value = radarState.contract.value?.let { contract ->
+                contract.copy(
+                    modes = contract.modes.filter { it == RainRadarMode.LIVE.wireValue },
+                )
+            },
+        ),
+    )
     val rainHostLocation = when (val state = loadState) {
         is WeatherLoadState.Ready -> state.snapshot.location
         is WeatherLoadState.Error -> state.cached?.location
@@ -165,7 +175,7 @@ fun WeatherMetroRoot(
                         PageColourSlot.TOOLS -> NativeToolsScreen(
                             pageColour = pageColour,
                             rainState = rainState,
-                            radarState = radarState,
+                            radarState = productionRadarState,
                             stormState = stormState,
                             isActive = pageIndex == index,
                             onFullscreenChanged = { active ->
@@ -208,6 +218,7 @@ fun WeatherMetroRoot(
                             onClearCache = {
                                 viewModel.clearCache()
                                 rainViewModel.clearCache()
+                                radarViewModel.clearTransientCache()
                                 stormViewModel.clearCache()
                             },
                         )
