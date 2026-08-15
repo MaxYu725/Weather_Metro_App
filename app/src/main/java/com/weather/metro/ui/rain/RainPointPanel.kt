@@ -76,8 +76,8 @@ fun RainPointPanel(
         AnimatedContent(
             targetState = state.pointForecast.status,
             transitionSpec = {
-                fadeIn(tween(if (reduceMotion) 1 else 220)) togetherWith
-                    fadeOut(tween(if (reduceMotion) 1 else 150))
+                fadeIn(tween(if (reduceMotion) 120 else 220)) togetherWith
+                    fadeOut(tween(if (reduceMotion) 100 else 150))
             },
             label = "point rainfall state",
         ) { status ->
@@ -99,10 +99,16 @@ fun RainPointPanel(
         val forecast = state.pointForecast.value
         AnimatedVisibility(
             visible = forecast != null,
-            enter = fadeIn(tween(if (reduceMotion) 1 else 280)) +
-                slideInVertically(tween(if (reduceMotion) 1 else 360)) { height -> height / 8 },
-            exit = fadeOut(tween(if (reduceMotion) 1 else 160)) +
-                slideOutVertically(tween(if (reduceMotion) 1 else 180)) { height -> height / 12 },
+            enter = if (reduceMotion) {
+                fadeIn(tween(120))
+            } else {
+                fadeIn(tween(280)) + slideInVertically(tween(360)) { height -> height / 8 }
+            },
+            exit = if (reduceMotion) {
+                fadeOut(tween(100))
+            } else {
+                fadeOut(tween(160)) + slideOutVertically(tween(180)) { height -> height / 12 }
+            },
         ) {
             forecast?.let { availableForecast ->
                 val model = buildRainPointUiModel(availableForecast)
@@ -224,17 +230,17 @@ private fun RadiusSelector(
                 val pressed by interactionSource.collectIsPressedAsState()
                 val background by animateColorAsState(
                     targetValue = if (selected) pageColour else Color(0xFF202020),
-                    animationSpec = tween(if (reduceMotion) 1 else 180),
+                    animationSpec = tween(if (reduceMotion) 100 else 180),
                     label = "rain radius background",
                 )
                 val contentColour by animateColorAsState(
                     targetValue = if (selected) Color.White else LocalMetroSubText.current,
-                    animationSpec = tween(if (reduceMotion) 1 else 180),
+                    animationSpec = tween(if (reduceMotion) 100 else 180),
                     label = "rain radius text",
                 )
                 val scale by animateFloatAsState(
                     targetValue = if (pressed && !reduceMotion) 0.94f else 1f,
-                    animationSpec = tween(if (reduceMotion) 1 else 110),
+                    animationSpec = tween(if (reduceMotion) 100 else 110),
                     label = "rain radius press",
                 )
                 Box(

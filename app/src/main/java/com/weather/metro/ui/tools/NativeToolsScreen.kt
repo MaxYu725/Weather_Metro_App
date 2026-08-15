@@ -4,6 +4,7 @@ import android.content.Intent
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.SizeTransform
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
@@ -12,6 +13,7 @@ import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.clickable
@@ -188,26 +190,31 @@ fun NativeToolsScreen(
     AnimatedContent(
         targetState = destination,
         transitionSpec = {
-            val duration = if (reduceMotion) 1 else 360
-            when (toolTransitionDirection(initialState, targetState)) {
-                1 -> (
-                    fadeIn(tween(duration, delayMillis = if (reduceMotion) 0 else 70)) +
-                        slideInHorizontally(tween(duration)) { width -> width / 7 } +
-                        scaleIn(tween(duration), initialScale = 0.985f)
-                    ) togetherWith (
-                    fadeOut(tween(if (reduceMotion) 1 else 170)) +
-                        slideOutHorizontally(tween(duration)) { width -> -width / 10 } +
-                        scaleOut(tween(duration), targetScale = 0.99f)
-                    )
-                -1 -> (
-                    fadeIn(tween(duration, delayMillis = if (reduceMotion) 0 else 55)) +
-                        slideInHorizontally(tween(duration)) { width -> -width / 8 } +
-                        scaleIn(tween(duration), initialScale = 0.99f)
-                    ) togetherWith (
-                    fadeOut(tween(if (reduceMotion) 1 else 170)) +
-                        slideOutHorizontally(tween(duration)) { width -> width / 8 }
-                    )
-                else -> fadeIn(tween(duration)) togetherWith fadeOut(tween(duration))
+            if (reduceMotion) {
+                fadeIn(tween(140)) togetherWith fadeOut(tween(110))
+            } else {
+                val duration = 460
+                val transform = when (toolTransitionDirection(initialState, targetState)) {
+                    1 -> (
+                        fadeIn(tween(300, delayMillis = 45)) +
+                            slideInHorizontally(tween(duration, easing = FastOutSlowInEasing)) { width -> width / 3 } +
+                            scaleIn(tween(duration, easing = FastOutSlowInEasing), initialScale = 0.97f)
+                        ) togetherWith (
+                        fadeOut(tween(260)) +
+                            slideOutHorizontally(tween(duration, easing = FastOutSlowInEasing)) { width -> -width / 4 } +
+                            scaleOut(tween(duration), targetScale = 0.985f)
+                        )
+                    -1 -> (
+                        fadeIn(tween(300, delayMillis = 35)) +
+                            slideInHorizontally(tween(duration, easing = FastOutSlowInEasing)) { width -> -width / 3 } +
+                            scaleIn(tween(duration), initialScale = 0.985f)
+                        ) togetherWith (
+                        fadeOut(tween(240)) +
+                            slideOutHorizontally(tween(duration, easing = FastOutSlowInEasing)) { width -> width / 3 }
+                        )
+                    else -> fadeIn(tween(300)) togetherWith fadeOut(tween(240))
+                }
+                transform.using(SizeTransform(clip = false))
             }
         },
         contentKey = { it },
@@ -525,7 +532,7 @@ private fun ToolTile(
     val pressed by interactionSource.collectIsPressedAsState()
     val scale by animateFloatAsState(
         targetValue = if (pressed && !reduceMotion) 0.975f else 1f,
-        animationSpec = tween(if (reduceMotion) 1 else 120),
+        animationSpec = tween(if (reduceMotion) 100 else 120),
         label = "tool tile press",
     )
     MetroTile(
@@ -553,7 +560,7 @@ private fun ToolHomeReveal(
     content: @Composable () -> Unit,
 ) {
     val reduceMotion = LocalReduceMotion.current
-    var visible by remember(index) { mutableStateOf(reduceMotion) }
+    var visible by remember(index) { mutableStateOf(false) }
     LaunchedEffect(index, reduceMotion) {
         if (reduceMotion) {
             visible = true
@@ -565,8 +572,11 @@ private fun ToolHomeReveal(
     }
     AnimatedVisibility(
         visible = visible,
-        enter = fadeIn(tween(if (reduceMotion) 1 else 260)) +
-            slideInVertically(tween(if (reduceMotion) 1 else 320)) { height -> height / 5 },
+        enter = if (reduceMotion) {
+            fadeIn(tween(120))
+        } else {
+            fadeIn(tween(280)) + slideInVertically(tween(360)) { height -> height / 4 }
+        },
     ) {
         Box(Modifier.fillMaxWidth()) { content() }
     }

@@ -196,7 +196,7 @@ internal fun StormLivePanel(
         AnimatedContent(
             targetState = selectedPoint,
             transitionSpec = {
-                val duration = if (reduceMotion) 1 else 200
+                val duration = if (reduceMotion) 120 else 200
                 (fadeIn(tween(duration)) + scaleIn(tween(duration), initialScale = 0.96f)) togetherWith
                     (fadeOut(tween(duration)) + scaleOut(tween(duration), targetScale = 0.98f))
             },
@@ -329,17 +329,17 @@ private fun StormAgencyChip(
     val pressed by interactionSource.collectIsPressedAsState()
     val border by animateColorAsState(
         targetValue = if (enabled) accent else Color(0xFF3A3A3A),
-        animationSpec = tween(if (reduceMotion) 1 else 180),
+        animationSpec = tween(if (reduceMotion) 100 else 180),
         label = "storm agency border",
     )
     val background by animateColorAsState(
         targetValue = if (enabled) accent.copy(alpha = 0.12f) else Color(0xB80B0B0B),
-        animationSpec = tween(if (reduceMotion) 1 else 180),
+        animationSpec = tween(if (reduceMotion) 100 else 180),
         label = "storm agency background",
     )
     val scale by animateFloatAsState(
         targetValue = if (pressed && !reduceMotion) 0.96f else 1f,
-        animationSpec = tween(if (reduceMotion) 1 else 110),
+        animationSpec = tween(if (reduceMotion) 100 else 110),
         label = "storm agency press",
     )
     Column(
