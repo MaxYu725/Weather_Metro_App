@@ -39,7 +39,7 @@ import com.weather.metro.data.tools.RainRadarMode
 import com.weather.metro.ui.components.MetroSectionLabel
 import com.weather.metro.ui.components.MetroTile
 import com.weather.metro.ui.rain.RAIN_TOOL_POLICY_TICK_MS
-import com.weather.metro.ui.rain.RainForecastPanel
+import com.weather.metro.ui.rain.RainForecastMapLibrePanel
 import com.weather.metro.ui.rain.RainHostState
 import com.weather.metro.ui.rain.RainHostViewModel
 import com.weather.metro.ui.rain.RainPointPanel
@@ -397,7 +397,7 @@ private fun ForecastToolScreen(
     onBack: () -> Unit,
 ) {
     Box(modifier = Modifier.fillMaxSize()) {
-        RainForecastPanel(
+        RainForecastMapLibrePanel(
             state = rainState,
             pageColour = pageColour,
             isActive = isActive,
@@ -493,3 +493,5 @@ private fun OfficialLink(title: String, onClick: () -> Unit) {
 
 internal fun toolHostIsActive(pageActive: Boolean, lifecycleResumed: Boolean): Boolean =
     pageActive && lifecycleResumed
+
+internal fun productionForecastRenderer(): String = "maplibre"
