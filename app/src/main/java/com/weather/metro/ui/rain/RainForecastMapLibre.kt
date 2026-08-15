@@ -56,6 +56,7 @@ import com.weather.metro.domain.rain.RainForecastSource
 import com.weather.metro.domain.rain.RainForecastTimeline
 import com.weather.metro.ui.theme.LocalReduceMotion
 import com.weather.metro.ui.tools.ToolLoadingPanel
+import com.weather.metro.ui.tools.destroyAfterToolTransition
 import java.util.LinkedHashMap
 import kotlinx.coroutines.delay
 import org.maplibre.android.MapLibre
@@ -452,7 +453,8 @@ private fun MapLibreForecastSurface(
             lifecycle.removeObserver(observer)
             if (lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) mapView.onPause()
             if (lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) mapView.onStop()
-            mapView.onDestroy()
+            if (lifecycle.currentState == Lifecycle.State.DESTROYED) mapView.onDestroy()
+            else mapView.destroyAfterToolTransition()
         }
     }
 

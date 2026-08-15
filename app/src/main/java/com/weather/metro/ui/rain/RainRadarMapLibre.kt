@@ -50,6 +50,7 @@ import com.weather.metro.domain.rain.RainRadarFrame
 import com.weather.metro.domain.rain.RainRadarTimeline
 import com.weather.metro.ui.theme.LocalReduceMotion
 import com.weather.metro.ui.tools.ToolLoadingPanel
+import com.weather.metro.ui.tools.destroyAfterToolTransition
 import kotlinx.coroutines.delay
 import org.maplibre.android.MapLibre
 import org.maplibre.android.camera.CameraPosition
@@ -354,7 +355,8 @@ private fun RadarMapLibreSurface(
             lifecycle.removeObserver(observer)
             if (lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) mapView.onPause()
             if (lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) mapView.onStop()
-            mapView.onDestroy()
+            if (lifecycle.currentState == Lifecycle.State.DESTROYED) mapView.onDestroy()
+            else mapView.destroyAfterToolTransition()
         }
     }
 
