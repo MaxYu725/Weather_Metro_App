@@ -273,7 +273,7 @@ private fun RadiusSelector(
 private fun EmptyPointState(pageColour: Color, onRefresh: () -> Unit) {
     MetroTile(
         seed = "rain-point-empty",
-        background = Color(0xFF181818),
+        background = pageColour,
         modifier = Modifier.fillMaxWidth(),
         onClick = onRefresh,
     ) {
@@ -300,7 +300,7 @@ private fun LoadingPointState(pageColour: Color, hasRetainedData: Boolean) {
 private fun ErrorPointState(pageColour: Color, message: String, onRefresh: () -> Unit) {
     MetroTile(
         seed = "rain-point-error",
-        background = Color(0xFF202020),
+        background = pageColour,
         modifier = Modifier.fillMaxWidth(),
         onClick = onRefresh,
     ) {

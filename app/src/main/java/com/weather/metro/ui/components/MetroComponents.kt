@@ -56,11 +56,6 @@ import kotlinx.coroutines.withContext
 import java.net.HttpURLConnection
 import java.net.URI
 
-enum class MetroTileTreatment {
-    ACCENT_FILL,
-    NEUTRAL_SURFACE,
-}
-
 @Composable
 fun MetroSectionLabel(text: String, modifier: Modifier = Modifier) {
     Text(
@@ -81,7 +76,6 @@ fun MetroTile(
     interactionSource: MutableInteractionSource? = null,
     contentPadding: androidx.compose.foundation.layout.PaddingValues =
         androidx.compose.foundation.layout.PaddingValues(12.dp),
-    treatment: MetroTileTreatment = MetroTileTreatment.ACCENT_FILL,
     selected: Boolean = false,
     content: @Composable BoxScope.() -> Unit,
 ) {
@@ -99,23 +93,19 @@ fun MetroTile(
     } else {
         Modifier
     }
-    val chromeModifier = if (treatment == MetroTileTreatment.NEUTRAL_SURFACE) {
-        Modifier
-            .background(neutralSurface)
-            .background(background.copy(alpha = if (selected) 0.14f else 0.035f))
-            .border(
-                width = 1.dp,
-                color = if (selected) background.copy(alpha = 0.72f) else neutralOutline,
+    val chromeModifier = Modifier
+        .background(neutralSurface)
+        .background(background.copy(alpha = if (selected) 0.14f else 0.035f))
+        .border(
+            width = 1.dp,
+            color = if (selected) background.copy(alpha = 0.72f) else neutralOutline,
+        )
+        .drawBehind {
+            drawRect(
+                color = background.copy(alpha = 0.92f),
+                size = Size(3.dp.toPx(), size.height),
             )
-            .drawBehind {
-                drawRect(
-                    color = background.copy(alpha = 0.92f),
-                    size = Size(3.dp.toPx(), size.height),
-                )
-            }
-    } else {
-        Modifier.background(background)
-    }
+        }
     Box(
         modifier = modifier
             .clip(androidx.compose.ui.graphics.RectangleShape)
@@ -133,7 +123,6 @@ fun ExpandableMetroTile(
     expanded: Boolean,
     onExpandedChange: (Boolean) -> Unit,
     modifier: Modifier = Modifier,
-    treatment: MetroTileTreatment = MetroTileTreatment.ACCENT_FILL,
     collapsed: @Composable ColumnScope.() -> Unit,
     expandedContent: @Composable ColumnScope.() -> Unit,
 ) {
@@ -143,7 +132,6 @@ fun ExpandableMetroTile(
         background = background,
         onClick = { onExpandedChange(!expanded) },
         modifier = modifier,
-        treatment = treatment,
     ) {
         Column(
             modifier = Modifier

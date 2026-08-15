@@ -51,7 +51,6 @@ import com.weather.metro.domain.WeatherAlert
 import com.weather.metro.domain.WeatherSnapshot
 import com.weather.metro.ui.AppNavigationRequest
 import com.weather.metro.ui.components.ExpandableMetroTile
-import com.weather.metro.ui.components.MetroTileTreatment
 import com.weather.metro.ui.components.HkoRemoteImage
 import com.weather.metro.ui.components.MetroSectionLabel
 import com.weather.metro.ui.components.MetroStat
@@ -130,7 +129,6 @@ fun CurrentScreen(
             ExpandableMetroTile(
                 seed = "current:${snapshot.location.district}",
                 background = pageColour,
-                treatment = MetroTileTreatment.NEUTRAL_SURFACE,
                 expanded = heroExpanded,
                 onExpandedChange = {
                     heroExpanded = it
@@ -210,7 +208,6 @@ fun CurrentScreen(
             ExpandableMetroTile(
                 seed = "local-forecast",
                 background = pageColour,
-                treatment = MetroTileTreatment.NEUTRAL_SURFACE,
                 expanded = localForecastExpanded,
                 onExpandedChange = {
                     localForecastExpanded = it
@@ -342,7 +339,6 @@ private fun AlertsSection(
             seed = "no-alerts",
             background = pageColour,
             modifier = Modifier.fillMaxWidth(),
-            treatment = MetroTileTreatment.NEUTRAL_SURFACE,
         ) {
             Text("現時沒有生效的天氣警告或特別提示。", color = LocalMetroSubText.current)
         }
@@ -384,6 +380,7 @@ private fun AlertSmallTile(
         background = alertColor(alert.severity),
         modifier = modifier.aspectRatio(0.70f),
         onClick = onClick,
+        selected = selected,
         contentPadding = androidx.compose.foundation.layout.PaddingValues(8.dp),
     ) {
         Column(Modifier.fillMaxSize()) {
