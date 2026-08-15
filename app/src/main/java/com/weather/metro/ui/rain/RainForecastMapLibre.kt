@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -76,6 +77,7 @@ private val MAPLIBRE_PANEL = Color(0xF20A0A0A)
 private val MAPLIBRE_WARNING = Color(0xFFFFB300)
 private const val MAPLIBRE_RAIN_SOURCE = "weather-metro-rain-image"
 private const val MAPLIBRE_RAIN_LAYER = "weather-metro-rain-layer"
+private const val MAPLIBRE_TIMELINE_VISIBLE_WINDOW = 5
 // MapLibre Native uses a 512 px world-tile scale while the Canvas renderer uses 256 px.
 // Offset MapLibre camera zoom by -1 so the A/B views cover the same geographic extent.
 private const val MAPLIBRE_ZOOM_OFFSET_FROM_CANVAS = -1.0
@@ -703,6 +705,14 @@ private fun MapLibreTimelineHud(
     onRecenter: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val timelineListState = rememberLazyListState()
+    LaunchedEffect(selectedIndex, timeline.frames.size) {
+        if (timeline.frames.isEmpty() || selectedIndex !in timeline.frames.indices) return@LaunchedEffect
+        val maxAnchor = (timeline.frames.size - MAPLIBRE_TIMELINE_VISIBLE_WINDOW).coerceAtLeast(0)
+        val centeredAnchor = (selectedIndex - MAPLIBRE_TIMELINE_VISIBLE_WINDOW / 2).coerceAtLeast(0)
+        timelineListState.scrollToItem(centeredAnchor.coerceAtMost(maxAnchor))
+    }
+
     Column(
         modifier = modifier
             .fillMaxWidth()
@@ -741,6 +751,7 @@ private fun MapLibreTimelineHud(
             }
             Spacer(Modifier.size(5.dp))
             LazyRow(
+                state = timelineListState,
                 modifier = Modifier.weight(1f),
                 horizontalArrangement = Arrangement.spacedBy(5.dp),
             ) {
