@@ -15,6 +15,13 @@ class RainErrorPresentationTest {
     }
 
     @Test
+    fun schemaValidationErrorsAreUserFacing() {
+        assertEquals("資料格式暫時無法讀取", rainUserFacingError("SWIRLS grid missing"))
+        assertEquals("資料格式暫時無法讀取", rainUserFacingError("Radar contract missing"))
+        assertEquals("資料格式暫時無法讀取", rainUserFacingError("SWIRLS frame index must be 0..15"))
+    }
+
+    @Test
     fun networkErrorsAreUserFacing() {
         assertEquals("資料來源暫時無法連線", rainUserFacingError("Unable to resolve host radar.example"))
     }
