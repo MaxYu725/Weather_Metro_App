@@ -33,22 +33,28 @@ estimates that HKO does not publish at the same granularity.
 
 ## Integration status
 
-The native Tools integration is still under active refinement and is **not yet
-considered complete**.
+The native Tools integration has completed its P1 code/static closure review.
+One final cross-tool real-device smoke on the merged P1 runtime baseline remains
+before the overall integration is marked closed.
 
-- Point rainfall: integrated and under regression review.
-- Radar: MapLibre production path validated on real devices.
-- Two-hour Forecast: **MapLibre is the production-visible renderer**. The Canvas
-  renderer remains in the repository only as a hidden reference/safety
-  implementation. Forecast still requires further product and real-device
-  refinement before the overall Tools integration can be closed.
-- Storm Live: HKO/CMA/JMA/CWA MapLibre path validated on real devices.
+- Point rainfall: integrated with host-location independence, stale-data
+  retention and foreground-only refresh behavior; included in the final smoke.
+- Radar: MapLibre production path validated on real devices. Production always
+  opens in LIVE mode; TEST transport remains internal and is not exposed by the
+  normal Tools surface.
+- Two-hour Forecast: **P0 complete**. MapLibre is the production-visible
+  renderer and has passed repeated playback, pan/zoom, background/resume,
+  real-rain raster and timeline-following validation. Canvas remains only as a
+  hidden reference/safety implementation.
+- Storm Live: HKO/CMA/JMA/CWA MapLibre path validated on real devices with
+  independent source state and last-good fallback.
 - Storm Archive: deferred TODO. Storm-Track is still accumulating historical
   storm/advisory records and the Archive feature has not yet completed formal
-  functional/real-device validation, so it must not be treated as
-  production-ready in Weather Metro.
+  functional/real-device validation, so it is not production-ready in Weather
+  Metro.
 
-See [docs/TOOLS_TODO.md](docs/TOOLS_TODO.md) for the active remaining work.
+See [docs/TOOLS_TODO.md](docs/TOOLS_TODO.md) for the final P1 smoke matrix and
+remaining deferred work.
 
 ## Architecture
 
@@ -61,6 +67,11 @@ Rain and Storm are native tool modules with independent repositories and load
 state. A normal weather-source failure must not make `tools` or `settings`
 unavailable. Fullscreen tools temporarily hide the host Pivot and stop their
 disposable requests/animation when hidden.
+
+Weather Metro owns one Android location pipeline. The host resolves one
+`LocationInfo`, exposes it independently to native Tools, and passes the same
+resolved location into the normal Weather refresh. A normal weather transport
+failure therefore does not remove the Tools host location.
 
 ```text
 app/
