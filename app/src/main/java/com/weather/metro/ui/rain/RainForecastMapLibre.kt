@@ -48,6 +48,7 @@ import com.weather.metro.domain.rain.RainForecastFrame
 import com.weather.metro.domain.rain.RainForecastSource
 import com.weather.metro.domain.rain.RainForecastTimeline
 import com.weather.metro.ui.components.MetroProgress
+import java.util.LinkedHashMap
 import kotlinx.coroutines.delay
 import org.maplibre.android.MapLibre
 import org.maplibre.android.annotations.IconFactory
@@ -246,10 +247,13 @@ fun RainForecastMapLibrePanel(
         if (timeline != null && frame != null) {
             MapLibreForecastSurface(
                 frame = frame,
+                runKey = "${timeline.source.name}:${timeline.issueTime}",
+                frameCount = timeline.frames.size,
                 location = state.location,
                 markerColour = accent,
                 opacity = displaySettings.opacity,
                 recenterRequest = recenterRequest,
+                isActive = isActive,
                 modifier = Modifier.fillMaxSize(),
             )
         } else {
@@ -319,10 +323,13 @@ fun RainForecastMapLibrePanel(
 @Composable
 private fun MapLibreForecastSurface(
     frame: RainForecastFrame,
+    runKey: String,
+    frameCount: Int,
     location: LocationInfo?,
     markerColour: Color,
     opacity: Float,
     recenterRequest: Int,
+    isActive: Boolean,
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
@@ -331,6 +338,15 @@ private fun MapLibreForecastSurface(
     val latestLocation by rememberUpdatedState(location)
     val latestMarkerColour by rememberUpdatedState(markerColour)
     val latestOpacity by rememberUpdatedState(opacity)
+    val bitmapCache = remember(runKey, frame.grid.rows, frame.grid.cols, frameCount) {
+        ForecastFrameBitmapCache(
+            maxEntries = forecastBitmapCacheCapacity(
+                rows = frame.grid.rows,
+                cols = frame.grid.cols,
+                frameCount = frameCount,
+            ),
+        )
+    }
     var map by remember { mutableStateOf<MapLibreMap?>(null) }
     var rainSource by remember { mutableStateOf<ImageSource?>(null) }
     var rainLayer by remember { mutableStateOf<RasterLayer?>(null) }
@@ -377,6 +393,14 @@ private fun MapLibreForecastSurface(
         MapView(context, options).also { it.onCreate(null) }
     }
 
+    DisposableEffect(bitmapCache) {
+        onDispose { bitmapCache.clear() }
+    }
+
+    LaunchedEffect(isActive, bitmapCache) {
+        if (!isActive) bitmapCache.clear()
+    }
+
     DisposableEffect(mapView, lifecycleOwner) {
         val lifecycle = lifecycleOwner.lifecycle
         val observer = LifecycleEventObserver { _, event ->
@@ -415,7 +439,7 @@ private fun MapLibreForecastSurface(
                 val source = ImageSource(
                     MAPLIBRE_RAIN_SOURCE,
                     currentFrame.mapLibreQuad(),
-                    currentFrame.toAndroidRainBitmap(),
+                    bitmapCache.bitmapFor(currentFrame),
                 )
                 style.addSource(source)
                 val layer = RasterLayer(MAPLIBRE_RAIN_LAYER, MAPLIBRE_RAIN_SOURCE)
@@ -438,10 +462,10 @@ private fun MapLibreForecastSurface(
         }
     }
 
-    LaunchedEffect(frame, rainSource) {
+    LaunchedEffect(frame, rainSource, bitmapCache) {
         val source = rainSource ?: return@LaunchedEffect
         source.setCoordinates(frame.mapLibreQuad())
-        source.setImage(frame.toAndroidRainBitmap())
+        source.setImage(bitmapCache.bitmapFor(frame))
     }
 
     LaunchedEffect(opacity, rainLayer) {
@@ -477,6 +501,29 @@ private fun MapLibreForecastSurface(
                 .align(Alignment.TopStart)
                 .padding(start = 16.dp, top = 82.dp),
         )
+    }
+}
+
+private class ForecastFrameBitmapCache(
+    private val maxEntries: Int,
+) {
+    init {
+        require(maxEntries > 0) { "Forecast bitmap cache must keep at least one frame" }
+    }
+
+    private val bitmaps = object : LinkedHashMap<Int, Bitmap>(maxEntries, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<Int, Bitmap>?): Boolean =
+            size > maxEntries
+    }
+
+    fun bitmapFor(frame: RainForecastFrame): Bitmap = synchronized(bitmaps) {
+        bitmaps[frame.frameIndex] ?: frame.toAndroidRainBitmap().also { rendered ->
+            bitmaps[frame.frameIndex] = rendered
+        }
+    }
+
+    fun clear() {
+        synchronized(bitmaps) { bitmaps.clear() }
     }
 }
 
