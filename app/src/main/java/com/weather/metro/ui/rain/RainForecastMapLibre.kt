@@ -338,6 +338,7 @@ private fun MapLibreForecastSurface(
     val latestLocation by rememberUpdatedState(location)
     val latestMarkerColour by rememberUpdatedState(markerColour)
     val latestOpacity by rememberUpdatedState(opacity)
+    val latestIsActive by rememberUpdatedState(isActive)
     val bitmapCache = remember(runKey, frame.grid.rows, frame.grid.cols, frameCount) {
         ForecastFrameBitmapCache(
             maxEntries = forecastBitmapCacheCapacity(
@@ -458,11 +459,13 @@ private fun MapLibreForecastSurface(
                     context = context,
                 )
                 bindCameraToLocation(readyMap, latestLocation)
+                if (!latestIsActive) bitmapCache.clear()
             }
         }
     }
 
-    LaunchedEffect(frame, rainSource, bitmapCache) {
+    LaunchedEffect(frame, rainSource, bitmapCache, isActive) {
+        if (!isActive) return@LaunchedEffect
         val source = rainSource ?: return@LaunchedEffect
         source.setCoordinates(frame.mapLibreQuad())
         source.setImage(bitmapCache.bitmapFor(frame))
