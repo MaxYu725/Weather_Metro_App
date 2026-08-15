@@ -31,11 +31,11 @@ class RainRepository(
     } catch (error: Throwable) {
         val cached = cache.readCapabilities()?.let {
             runCatching { client.parseCapabilities(it) }.getOrNull()
-        } ?: throw error
+        } ?: throw userFacingRainException(error)
         RainLoadResult(
             value = cached,
             isStale = true,
-            networkError = error.message ?: "Rain capabilities unavailable",
+            networkError = rainUserFacingError(error.message),
         )
     }
 
@@ -59,26 +59,34 @@ class RainRepository(
                     expectedRadiusKm = radiusKm,
                 )
             }.getOrNull()
-        } ?: throw error
+        } ?: throw userFacingRainException(error)
         RainLoadResult(
             value = cached,
             isStale = true,
-            networkError = error.message ?: "Rain point forecast unavailable",
+            networkError = rainUserFacingError(error.message),
         )
     }
 
-    suspend fun loadRadarContract(): RainLoadResult<RainRadarContract> {
+    suspend fun loadRadarContract(): RainLoadResult<RainRadarContract> = try {
         val network = radarClient.loadContract()
-        return RainLoadResult(network.value, isStale = false)
+        RainLoadResult(network.value, isStale = false)
+    } catch (error: CancellationException) {
+        throw error
+    } catch (error: Throwable) {
+        throw userFacingRainException(error)
     }
 
     suspend fun loadRadarTimeline(
         rangeKm: Int,
         heightKm: Int,
         mode: RainRadarMode = RainRadarMode.LIVE,
-    ): RainLoadResult<RainRadarTimeline> {
+    ): RainLoadResult<RainRadarTimeline> = try {
         val network = radarClient.loadFrames(rangeKm, heightKm, mode)
-        return RainLoadResult(network.value, isStale = false)
+        RainLoadResult(network.value, isStale = false)
+    } catch (error: CancellationException) {
+        throw error
+    } catch (error: Throwable) {
+        throw userFacingRainException(error)
     }
 
     suspend fun loadRadarImage(relativePath: String): ByteArray = radarClient.loadImage(relativePath)
@@ -116,17 +124,25 @@ class RainRepository(
             }
         }
 
-        val network = forecastClient.loadSwirlsFrame(frameIndex)
-        forecastClient.assertSwirlsFrameCompatible(timeline, network.value)
-        synchronized(forecastLock) {
-            if (activeSwirlsRun != timeline.issueTime) {
-                throw RainForecastRunChangedException(
-                    "SWIRLS active run changed while frame $frameIndex was loading",
-                )
+        try {
+            val network = forecastClient.loadSwirlsFrame(frameIndex)
+            forecastClient.assertSwirlsFrameCompatible(timeline, network.value)
+            synchronized(forecastLock) {
+                if (activeSwirlsRun != timeline.issueTime) {
+                    throw RainForecastRunChangedException(
+                        "SWIRLS active run changed while frame $frameIndex was loading",
+                    )
+                }
+                activeSwirlsFrames[frameIndex] = network.value
             }
-            activeSwirlsFrames[frameIndex] = network.value
+            return RainLoadResult(network.value, isStale = false)
+        } catch (error: CancellationException) {
+            throw error
+        } catch (error: RainForecastRunChangedException) {
+            throw error
+        } catch (error: Throwable) {
+            throw userFacingRainException(error)
         }
-        return RainLoadResult(network.value, isStale = false)
     }
 
     fun clearForecastMemory() {
@@ -162,13 +178,13 @@ class RainRepository(
                 return RainLoadResult(
                     value = cached,
                     isStale = true,
-                    networkError = nowcastError.message ?: "Rain forecast unavailable",
+                    networkError = rainUserFacingError(nowcastError.message),
                 )
             }
-            throw IllegalStateException(
-                "SWIRLS unavailable ($swirlsMessage); nowcast fallback unavailable (${nowcastError.message ?: "unknown error"})",
-                nowcastError,
-            )
+            throw userFacingRainException(nowcastError)
         }
     }
 }
+
+private fun userFacingRainException(error: Throwable): IllegalStateException =
+    IllegalStateException(rainUserFacingError(error.message), error)
