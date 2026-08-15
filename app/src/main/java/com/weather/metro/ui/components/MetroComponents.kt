@@ -10,8 +10,10 @@ import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
@@ -29,6 +31,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.produceState
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -71,13 +74,21 @@ fun MetroTile(
     background: Color,
     modifier: Modifier = Modifier,
     onClick: (() -> Unit)? = null,
+    interactionSource: MutableInteractionSource? = null,
     contentPadding: androidx.compose.foundation.layout.PaddingValues =
         androidx.compose.foundation.layout.PaddingValues(12.dp),
     content: @Composable BoxScope.() -> Unit,
 ) {
     val patternIntensity = LocalPatternIntensity.current
+    val resolvedInteractionSource = interactionSource ?: remember { MutableInteractionSource() }
+    val indication = LocalIndication.current
     val clickableModifier = if (onClick != null) {
-        Modifier.clickable(role = Role.Button, onClick = onClick)
+        Modifier.clickable(
+            interactionSource = resolvedInteractionSource,
+            indication = indication,
+            role = Role.Button,
+            onClick = onClick,
+        )
     } else {
         Modifier
     }

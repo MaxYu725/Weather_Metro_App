@@ -2,7 +2,21 @@ package com.weather.metro.ui.tools
 
 import android.content.Intent
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -26,6 +40,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -52,6 +67,7 @@ import com.weather.metro.ui.storm.STORM_FOREGROUND_POLICY_TICK_MS
 import com.weather.metro.ui.storm.StormHostState
 import com.weather.metro.ui.storm.StormLivePanel
 import com.weather.metro.ui.theme.LocalMetroSubText
+import com.weather.metro.ui.theme.LocalReduceMotion
 import kotlinx.coroutines.delay
 
 private const val DESTINATION_HOME = "home"
@@ -97,6 +113,7 @@ fun NativeToolsScreen(
         mutableIntStateOf(rainState.pointRequest?.radiusKm ?: RainHostViewModel.DEFAULT_POINT_RADIUS_KM)
     }
     val effectiveActive = toolHostIsActive(isActive, lifecycleResumed)
+    val reduceMotion = LocalReduceMotion.current
 
     DisposableEffect(lifecycleOwner) {
         val lifecycle = lifecycleOwner.lifecycle
@@ -168,68 +185,98 @@ fun NativeToolsScreen(
         }
     }
 
-    when (destination) {
-        DESTINATION_POINT -> PointToolScreen(
-            pageColour = pageColour,
-            rainState = rainState,
-            selectedRadiusKm = selectedRadiusKm,
-            onRadiusChange = { radiusKm ->
-                selectedRadiusKm = radiusKm
-                onRefreshPoint(radiusKm)
-            },
-            onRefresh = { onRefreshPoint(selectedRadiusKm) },
-            onBack = {
-                onCancelPointRefresh()
-                destination = DESTINATION_HOME
-            },
-        )
-        DESTINATION_RADAR -> RadarMapLibreToolScreen(
-            pageColour = pageColour,
-            radarState = radarState,
-            isActive = effectiveActive,
-            onRefresh = onRefreshRadar,
-            onSelectFrame = onSelectRadarFrame,
-            onSelectRange = onSelectRadarRange,
-            onSelectHeight = onSelectRadarHeight,
-            onSelectMode = onSelectRadarMode,
-            onOpacityChange = onRadarOpacityChange,
-            onPlaybackSpeedChange = onRadarPlaybackSpeedChange,
-            onJumpToLatest = onJumpRadarToLatest,
-            onBack = {
-                onCancelRadarRequests()
-                destination = DESTINATION_HOME
-            },
-        )
-        DESTINATION_FORECAST -> ForecastToolScreen(
-            pageColour = pageColour,
-            rainState = rainState,
-            isActive = effectiveActive,
-            onRefresh = onRefreshForecast,
-            onSelectFrame = onLoadForecastFrame,
-            onBack = {
-                onCancelForecastRequests()
-                destination = DESTINATION_HOME
-            },
-        )
-        DESTINATION_STORM -> StormLiveToolScreen(
-            pageColour = pageColour,
-            stormState = stormState,
-            isActive = effectiveActive,
-            onRefresh = onRefreshStorm,
-            onEnsureFresh = onEnsureStormFresh,
-            onCancelRequests = onCancelStormRequests,
-            onBack = {
-                onCancelStormRequests()
-                destination = DESTINATION_HOME
-            },
-        )
-        else -> ToolsHome(
-            pageColour = pageColour,
-            onOpenPoint = { destination = DESTINATION_POINT },
-            onOpenRadar = { destination = DESTINATION_RADAR },
-            onOpenForecast = { destination = DESTINATION_FORECAST },
-            onOpenStorm = { destination = DESTINATION_STORM },
-        )
+    AnimatedContent(
+        targetState = destination,
+        transitionSpec = {
+            val duration = if (reduceMotion) 1 else 360
+            when (toolTransitionDirection(initialState, targetState)) {
+                1 -> (
+                    fadeIn(tween(duration, delayMillis = if (reduceMotion) 0 else 70)) +
+                        slideInHorizontally(tween(duration)) { width -> width / 7 } +
+                        scaleIn(tween(duration), initialScale = 0.985f)
+                    ) togetherWith (
+                    fadeOut(tween(if (reduceMotion) 1 else 170)) +
+                        slideOutHorizontally(tween(duration)) { width -> -width / 10 } +
+                        scaleOut(tween(duration), targetScale = 0.99f)
+                    )
+                -1 -> (
+                    fadeIn(tween(duration, delayMillis = if (reduceMotion) 0 else 55)) +
+                        slideInHorizontally(tween(duration)) { width -> -width / 8 } +
+                        scaleIn(tween(duration), initialScale = 0.99f)
+                    ) togetherWith (
+                    fadeOut(tween(if (reduceMotion) 1 else 170)) +
+                        slideOutHorizontally(tween(duration)) { width -> width / 8 }
+                    )
+                else -> fadeIn(tween(duration)) togetherWith fadeOut(tween(duration))
+            }
+        },
+        contentKey = { it },
+        label = "tools destination",
+        modifier = Modifier.fillMaxSize(),
+    ) { targetDestination ->
+        when (targetDestination) {
+            DESTINATION_POINT -> PointToolScreen(
+                pageColour = pageColour,
+                rainState = rainState,
+                selectedRadiusKm = selectedRadiusKm,
+                onRadiusChange = { radiusKm ->
+                    selectedRadiusKm = radiusKm
+                    onRefreshPoint(radiusKm)
+                },
+                onRefresh = { onRefreshPoint(selectedRadiusKm) },
+                onBack = {
+                    onCancelPointRefresh()
+                    destination = DESTINATION_HOME
+                },
+            )
+            DESTINATION_RADAR -> RadarMapLibreToolScreen(
+                pageColour = pageColour,
+                radarState = radarState,
+                isActive = effectiveActive && destination == targetDestination,
+                onRefresh = onRefreshRadar,
+                onSelectFrame = onSelectRadarFrame,
+                onSelectRange = onSelectRadarRange,
+                onSelectHeight = onSelectRadarHeight,
+                onSelectMode = onSelectRadarMode,
+                onOpacityChange = onRadarOpacityChange,
+                onPlaybackSpeedChange = onRadarPlaybackSpeedChange,
+                onJumpToLatest = onJumpRadarToLatest,
+                onBack = {
+                    onCancelRadarRequests()
+                    destination = DESTINATION_HOME
+                },
+            )
+            DESTINATION_FORECAST -> ForecastToolScreen(
+                pageColour = pageColour,
+                rainState = rainState,
+                isActive = effectiveActive && destination == targetDestination,
+                onRefresh = onRefreshForecast,
+                onSelectFrame = onLoadForecastFrame,
+                onBack = {
+                    onCancelForecastRequests()
+                    destination = DESTINATION_HOME
+                },
+            )
+            DESTINATION_STORM -> StormLiveToolScreen(
+                pageColour = pageColour,
+                stormState = stormState,
+                isActive = effectiveActive && destination == targetDestination,
+                onRefresh = onRefreshStorm,
+                onEnsureFresh = onEnsureStormFresh,
+                onCancelRequests = onCancelStormRequests,
+                onBack = {
+                    onCancelStormRequests()
+                    destination = DESTINATION_HOME
+                },
+            )
+            else -> ToolsHome(
+                pageColour = pageColour,
+                onOpenPoint = { destination = DESTINATION_POINT },
+                onOpenRadar = { destination = DESTINATION_RADAR },
+                onOpenForecast = { destination = DESTINATION_FORECAST },
+                onOpenStorm = { destination = DESTINATION_STORM },
+            )
+        }
     }
 }
 
@@ -247,72 +294,82 @@ private fun ToolsHome(
         contentPadding = androidx.compose.foundation.layout.PaddingValues(start = 22.dp, end = 16.dp, bottom = 48.dp),
         verticalArrangement = Arrangement.spacedBy(9.dp),
     ) {
-        item { MetroSectionLabel("rain") }
+        item { ToolHomeReveal(0) { MetroSectionLabel("rain") } }
         item {
-            ToolTile(
-                seed = "native-point-rain",
-                title = "定點降雨",
-                description = "目前位置 · 附近雨勢",
-                status = "降雨",
-                background = pageColour,
-                onClick = onOpenPoint,
-            )
+            ToolHomeReveal(1) {
+                ToolTile(
+                    seed = "native-point-rain",
+                    title = "定點降雨",
+                    description = "目前位置 · 附近雨勢",
+                    status = "降雨",
+                    background = pageColour,
+                    onClick = onOpenPoint,
+                )
+            }
         }
         item {
-            Row(horizontalArrangement = Arrangement.spacedBy(9.dp)) {
+            ToolHomeReveal(2) {
+                Row(horizontalArrangement = Arrangement.spacedBy(9.dp)) {
+                    ToolTile(
+                        seed = "native-radar",
+                        title = "雷達",
+                        description = "即時觀測 · 64 / 256 km",
+                        status = "觀測",
+                        background = pageColour,
+                        modifier = Modifier.weight(1f).height(132.dp),
+                        onClick = onOpenRadar,
+                    )
+                    ToolTile(
+                        seed = "native-forecast-map",
+                        title = "2小時預報",
+                        description = "未來兩小時 · 6分鐘步進",
+                        status = "預報",
+                        background = pageColour,
+                        modifier = Modifier.weight(1f).height(132.dp),
+                        onClick = onOpenForecast,
+                    )
+                }
+            }
+        }
+
+        item { ToolHomeReveal(3) { MetroSectionLabel("storm") } }
+        item {
+            ToolHomeReveal(4) {
                 ToolTile(
-                    seed = "native-radar",
-                    title = "雷達",
-                    description = "即時觀測 · 64 / 256 km",
-                    status = "觀測",
+                    seed = "native-storm",
+                    title = "熱帶氣旋",
+                    description = "HKO · CMA · JMA · CWA",
+                    status = "live",
                     background = pageColour,
-                    modifier = Modifier.weight(1f).height(132.dp),
-                    onClick = onOpenRadar,
-                )
-                ToolTile(
-                    seed = "native-forecast-map",
-                    title = "2小時預報",
-                    description = "未來兩小時 · 6分鐘步進",
-                    status = "預報",
-                    background = pageColour,
-                    modifier = Modifier.weight(1f).height(132.dp),
-                    onClick = onOpenForecast,
+                    onClick = onOpenStorm,
                 )
             }
         }
 
-        item { MetroSectionLabel("storm") }
+        item { ToolHomeReveal(5) { MetroSectionLabel("official links") } }
         item {
-            ToolTile(
-                seed = "native-storm",
-                title = "熱帶氣旋",
-                description = "HKO · CMA · JMA · CWA",
-                status = "live",
-                background = pageColour,
-                onClick = onOpenStorm,
-            )
-        }
-
-        item { MetroSectionLabel("official links") }
-        item {
-            OfficialLink(
-                title = "香港天文台雷達圖像",
-                onClick = {
-                    context.startActivity(
-                        Intent(Intent.ACTION_VIEW, "https://www.hko.gov.hk/tc/wxinfo/radars/radar-range.htm".toUri()),
-                    )
-                },
-            )
+            ToolHomeReveal(6) {
+                OfficialLink(
+                    title = "香港天文台雷達圖像",
+                    onClick = {
+                        context.startActivity(
+                            Intent(Intent.ACTION_VIEW, "https://www.hko.gov.hk/tc/wxinfo/radars/radar-range.htm".toUri()),
+                        )
+                    },
+                )
+            }
         }
         item {
-            OfficialLink(
-                title = "閃電位置資訊",
-                onClick = {
-                    context.startActivity(
-                        Intent(Intent.ACTION_VIEW, "https://maps.weather.gov.hk/llis/llis.htm".toUri()),
-                    )
-                },
-            )
+            ToolHomeReveal(7) {
+                OfficialLink(
+                    title = "閃電位置資訊",
+                    onClick = {
+                        context.startActivity(
+                            Intent(Intent.ACTION_VIEW, "https://maps.weather.gov.hk/llis/llis.htm".toUri()),
+                        )
+                    },
+                )
+            }
         }
     }
 }
@@ -463,11 +520,23 @@ private fun ToolTile(
     modifier: Modifier = Modifier.fillMaxWidth().height(142.dp),
     onClick: (() -> Unit)? = null,
 ) {
+    val reduceMotion = LocalReduceMotion.current
+    val interactionSource = remember { MutableInteractionSource() }
+    val pressed by interactionSource.collectIsPressedAsState()
+    val scale by animateFloatAsState(
+        targetValue = if (pressed && !reduceMotion) 0.975f else 1f,
+        animationSpec = tween(if (reduceMotion) 1 else 120),
+        label = "tool tile press",
+    )
     MetroTile(
         seed = seed,
         background = background,
-        modifier = modifier,
+        modifier = modifier.graphicsLayer {
+            scaleX = scale
+            scaleY = scale
+        },
         onClick = onClick,
+        interactionSource = interactionSource,
     ) {
         Column(Modifier.fillMaxSize()) {
             Text(status, color = Color.White.copy(alpha = 0.68f), fontSize = 10.sp)
@@ -475,6 +544,31 @@ private fun ToolTile(
             Text(title, color = Color.White, fontSize = 25.sp, fontWeight = FontWeight.Light)
             Text(description, color = Color.White.copy(alpha = 0.72f), fontSize = 11.sp, lineHeight = 15.sp)
         }
+    }
+}
+
+@Composable
+private fun ToolHomeReveal(
+    index: Int,
+    content: @Composable () -> Unit,
+) {
+    val reduceMotion = LocalReduceMotion.current
+    var visible by remember(index) { mutableStateOf(reduceMotion) }
+    LaunchedEffect(index, reduceMotion) {
+        if (reduceMotion) {
+            visible = true
+        } else {
+            visible = false
+            delay(35L + index * 45L)
+            visible = true
+        }
+    }
+    AnimatedVisibility(
+        visible = visible,
+        enter = fadeIn(tween(if (reduceMotion) 1 else 260)) +
+            slideInVertically(tween(if (reduceMotion) 1 else 320)) { height -> height / 5 },
+    ) {
+        Box(Modifier.fillMaxWidth()) { content() }
     }
 }
 
@@ -493,5 +587,11 @@ private fun OfficialLink(title: String, onClick: () -> Unit) {
 
 internal fun toolHostIsActive(pageActive: Boolean, lifecycleResumed: Boolean): Boolean =
     pageActive && lifecycleResumed
+
+internal fun toolTransitionDirection(initial: String, target: String): Int = when {
+    initial == DESTINATION_HOME && target != DESTINATION_HOME -> 1
+    initial != DESTINATION_HOME && target == DESTINATION_HOME -> -1
+    else -> 0
+}
 
 internal fun productionForecastRenderer(): String = "maplibre"
