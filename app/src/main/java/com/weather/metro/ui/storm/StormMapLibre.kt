@@ -17,6 +17,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.viewinterop.AndroidView
+import com.weather.metro.ui.tools.destroyAfterToolTransition
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
@@ -175,7 +176,8 @@ internal fun StormMapLibreSurface(
             lifecycle.removeObserver(observer)
             if (lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) mapView.onPause()
             if (lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) mapView.onStop()
-            mapView.onDestroy()
+            if (lifecycle.currentState == Lifecycle.State.DESTROYED) mapView.onDestroy()
+            else mapView.destroyAfterToolTransition()
         }
     }
 

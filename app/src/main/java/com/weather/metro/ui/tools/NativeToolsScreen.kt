@@ -29,6 +29,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -77,6 +79,11 @@ private const val DESTINATION_POINT = "point"
 private const val DESTINATION_RADAR = "radar"
 private const val DESTINATION_FORECAST = "forecast"
 private const val DESTINATION_STORM = "storm"
+private const val TOOLS_DESTINATION_TRANSITION_MS = 460
+private const val TOOLS_REDUCED_TRANSITION_MS = 140
+
+internal fun toolsFullscreenReleaseDelayMs(reduceMotion: Boolean): Long =
+    if (reduceMotion) TOOLS_REDUCED_TRANSITION_MS.toLong() else TOOLS_DESTINATION_TRANSITION_MS.toLong()
 
 @Composable
 fun NativeToolsScreen(
@@ -114,6 +121,8 @@ fun NativeToolsScreen(
     var selectedRadiusKm by rememberSaveable {
         mutableIntStateOf(rainState.pointRequest?.radiusKm ?: RainHostViewModel.DEFAULT_POINT_RADIUS_KM)
     }
+    var homeIntroPlayed by rememberSaveable { mutableStateOf(false) }
+    val homeListState = rememberLazyListState()
     val effectiveActive = toolHostIsActive(isActive, lifecycleResumed)
     val reduceMotion = LocalReduceMotion.current
 
@@ -141,8 +150,12 @@ fun NativeToolsScreen(
         destination = DESTINATION_HOME
     }
 
-    LaunchedEffect(isActive, destination) {
-        if (isActive) onFullscreenChanged(destination != DESTINATION_HOME)
+    LaunchedEffect(isActive, destination, reduceMotion) {
+        if (!isActive) return@LaunchedEffect
+        if (destination == DESTINATION_HOME) {
+            delay(toolsFullscreenReleaseDelayMs(reduceMotion))
+        }
+        onFullscreenChanged(destination != DESTINATION_HOME)
     }
 
     LaunchedEffect(
@@ -193,7 +206,7 @@ fun NativeToolsScreen(
             if (reduceMotion) {
                 fadeIn(tween(140)) togetherWith fadeOut(tween(110))
             } else {
-                val duration = 460
+                val duration = TOOLS_DESTINATION_TRANSITION_MS
                 val transform = when (toolTransitionDirection(initialState, targetState)) {
                     1 -> (
                         fadeIn(tween(300, delayMillis = 45)) +
@@ -205,12 +218,10 @@ fun NativeToolsScreen(
                             scaleOut(tween(duration), targetScale = 0.985f)
                         )
                     -1 -> (
-                        fadeIn(tween(300, delayMillis = 35)) +
-                            slideInHorizontally(tween(duration, easing = FastOutSlowInEasing)) { width -> -width / 3 } +
-                            scaleIn(tween(duration), initialScale = 0.985f)
+                        fadeIn(tween(280, delayMillis = 35)) +
+                            slideInHorizontally(tween(360, easing = FastOutSlowInEasing)) { width -> -width / 8 }
                         ) togetherWith (
-                        fadeOut(tween(240)) +
-                            slideOutHorizontally(tween(duration, easing = FastOutSlowInEasing)) { width -> width / 3 }
+                        fadeOut(tween(100))
                         )
                     else -> fadeIn(tween(300)) togetherWith fadeOut(tween(240))
                 }
@@ -278,10 +289,24 @@ fun NativeToolsScreen(
             )
             else -> ToolsHome(
                 pageColour = pageColour,
-                onOpenPoint = { destination = DESTINATION_POINT },
-                onOpenRadar = { destination = DESTINATION_RADAR },
-                onOpenForecast = { destination = DESTINATION_FORECAST },
-                onOpenStorm = { destination = DESTINATION_STORM },
+                listState = homeListState,
+                animateReveal = !homeIntroPlayed,
+                onOpenPoint = {
+                    homeIntroPlayed = true
+                    destination = DESTINATION_POINT
+                },
+                onOpenRadar = {
+                    homeIntroPlayed = true
+                    destination = DESTINATION_RADAR
+                },
+                onOpenForecast = {
+                    homeIntroPlayed = true
+                    destination = DESTINATION_FORECAST
+                },
+                onOpenStorm = {
+                    homeIntroPlayed = true
+                    destination = DESTINATION_STORM
+                },
             )
         }
     }
@@ -290,6 +315,8 @@ fun NativeToolsScreen(
 @Composable
 private fun ToolsHome(
     pageColour: Color,
+    listState: LazyListState,
+    animateReveal: Boolean,
     onOpenPoint: () -> Unit,
     onOpenRadar: () -> Unit,
     onOpenForecast: () -> Unit,
@@ -297,13 +324,14 @@ private fun ToolsHome(
 ) {
     val context = LocalContext.current
     LazyColumn(
+        state = listState,
         modifier = Modifier.fillMaxSize(),
         contentPadding = androidx.compose.foundation.layout.PaddingValues(start = 22.dp, end = 16.dp, bottom = 48.dp),
         verticalArrangement = Arrangement.spacedBy(9.dp),
     ) {
-        item { ToolHomeReveal(0) { MetroSectionLabel("rain") } }
+        item { ToolHomeReveal(0, animateReveal) { MetroSectionLabel("rain") } }
         item {
-            ToolHomeReveal(1) {
+            ToolHomeReveal(1, animateReveal) {
                 ToolTile(
                     seed = "native-point-rain",
                     title = "定點降雨",
@@ -315,7 +343,7 @@ private fun ToolsHome(
             }
         }
         item {
-            ToolHomeReveal(2) {
+            ToolHomeReveal(2, animateReveal) {
                 Row(horizontalArrangement = Arrangement.spacedBy(9.dp)) {
                     ToolTile(
                         seed = "native-radar",
@@ -339,9 +367,9 @@ private fun ToolsHome(
             }
         }
 
-        item { ToolHomeReveal(3) { MetroSectionLabel("storm") } }
+        item { ToolHomeReveal(3, animateReveal) { MetroSectionLabel("storm") } }
         item {
-            ToolHomeReveal(4) {
+            ToolHomeReveal(4, animateReveal) {
                 ToolTile(
                     seed = "native-storm",
                     title = "熱帶氣旋",
@@ -353,9 +381,9 @@ private fun ToolsHome(
             }
         }
 
-        item { ToolHomeReveal(5) { MetroSectionLabel("official links") } }
+        item { ToolHomeReveal(5, animateReveal) { MetroSectionLabel("official links") } }
         item {
-            ToolHomeReveal(6) {
+            ToolHomeReveal(6, animateReveal) {
                 OfficialLink(
                     title = "香港天文台雷達圖像",
                     onClick = {
@@ -367,7 +395,7 @@ private fun ToolsHome(
             }
         }
         item {
-            ToolHomeReveal(7) {
+            ToolHomeReveal(7, animateReveal) {
                 OfficialLink(
                     title = "閃電位置資訊",
                     onClick = {
@@ -557,8 +585,13 @@ private fun ToolTile(
 @Composable
 private fun ToolHomeReveal(
     index: Int,
+    animate: Boolean,
     content: @Composable () -> Unit,
 ) {
+    if (!animate) {
+        Box(Modifier.fillMaxWidth()) { content() }
+        return
+    }
     val reduceMotion = LocalReduceMotion.current
     var visible by remember(index) { mutableStateOf(false) }
     LaunchedEffect(index, reduceMotion) {

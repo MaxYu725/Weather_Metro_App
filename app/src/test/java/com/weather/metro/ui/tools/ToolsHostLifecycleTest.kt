@@ -25,4 +25,10 @@ class ToolsHostLifecycleTest {
         assertEquals(-1, toolTransitionDirection("storm", "home"))
         assertEquals(0, toolTransitionDirection("radar", "forecast"))
     }
+
+    @Test
+    fun `fullscreen header waits for destination transition before returning`() {
+        assertEquals(460L, toolsFullscreenReleaseDelayMs(reduceMotion = false))
+        assertEquals(140L, toolsFullscreenReleaseDelayMs(reduceMotion = true))
+    }
 }
