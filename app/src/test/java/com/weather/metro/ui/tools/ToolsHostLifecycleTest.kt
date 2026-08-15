@@ -18,4 +18,17 @@ class ToolsHostLifecycleTest {
     fun `production forecast renderer is MapLibre`() {
         assertEquals("maplibre", productionForecastRenderer())
     }
+
+    @Test
+    fun `tool transition direction follows fullscreen navigation`() {
+        assertEquals(1, toolTransitionDirection("home", "radar"))
+        assertEquals(-1, toolTransitionDirection("storm", "home"))
+        assertEquals(0, toolTransitionDirection("radar", "forecast"))
+    }
+
+    @Test
+    fun `fullscreen header waits for destination transition before returning`() {
+        assertEquals(460L, toolsFullscreenReleaseDelayMs(reduceMotion = false))
+        assertEquals(140L, toolsFullscreenReleaseDelayMs(reduceMotion = true))
+    }
 }

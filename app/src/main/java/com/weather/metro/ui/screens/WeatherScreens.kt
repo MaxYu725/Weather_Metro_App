@@ -650,7 +650,7 @@ fun SettingsScreen(
                 }
             }
         }
-        item { SettingToggleTile("reduce-motion", "reduce motion", "縮短 Pivot 和展開動畫", pageColour, settings.reduceMotion, onReduceMotionChange) }
+        item { SettingToggleTile("reduce-motion", "reduce motion", "使用短淡化過場，減少大幅移動", pageColour, settings.reduceMotion, onReduceMotionChange) }
         item { SettingToggleTile("contrast", "high contrast", "提高次要文字對比度", pageColour, settings.highContrast, onHighContrastChange) }
         item { SettingToggleTile("location", "precise location", "使用精確定位及香港街區解析", pageColour, settings.preciseLocation, onPreciseLocationChange) }
         item { SettingToggleTile("notifications", "weather notifications", "訂閱香港天文台警告更新", pageColour, settings.notificationsEnabled, onNotificationsChange) }

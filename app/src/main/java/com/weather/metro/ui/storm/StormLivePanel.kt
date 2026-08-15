@@ -1,8 +1,20 @@
 package com.weather.metro.ui.storm
 
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
+import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -31,6 +43,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
@@ -48,6 +61,8 @@ import com.weather.metro.domain.storm.StormPoint
 import com.weather.metro.domain.storm.StormPointType
 import com.weather.metro.domain.storm.StormTrack
 import com.weather.metro.ui.theme.LocalMetroSubText
+import com.weather.metro.ui.theme.LocalReduceMotion
+import com.weather.metro.ui.tools.ToolInitialLoadingOverlay
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -110,6 +125,7 @@ internal fun StormLivePanel(
         .filter { it in enabledAgencies }
         .flatMap { tracksByAgency[it].orEmpty() }
     val selectedPoint = resolveStormPointSelection(selectedPointRef, tracksByAgency)
+    val reduceMotion = LocalReduceMotion.current
 
     LaunchedEffect(enabledAgencies, tracksByAgency, selectedPointRef) {
         val ref = selectedPointRef ?: return@LaunchedEffect
@@ -129,6 +145,14 @@ internal fun StormLivePanel(
             enabledAgencies = enabledAgencies,
             fitToken = fitToken,
             onPointSelected = { selectedPointRef = it },
+            modifier = Modifier.fillMaxSize(),
+        )
+
+        ToolInitialLoadingOverlay(
+            visible = !state.cacheRestored || (state.isRefreshing && visibleTracks.isEmpty()),
+            title = if (state.cacheRestored) "正在同步熱帶氣旋" else "正在載入熱帶氣旋",
+            detail = if (state.cacheRestored) "正在整合四個官方機構的最新路徑" else "正在讀取裝置快取與官方來源",
+            accent = pageColour,
             modifier = Modifier.fillMaxSize(),
         )
 
@@ -169,13 +193,25 @@ internal fun StormLivePanel(
                 .padding(start = 10.dp, end = 10.dp, bottom = 10.dp),
         )
 
-        selectedPoint?.let { selected ->
-            StormPointPopup(
-                selected = selected,
-                containerSize = containerSize,
-                pageColour = pageColour,
-                onDismiss = { selectedPointRef = null },
-            )
+        AnimatedContent(
+            targetState = selectedPoint,
+            transitionSpec = {
+                val duration = if (reduceMotion) 120 else 200
+                (fadeIn(tween(duration)) + scaleIn(tween(duration), initialScale = 0.96f)) togetherWith
+                    (fadeOut(tween(duration)) + scaleOut(tween(duration), targetScale = 0.98f))
+            },
+            contentKey = { it?.ref },
+            label = "storm point popup",
+            modifier = Modifier.fillMaxSize(),
+        ) { selected ->
+            selected?.let {
+                StormPointPopup(
+                    selected = it,
+                    containerSize = containerSize,
+                    pageColour = pageColour,
+                    onDismiss = { selectedPointRef = null },
+                )
+            }
         }
     }
 }
@@ -288,13 +324,37 @@ private fun StormAgencyChip(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val border = if (enabled) accent else Color(0xFF3A3A3A)
-    val background = if (enabled) accent.copy(alpha = 0.12f) else Color(0xB80B0B0B)
+    val reduceMotion = LocalReduceMotion.current
+    val interactionSource = remember { MutableInteractionSource() }
+    val pressed by interactionSource.collectIsPressedAsState()
+    val border by animateColorAsState(
+        targetValue = if (enabled) accent else Color(0xFF3A3A3A),
+        animationSpec = tween(if (reduceMotion) 100 else 180),
+        label = "storm agency border",
+    )
+    val background by animateColorAsState(
+        targetValue = if (enabled) accent.copy(alpha = 0.12f) else Color(0xB80B0B0B),
+        animationSpec = tween(if (reduceMotion) 100 else 180),
+        label = "storm agency background",
+    )
+    val scale by animateFloatAsState(
+        targetValue = if (pressed && !reduceMotion) 0.96f else 1f,
+        animationSpec = tween(if (reduceMotion) 100 else 110),
+        label = "storm agency press",
+    )
     Column(
         modifier = modifier
+            .graphicsLayer {
+                scaleX = scale
+                scaleY = scale
+            }
             .border(1.dp, border)
             .background(background)
-            .clickable(onClick = onClick)
+            .clickable(
+                interactionSource = interactionSource,
+                indication = LocalIndication.current,
+                onClick = onClick,
+            )
             .padding(horizontal = 7.dp, vertical = 7.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {

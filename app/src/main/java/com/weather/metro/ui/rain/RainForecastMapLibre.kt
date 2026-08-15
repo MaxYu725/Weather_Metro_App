@@ -4,6 +4,12 @@ import android.graphics.Bitmap
 import android.graphics.Canvas as AndroidCanvas
 import android.graphics.Color as AndroidColor
 import android.graphics.Paint
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -48,7 +54,9 @@ import com.weather.metro.domain.LocationInfo
 import com.weather.metro.domain.rain.RainForecastFrame
 import com.weather.metro.domain.rain.RainForecastSource
 import com.weather.metro.domain.rain.RainForecastTimeline
-import com.weather.metro.ui.components.MetroProgress
+import com.weather.metro.ui.theme.LocalReduceMotion
+import com.weather.metro.ui.tools.ToolLoadingPanel
+import com.weather.metro.ui.tools.destroyAfterToolTransition
 import java.util.LinkedHashMap
 import kotlinx.coroutines.delay
 import org.maplibre.android.MapLibre
@@ -134,6 +142,7 @@ fun RainForecastMapLibrePanel(
     val displaySettings by settingsViewModel.state.collectAsStateWithLifecycle()
     val timeline = state.forecast.value
     val frame = state.forecastFrame.value
+    val contentReady = timeline != null && frame != null
     val runKey = timeline?.let { "${it.source.name}:${it.issueTime}" }
     var playing by rememberSaveable { mutableStateOf(false) }
     var recenterRequest by rememberSaveable { mutableStateOf(0) }
@@ -143,6 +152,7 @@ fun RainForecastMapLibrePanel(
     var pendingPlaybackIndex by remember(runKey) { mutableStateOf<Int?>(null) }
     var playbackNotice by remember(runKey) { mutableStateOf<String?>(null) }
     val accent = if (pageColour.alpha > 0f) pageColour else MAPLIBRE_FALLBACK_ACCENT
+    val reduceMotion = LocalReduceMotion.current
 
     LaunchedEffect(isActive) {
         if (!isActive) {
@@ -246,11 +256,17 @@ fun RainForecastMapLibrePanel(
             .fillMaxSize()
             .background(Color.Black),
     ) {
-        if (timeline != null && frame != null) {
+        AnimatedVisibility(
+            visible = contentReady,
+            enter = fadeIn(tween(if (reduceMotion) 120 else 320)),
+            exit = fadeOut(tween(if (reduceMotion) 100 else 160)),
+        ) {
+            val activeTimeline = timeline ?: return@AnimatedVisibility
+            val activeFrame = frame ?: return@AnimatedVisibility
             MapLibreForecastSurface(
-                frame = frame,
-                runKey = "${timeline.source.name}:${timeline.issueTime}",
-                frameCount = timeline.frames.size,
+                frame = activeFrame,
+                runKey = "${activeTimeline.source.name}:${activeTimeline.issueTime}",
+                frameCount = activeTimeline.frames.size,
                 location = state.location,
                 markerColour = accent,
                 opacity = displaySettings.opacity,
@@ -258,7 +274,12 @@ fun RainForecastMapLibrePanel(
                 isActive = isActive,
                 modifier = Modifier.fillMaxSize(),
             )
-        } else {
+        }
+        AnimatedVisibility(
+            visible = !contentReady,
+            enter = fadeIn(tween(if (reduceMotion) 120 else 220)),
+            exit = fadeOut(tween(if (reduceMotion) 100 else 140)),
+        ) {
             MapLibreCenteredState(
                 status = state.forecast.status,
                 errorMessage = state.forecast.errorMessage,
@@ -283,11 +304,22 @@ fun RainForecastMapLibrePanel(
             modifier = Modifier.align(Alignment.TopCenter),
         )
 
-        if (timeline != null && frame != null) {
+        AnimatedVisibility(
+            visible = contentReady,
+            enter = fadeIn(tween(if (reduceMotion) 120 else 260)) +
+                slideInVertically(tween(if (reduceMotion) 120 else 320)) { height -> height / 4 },
+            exit = fadeOut(tween(if (reduceMotion) 100 else 140)) +
+                slideOutVertically(tween(if (reduceMotion) 100 else 180)) { height -> height / 5 },
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .padding(start = 14.dp, end = 14.dp, bottom = 14.dp),
+        ) {
+            val activeTimeline = timeline ?: return@AnimatedVisibility
+            val activeFrame = frame ?: return@AnimatedVisibility
             MapLibreTimelineHud(
-                timeline = timeline,
-                frame = frame,
-                selectedIndex = state.forecastFrameIndex ?: frame.frameIndex,
+                timeline = activeTimeline,
+                frame = activeFrame,
+                selectedIndex = state.forecastFrameIndex ?: activeFrame.frameIndex,
                 frameLoading = state.forecastFrame.status == RainResourceStatus.LOADING,
                 isStale = state.forecast.isStale || state.forecastFrame.isStale,
                 playing = playing,
@@ -298,14 +330,14 @@ fun RainForecastMapLibrePanel(
                 failedPlaybackIndexes = failedPlaybackIndexes,
                 playbackNotice = playbackNotice,
                 onTogglePlay = {
-                    if (timeline.frames.size >= 2) playing = !playing
+                    if (activeTimeline.frames.size >= 2) playing = !playing
                 },
                 onSelectFrame = { index ->
                     playing = false
                     pendingPlaybackIndex = null
                     failedPlaybackIndexes = failedPlaybackIndexes - index
                     playbackNotice = null
-                    desiredLeadMinutes = timeline.frames.getOrNull(index)?.leadMinutes ?: desiredLeadMinutes
+                    desiredLeadMinutes = activeTimeline.frames.getOrNull(index)?.leadMinutes ?: desiredLeadMinutes
                     onSelectFrame(index)
                 },
                 onOpacityChange = settingsViewModel::setOpacity,
@@ -314,9 +346,7 @@ fun RainForecastMapLibrePanel(
                     settingsViewModel.setPlaybackSpeed(speed)
                 },
                 onRecenter = { recenterRequest += 1 },
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .padding(start = 14.dp, end = 14.dp, bottom = 14.dp),
+                modifier = Modifier.fillMaxWidth(),
             )
         }
     }
@@ -423,7 +453,8 @@ private fun MapLibreForecastSurface(
             lifecycle.removeObserver(observer)
             if (lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) mapView.onPause()
             if (lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) mapView.onStop()
-            mapView.onDestroy()
+            if (lifecycle.currentState == Lifecycle.State.DESTROYED) mapView.onDestroy()
+            else mapView.destroyAfterToolTransition()
         }
     }
 
@@ -919,9 +950,9 @@ private fun MapLibreCenteredState(
     onRefresh: () -> Unit,
 ) {
     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            when (status) {
-                RainResourceStatus.ERROR -> {
+        when (status) {
+            RainResourceStatus.ERROR -> {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Text("兩小時預報暫時無法使用", color = Color.White, fontSize = 18.sp)
                     Spacer(Modifier.size(6.dp))
                     Text(errorMessage ?: "請稍後再試", color = MAPLIBRE_MUTED, fontSize = 10.sp, maxLines = 2)
@@ -933,12 +964,12 @@ private fun MapLibreCenteredState(
                         modifier = Modifier.clickable(onClick = onRefresh).padding(10.dp),
                     )
                 }
-                else -> {
-                    MetroProgress(colour = accent)
-                    Spacer(Modifier.size(10.dp))
-                    Text("正在載入兩小時預報…", color = MAPLIBRE_MUTED, fontSize = 11.sp)
-                }
             }
+            else -> ToolLoadingPanel(
+                title = "正在載入兩小時預報",
+                detail = "正在準備預報圖層與時間軸",
+                accent = accent,
+            )
         }
     }
 }
