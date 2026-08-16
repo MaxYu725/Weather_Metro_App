@@ -23,10 +23,12 @@ class WeatherNotificationPublisher(
     private val applicationContext = context.applicationContext
     private val notifications = NotificationManagerCompat.from(applicationContext)
 
-    fun accept(event: WeatherNotificationEvent) {
-        if (!SettingsRepository.notificationsEnabled(applicationContext)) return
+    /** Returns true only after the event is durably present in the local inbox. */
+    fun accept(event: WeatherNotificationEvent): Boolean {
+        if (!SettingsRepository.notificationsEnabled(applicationContext)) return false
         store.record(event)
         replayPending()
+        return true
     }
 
     fun replayPending() = synchronized(REPLAY_LOCK) {
