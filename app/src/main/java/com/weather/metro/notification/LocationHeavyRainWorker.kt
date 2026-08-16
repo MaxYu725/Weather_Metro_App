@@ -9,39 +9,76 @@ import java.security.MessageDigest
 import java.time.OffsetDateTime
 import java.util.Locale
 
+/**
+ * Single WorkManager host for location-derived weather notifications.
+ *
+ * Phase 2D2E intentionally reuses the existing 2D1 worker/cadence instead of scheduling a second
+ * periodic SWIRLS worker. District observed rain and personalised SWIRLS rain keep separate state,
+ * source identities, inbox cleanup and runtime error handling inside this shared execution slot.
+ */
 internal class LocationHeavyRainWorker(
     appContext: Context,
     params: WorkerParameters,
 ) : CoroutineWorker(appContext, params) {
     private val locationStore = PersonalizedNotificationLocationStore(appContext)
+
     private val stateStore = LocationHeavyRainStateStore(appContext)
     private val inboxStore = NotificationEventStore(appContext)
     private val rainClient = HkoDistrictRainClient()
     private val publisher = WeatherNotificationPublisher(appContext)
 
+    private val personalizedRainStateStore = PersonalizedRainEpisodeStateStore(appContext)
+    private val personalizedRainRuntime = PersonalizedRainRuntime(
+        frameSource = RainForecastPersonalizedRainFrameSource(),
+        stateStore = personalizedRainStateStore,
+        eventSink = AndroidPersonalizedRainEventSink(appContext),
+    )
+
     override suspend fun doWork(): Result {
-        if (
-            !SettingsRepository.notificationsEnabled(applicationContext) ||
-            !SettingsRepository.locationHeavyRainNotificationsEnabled(applicationContext)
-        ) {
-            return Result.success()
-        }
+        if (!SettingsRepository.notificationsEnabled(applicationContext)) return Result.success()
+
+        val locationHeavyRainEnabled =
+            SettingsRepository.locationHeavyRainNotificationsEnabled(applicationContext)
+        val personalizedRainEnabled =
+            SettingsRepository.personalizedRainNotificationsEnabled(applicationContext)
+        if (!locationHeavyRainEnabled && !personalizedRainEnabled) return Result.success()
+
         if (!SettingsRepository.preciseLocationEnabled(applicationContext)) {
-            recordIdle("LOCATION_DISABLED")
+            if (locationHeavyRainEnabled) recordHeavyRainIdle("LOCATION_DISABLED")
+            if (personalizedRainEnabled) recordPersonalizedRainIdle("LOCATION_DISABLED")
             return Result.success()
         }
 
         val now = System.currentTimeMillis()
         val location = locationStore.read()
         if (location == null) {
-            recordIdle("LOCATION_UNAVAILABLE")
+            if (locationHeavyRainEnabled) recordHeavyRainIdle("LOCATION_UNAVAILABLE", now)
+            if (personalizedRainEnabled) recordPersonalizedRainIdle("LOCATION_UNAVAILABLE", now)
             return Result.success()
         }
-        if (now - location.updatedAtEpochMs > MAX_LOCATION_AGE_MS) {
-            recordIdle("LOCATION_STALE")
+        if (
+            now < location.updatedAtEpochMs ||
+            now - location.updatedAtEpochMs > MAX_LOCATION_AGE_MS
+        ) {
+            if (locationHeavyRainEnabled) recordHeavyRainIdle("LOCATION_STALE", now)
+            if (personalizedRainEnabled) recordPersonalizedRainIdle("LOCATION_STALE", now)
             return Result.success()
         }
 
+        var retryRequired = false
+        if (locationHeavyRainEnabled && runLocationHeavyRain(location, now) == RunOutcome.RETRY) {
+            retryRequired = true
+        }
+        if (personalizedRainEnabled && runPersonalizedRain(location, now) == RunOutcome.RETRY) {
+            retryRequired = true
+        }
+        return if (retryRequired) Result.retry() else Result.success()
+    }
+
+    private suspend fun runLocationHeavyRain(
+        location: PersonalizedNotificationLocation,
+        now: Long,
+    ): RunOutcome {
         var state = stateStore.read()
         if (state.district.isNotBlank() && state.district != location.district) {
             inboxStore.discardPendingBySourceType(SOURCE_TYPE_LOCATION_DERIVED)
@@ -52,10 +89,10 @@ internal class LocationHeavyRainWorker(
             stateStore.write(state)
         }
 
-        try {
+        return try {
             val pendingLevel = state.pendingLevel
             if (pendingLevel != null) {
-                if (!publishPending(location, state, now)) return Result.success()
+                if (!publishPending(location, state, now)) return RunOutcome.SUCCESS
                 state = state.copy(
                     pendingLevel = null,
                     pendingObservedMm = null,
@@ -84,7 +121,7 @@ internal class LocationHeavyRainWorker(
                         lastError = "",
                     ),
                 )
-                return Result.success()
+                return RunOutcome.SUCCESS
             }
 
             if (observedMm == null) {
@@ -97,7 +134,7 @@ internal class LocationHeavyRainWorker(
                         lastError = "",
                     ),
                 )
-                return Result.success()
+                return RunOutcome.SUCCESS
             }
 
             val decision = evaluateLocationHeavyRain(observedMm, state.activeLevel)
@@ -125,7 +162,7 @@ internal class LocationHeavyRainWorker(
             val notificationLevel = decision.notificationLevel
             if (notificationLevel == null) {
                 stateStore.write(next)
-                return Result.success()
+                return RunOutcome.SUCCESS
             }
 
             // Persist the pending transition before touching the local inbox. If
@@ -138,7 +175,7 @@ internal class LocationHeavyRainWorker(
             )
             stateStore.write(next)
 
-            if (!publishPending(location, next, now)) return Result.success()
+            if (!publishPending(location, next, now)) return RunOutcome.SUCCESS
             stateStore.write(
                 next.copy(
                     pendingLevel = null,
@@ -149,7 +186,7 @@ internal class LocationHeavyRainWorker(
                     lastError = "",
                 ),
             )
-            return Result.success()
+            RunOutcome.SUCCESS
         } catch (error: CancellationException) {
             throw error
         } catch (error: Throwable) {
@@ -163,8 +200,30 @@ internal class LocationHeavyRainWorker(
                     ),
                 )
             }
-            return Result.retry()
+            RunOutcome.RETRY
         }
+    }
+
+    private suspend fun runPersonalizedRain(
+        location: PersonalizedNotificationLocation,
+        now: Long,
+    ): RunOutcome = try {
+        personalizedRainRuntime.execute(location, now)
+        RunOutcome.SUCCESS
+    } catch (error: CancellationException) {
+        throw error
+    } catch (error: Throwable) {
+        val current = personalizedRainStateStore.read()
+        runCatching {
+            personalizedRainStateStore.write(
+                current.copy(
+                    lastCheckedEpochMs = now,
+                    status = "ERROR",
+                    lastError = (error.message ?: error::class.java.simpleName).take(500),
+                ),
+            )
+        }
+        RunOutcome.RETRY
     }
 
     private fun publishPending(
@@ -208,11 +267,22 @@ internal class LocationHeavyRainWorker(
             "已達 $thresholdMm mm。請留意低窪地區、水浸及出行風險。"
     }
 
-    private fun recordIdle(status: String) {
+    private fun recordHeavyRainIdle(status: String, nowEpochMs: Long = System.currentTimeMillis()) {
         val current = stateStore.read()
         stateStore.write(
             current.copy(
-                lastCheckedEpochMs = System.currentTimeMillis(),
+                lastCheckedEpochMs = nowEpochMs,
+                status = status,
+                lastError = "",
+            ),
+        )
+    }
+
+    private fun recordPersonalizedRainIdle(status: String, nowEpochMs: Long = System.currentTimeMillis()) {
+        val current = personalizedRainStateStore.read()
+        personalizedRainStateStore.write(
+            current.copy(
+                lastCheckedEpochMs = nowEpochMs,
                 status = status,
                 lastError = "",
             ),
@@ -224,6 +294,11 @@ internal class LocationHeavyRainWorker(
             .digest(value.toByteArray(Charsets.UTF_8))
             .take(12)
             .joinToString("") { byte -> "%02x".format(byte.toInt() and 0xff) }
+
+    private enum class RunOutcome {
+        SUCCESS,
+        RETRY,
+    }
 
     private companion object {
         const val MAX_LOCATION_AGE_MS = 6 * 60 * 60 * 1000L
