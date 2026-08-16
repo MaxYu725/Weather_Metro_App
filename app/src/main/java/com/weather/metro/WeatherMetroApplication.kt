@@ -6,7 +6,6 @@ import com.weather.metro.data.settings.SettingsRepository
 import com.weather.metro.notification.LocationHeavyRainScheduler
 import com.weather.metro.notification.NotificationChannels
 import com.weather.metro.notification.NotificationReconcileScheduler
-import com.weather.metro.notification.PersonalizedRainScheduler
 import com.weather.metro.notification.shouldSchedulePersonalizedLocationNotifications
 
 class WeatherMetroApplication : Application() {
@@ -34,14 +33,16 @@ class WeatherMetroApplication : Application() {
                 personalizedRainEnabled = personalizedRainEnabled,
             )
         ) {
-            // The existing 2D1 periodic work remains the sole 15-minute cadence owner.
-            // Neither path requests location here; both consume Weather Metro's cached fix.
+            // The existing 2D1 unique work remains the sole periodic and immediate owner.
+            // Neither stream requests location here; both consume Weather Metro's cached fix.
             LocationHeavyRainScheduler.ensurePeriodic(this)
-            if (locationHeavyRainEnabled) LocationHeavyRainScheduler.enqueueNow(this)
-            if (personalizedRainEnabled) PersonalizedRainScheduler.enqueueNow(this)
+            LocationHeavyRainScheduler.enqueueNow(
+                context = this,
+                dispatchHeavyRain = locationHeavyRainEnabled,
+                dispatchPersonalizedRain = personalizedRainEnabled,
+            )
         } else {
             LocationHeavyRainScheduler.disable(this)
-            PersonalizedRainScheduler.disable(this)
         }
     }
 }
