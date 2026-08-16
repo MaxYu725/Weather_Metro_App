@@ -114,3 +114,8 @@ internal fun shouldSchedulePersonalizedLocationNotifications(
     notificationsEnabled &&
         preciseLocationEnabled &&
         (locationHeavyRainEnabled || personalizedRainEnabled)
+
+internal fun shouldRunPersonalizedNotificationStream(
+    dispatchRequested: Boolean,
+    settingEnabled: Boolean,
+): Boolean = dispatchRequested && settingEnabled
