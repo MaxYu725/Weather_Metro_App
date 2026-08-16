@@ -9,17 +9,20 @@ import androidx.work.NetworkType
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
+import androidx.work.workDataOf
 import java.util.concurrent.TimeUnit
 
 /**
  * Shared cadence owner for location-derived weather notifications.
  *
  * The original 2D1 unique work names and worker class are intentionally retained so upgrades do
- * not create a second 15-minute periodic request. Phase 2D2E makes LocationHeavyRainWorker the
- * host for both the district-observation stream and the optional local SWIRLS stream.
+ * not create a second 15-minute periodic request. The periodic request carries an explicit input
+ * marker that lets LocationHeavyRainWorker dispatch the opt-in SWIRLS one-shot. Immediate 2D1
+ * checks do not carry that marker, so they cannot accidentally multiply SWIRLS downloads.
  */
 object LocationHeavyRainScheduler {
     const val SOURCE_TYPE = "HKO_LOCATION_DERIVED"
+    internal const val INPUT_DISPATCH_PERSONALIZED_RAIN = "dispatch_personalized_rain_cadence"
 
     private val networkConstraint = Constraints.Builder()
         .setRequiredNetworkType(NetworkType.CONNECTED)
@@ -28,11 +31,12 @@ object LocationHeavyRainScheduler {
     fun ensurePeriodic(context: Context) {
         val request = PeriodicWorkRequestBuilder<LocationHeavyRainWorker>(15, TimeUnit.MINUTES)
             .setConstraints(networkConstraint)
+            .setInputData(workDataOf(INPUT_DISPATCH_PERSONALIZED_RAIN to true))
             .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 1, TimeUnit.MINUTES)
             .build()
         WorkManager.getInstance(context.applicationContext).enqueueUniquePeriodicWork(
             PERIODIC_WORK_NAME,
-            ExistingPeriodicWorkPolicy.KEEP,
+            ExistingPeriodicWorkPolicy.UPDATE,
             request,
         )
     }
@@ -63,8 +67,7 @@ object LocationHeavyRainScheduler {
     }
 
     fun resetPersonalizedRain(context: Context) {
-        PersonalizedRainEpisodeStateStore(context).reset()
-        NotificationEventStore(context).discardPendingBySourceType(SOURCE_TYPE_PERSONALIZED_RAIN)
+        PersonalizedRainScheduler.reset(context)
     }
 
     fun resetAll(context: Context) {
