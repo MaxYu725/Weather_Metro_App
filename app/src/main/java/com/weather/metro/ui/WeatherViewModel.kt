@@ -19,8 +19,11 @@ import com.weather.metro.notification.LocationHeavyRainScheduler
 import com.weather.metro.notification.NotificationChannels
 import com.weather.metro.notification.NotificationJournalState
 import com.weather.metro.notification.NotificationReconcileScheduler
+import com.weather.metro.notification.PersonalizedNotificationDiagnostics
+import com.weather.metro.notification.PersonalizedNotificationDiagnosticsReader
 import com.weather.metro.notification.PersonalizedNotificationLocationStore
 import com.weather.metro.notification.shouldSchedulePersonalizedLocationNotifications
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -39,6 +42,7 @@ class WeatherViewModel(application: Application) : AndroidViewModel(application)
     private val settingsRepository = SettingsRepository(application)
     private val locationRepository = LocationRepository(application)
     private val personalizedLocationStore = PersonalizedNotificationLocationStore(application)
+    private val notificationDiagnosticsReader = PersonalizedNotificationDiagnosticsReader(application)
     private val weatherRepository = WeatherRepository(
         hkoClient = HkoClient(),
         locationRepository = locationRepository,
@@ -52,8 +56,12 @@ class WeatherViewModel(application: Application) : AndroidViewModel(application)
     val settings: StateFlow<UiSettings> = settingsRepository.settings
     private val _navigationRequest = MutableStateFlow<AppNavigationRequest?>(null)
     val navigationRequest: StateFlow<AppNavigationRequest?> = _navigationRequest.asStateFlow()
+    private val _notificationDiagnostics = MutableStateFlow(PersonalizedNotificationDiagnostics())
+    val notificationDiagnostics: StateFlow<PersonalizedNotificationDiagnostics> =
+        _notificationDiagnostics.asStateFlow()
 
     init {
+        refreshNotificationDiagnostics()
         viewModelScope.launch {
             val cached = weatherRepository.cached()
             if (cached != null) {
@@ -81,6 +89,12 @@ class WeatherViewModel(application: Application) : AndroidViewModel(application)
                     cached = existing,
                 )
             }
+        }
+    }
+
+    fun refreshNotificationDiagnostics() {
+        viewModelScope.launch(Dispatchers.IO) {
+            _notificationDiagnostics.value = notificationDiagnosticsReader.read()
         }
     }
 
