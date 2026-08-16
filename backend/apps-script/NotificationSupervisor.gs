@@ -2,24 +2,25 @@
  * Weather Metro notification supervisor.
  *
  * One one-minute Apps Script trigger owns the notification backend schedule.
- * The authoritative HKO JSON journal still runs every supervisor cycle, while
- * the secondary RSS cross-check is sampled every two minutes in steady state.
- * Recovery evidence/failover run only after a persistent source gap exists.
- *
- * This collapses four independent time triggers into one execution owner and
- * records conservative runtime telemetry for consumer-account quota review.
+ * A lightweight HKO warnsum fast poll runs every minute. Full publication
+ * hydration runs immediately on warnsum change and otherwise at a bounded
+ * interval so warningInfo-only statements and SWT remain covered. The
+ * independent RSS cross-check is also sampled on a bounded cadence, while
+ * recovery evidence/failover run only after a persistent source gap exists.
  */
 
 const NOTIFICATION_SUPERVISOR_CONFIG = Object.freeze({
   triggerFunction: 'runNotificationSupervisor',
-  runtimePropertyKey: 'HKO_NOTIFICATION_SUPERVISOR_RUNTIME_V1',
+  runtimePropertyKey: 'HKO_NOTIFICATION_SUPERVISOR_RUNTIME_V2',
   intervalMinutes: 1,
-  sourceMinIntervalMs: 110 * 1000,
+  sourceMinIntervalMs: 170 * 1000,
+  sourceDegradedMinIntervalMs: 55 * 1000,
+  pruneEveryRuns: 10,
   consumerDailyTriggerRuntimeBudgetMs: 90 * 60 * 1000,
   projectedRiskFraction: 0.85,
   actualRiskFraction: 0.80,
   minimumProjectionRuns: 10,
-  schemaVersion: 1,
+  schemaVersion: 2,
 });
 
 const NOTIFICATION_LEGACY_TRIGGER_HANDLERS = Object.freeze([
@@ -35,7 +36,7 @@ const NOTIFICATION_LEGACY_TRIGGER_HANDLERS = Object.freeze([
  *
  * Removes all notification-owned legacy triggers and installs exactly one
  * one-minute supervisor trigger. Running it in a healthy steady state does not
- * fabricate any weather event; it performs the same normal poll/check cycle.
+ * fabricate any weather event.
  */
 function setupNotificationSupervisor() {
   assertNotificationSupervisorDependencies_();
@@ -61,11 +62,7 @@ function setupNotificationSupervisor() {
   return runNotificationSupervisor();
 }
 
-/**
- * Repairs accidental legacy-trigger recreation without resetting the supervisor
- * schedule. Old setup helpers can therefore be run safely during migration: the
- * next supervisor cycle removes the extra trigger again.
- */
+/** Repairs accidentally recreated legacy notification triggers. */
 function pruneLegacyNotificationTriggers_() {
   if (typeof ScriptApp === 'undefined' || !ScriptApp.getProjectTriggers) return 0;
   let removed = 0;
@@ -82,6 +79,7 @@ function runNotificationSupervisor() {
   assertNotificationSupervisorDependencies_();
   const startedAtEpochMs = Date.now();
   const properties = PropertiesService.getScriptProperties();
+  const runtimeBefore = readNotificationSupervisorRuntime_(properties);
   const userLock = LockService.getUserLock();
 
   if (!userLock.tryLock(5000)) {
@@ -91,12 +89,14 @@ function runNotificationSupervisor() {
       completedAtEpochMs: Date.now(),
       status: 'SKIPPED_BUSY',
       journal: 'SKIPPED',
+      journalReason: '',
       source: 'SKIPPED',
       recovery: 'SKIPPED',
       failures: [],
       legacyTriggersRemoved: 0,
+      pruneChecked: false,
     };
-    updateNotificationSupervisorRuntime_(properties, skipped);
+    updateNotificationSupervisorRuntime_(properties, skipped, runtimeBefore);
     console.warn('Notification supervisor skipped because a previous cycle is still running.');
     return skipped;
   }
@@ -107,27 +107,40 @@ function runNotificationSupervisor() {
     completedAtEpochMs: 0,
     status: 'OK',
     journal: 'PENDING',
+    journalReason: '',
     source: 'NOT_DUE',
     recovery: 'IDLE',
     failures: [],
     legacyTriggersRemoved: 0,
+    pruneChecked: false,
   };
+  let primarySummary = null;
 
   try {
-    result.legacyTriggersRemoved = pruneLegacyNotificationTriggers_();
+    if (shouldPruneLegacyNotificationTriggers_(runtimeBefore)) {
+      result.pruneChecked = true;
+      result.legacyTriggersRemoved = pruneLegacyNotificationTriggers_();
+    }
 
     try {
-      checkWeatherUpdatesJournalled();
-      result.journal = 'OK';
+      const journalCycle = runNotificationFastPoll_(properties, Date.now());
+      result.journal = String(journalCycle && journalCycle.mode || 'UNKNOWN');
+      result.journalReason = String(journalCycle && journalCycle.reason || '');
+      primarySummary = journalCycle && journalCycle.primarySummary
+        ? journalCycle.primarySummary
+        : null;
     } catch (error) {
       result.journal = 'ERROR';
       result.failures.push(supervisorFailure_('journal', error));
     }
 
     const sourceBefore = readSupervisorSourceHealth_(properties);
-    if (shouldRunSourceCrossCheck_(sourceBefore, Date.now())) {
+    const forceSourceCheck = result.journal === 'ERROR';
+    if (shouldRunSourceCrossCheck_(sourceBefore, Date.now(), forceSourceCheck)) {
       try {
-        const source = checkWarningSourceRedundancy();
+        const source = primarySummary && typeof checkWarningSourceRedundancyFromSummary_ === 'function'
+          ? checkWarningSourceRedundancyFromSummary_(primarySummary, Date.now())
+          : checkWarningSourceRedundancy();
         result.source = String(source && source.status || 'UNKNOWN');
         if (shouldRunSourceGapRecovery_(source)) {
           const evidence = checkSourceGapRecoveryEvidence();
@@ -146,7 +159,9 @@ function runNotificationSupervisor() {
       }
     }
 
-    if (typeof refreshNotificationPipelineHealth_ === 'function') {
+    // Normal health reads are derived live by verify/doGet. Avoid another
+    // Apps Script service round-trip every minute; refresh eagerly on failure.
+    if (result.failures.length > 0 && typeof refreshNotificationPipelineHealth_ === 'function') {
       try {
         refreshNotificationPipelineHealth_(properties, Date.now());
       } catch (error) {
@@ -156,7 +171,7 @@ function runNotificationSupervisor() {
   } finally {
     result.completedAtEpochMs = Date.now();
     if (result.failures.length > 0) result.status = 'DEGRADED';
-    updateNotificationSupervisorRuntime_(properties, result);
+    updateNotificationSupervisorRuntime_(properties, result, runtimeBefore);
     userLock.releaseLock();
   }
 
@@ -168,10 +183,16 @@ function runNotificationSupervisor() {
   return result;
 }
 
-function shouldRunSourceCrossCheck_(sourceHealth, nowEpochMs) {
+function shouldRunSourceCrossCheck_(sourceHealth, nowEpochMs, force) {
+  if (force === true) return true;
   const checkedAt = Number(sourceHealth && sourceHealth.checkedAtEpochMs || 0);
   if (!Number.isFinite(checkedAt) || checkedAt <= 0) return true;
-  return Number(nowEpochMs || Date.now()) - checkedAt >= NOTIFICATION_SUPERVISOR_CONFIG.sourceMinIntervalMs;
+  const status = String(sourceHealth && sourceHealth.status || '');
+  const healthy = status === 'MATCH' || status === 'MATCH_AFTER_RETRY';
+  const interval = healthy
+    ? NOTIFICATION_SUPERVISOR_CONFIG.sourceMinIntervalMs
+    : NOTIFICATION_SUPERVISOR_CONFIG.sourceDegradedMinIntervalMs;
+  return Number(nowEpochMs || Date.now()) - checkedAt >= interval;
 }
 
 function shouldRunSourceGapRecovery_(sourceHealth) {
@@ -184,6 +205,11 @@ function shouldRunSourceGapRecovery_(sourceHealth) {
     streak >= 2 &&
     required.length > 0
   );
+}
+
+function shouldPruneLegacyNotificationTriggers_(runtime) {
+  const runCount = Math.max(0, Number(runtime && runtime.dayRunCount || 0));
+  return runCount === 0 || runCount % NOTIFICATION_SUPERVISOR_CONFIG.pruneEveryRuns === 0;
 }
 
 function readSupervisorSourceHealth_(properties) {
@@ -207,12 +233,12 @@ function supervisorFailure_(component, error) {
   };
 }
 
-function updateNotificationSupervisorRuntime_(properties, result) {
+function updateNotificationSupervisorRuntime_(properties, result, existingRuntime) {
   const completedAt = Number(result.completedAtEpochMs || Date.now());
   const startedAt = Number(result.startedAtEpochMs || completedAt);
   const durationMs = Math.max(0, completedAt - startedAt);
   const dayKey = notificationSupervisorHongKongDayKey_(completedAt);
-  let runtime = readNotificationSupervisorRuntime_(properties);
+  let runtime = existingRuntime || readNotificationSupervisorRuntime_(properties);
   if (runtime.dayKey !== dayKey) {
     runtime = notificationSupervisorEmptyRuntime_(dayKey);
   }
@@ -225,6 +251,10 @@ function updateNotificationSupervisorRuntime_(properties, result) {
   runtime.lastCompletedAtEpochMs = completedAt;
   runtime.lastStatus = String(result.status || 'UNKNOWN');
   runtime.legacyTriggersRemovedToday += Math.max(0, Number(result.legacyTriggersRemoved || 0));
+  if (result.pruneChecked) runtime.pruneChecksToday += 1;
+  if (result.journal === 'FAST') runtime.fastJournalChecksToday += 1;
+  if (result.journal === 'FULL') runtime.fullJournalChecksToday += 1;
+  if (result.journal === 'ERROR') runtime.journalFailuresToday += 1;
   if (result.source !== 'NOT_DUE' && result.source !== 'SKIPPED') runtime.sourceChecksToday += 1;
   if (result.recovery !== 'IDLE' && result.recovery !== 'SKIPPED') runtime.recoveryChecksToday += 1;
   if (result.status === 'SKIPPED_BUSY') runtime.busySkipsToday += 1;
@@ -245,8 +275,12 @@ function notificationSupervisorEmptyRuntime_(dayKey) {
     lastStartedAtEpochMs: 0,
     lastCompletedAtEpochMs: 0,
     lastStatus: '',
+    fastJournalChecksToday: 0,
+    fullJournalChecksToday: 0,
+    journalFailuresToday: 0,
     sourceChecksToday: 0,
     recoveryChecksToday: 0,
+    pruneChecksToday: 0,
     busySkipsToday: 0,
     componentFailuresToday: 0,
     legacyTriggersRemovedToday: 0,
@@ -294,8 +328,12 @@ function deriveNotificationSupervisorQuotaTelemetry_(runtime) {
     consumerQuotaRisk: actualRisk || projectedRisk,
     actualRuntimeRisk: actualRisk,
     projectedRuntimeRisk: projectedRisk,
+    fastJournalChecksToday: Math.max(0, Number(value.fastJournalChecksToday || 0)),
+    fullJournalChecksToday: Math.max(0, Number(value.fullJournalChecksToday || 0)),
+    journalFailuresToday: Math.max(0, Number(value.journalFailuresToday || 0)),
     sourceChecksToday: Math.max(0, Number(value.sourceChecksToday || 0)),
     recoveryChecksToday: Math.max(0, Number(value.recoveryChecksToday || 0)),
+    pruneChecksToday: Math.max(0, Number(value.pruneChecksToday || 0)),
     busySkipsToday: Math.max(0, Number(value.busySkipsToday || 0)),
     componentFailuresToday: Math.max(0, Number(value.componentFailuresToday || 0)),
     legacyTriggersRemovedToday: Math.max(0, Number(value.legacyTriggersRemovedToday || 0)),
@@ -336,6 +374,10 @@ function verifyNotificationSupervisor() {
     legacyTriggerCount: triggerSummary.legacyTriggerCount,
     legacyHandlers: triggerSummary.legacyHandlers,
     sourceMinIntervalMs: NOTIFICATION_SUPERVISOR_CONFIG.sourceMinIntervalMs,
+    sourceDegradedMinIntervalMs: NOTIFICATION_SUPERVISOR_CONFIG.sourceDegradedMinIntervalMs,
+    fastPoll: typeof notificationFastPollVerification_ === 'function'
+      ? notificationFastPollVerification_()
+      : null,
     runtime: runtime,
     quota: deriveNotificationSupervisorQuotaTelemetry_(runtime),
     pipelineHealth: typeof refreshNotificationPipelineHealth_ === 'function'
@@ -348,7 +390,7 @@ function verifyNotificationSupervisor() {
 
 function assertNotificationSupervisorDependencies_() {
   const required = [
-    ['checkWeatherUpdatesJournalled', typeof checkWeatherUpdatesJournalled === 'function'],
+    ['runNotificationFastPoll_', typeof runNotificationFastPoll_ === 'function'],
     ['checkWarningSourceRedundancy', typeof checkWarningSourceRedundancy === 'function'],
     ['checkSourceGapRecoveryEvidence', typeof checkSourceGapRecoveryEvidence === 'function'],
     ['checkSourceGapRecoveryFailover', typeof checkSourceGapRecoveryFailover === 'function'],
