@@ -15,9 +15,11 @@ import com.weather.metro.data.settings.SettingsRepository
 import com.weather.metro.data.settings.UiSettings
 import com.weather.metro.domain.LocationInfo
 import com.weather.metro.domain.WeatherLoadState
+import com.weather.metro.notification.LocationHeavyRainScheduler
 import com.weather.metro.notification.NotificationChannels
 import com.weather.metro.notification.NotificationJournalState
 import com.weather.metro.notification.NotificationReconcileScheduler
+import com.weather.metro.notification.PersonalizedNotificationLocationStore
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -35,6 +37,7 @@ data class AppNavigationRequest(
 class WeatherViewModel(application: Application) : AndroidViewModel(application) {
     private val settingsRepository = SettingsRepository(application)
     private val locationRepository = LocationRepository(application)
+    private val personalizedLocationStore = PersonalizedNotificationLocationStore(application)
     private val weatherRepository = WeatherRepository(
         hkoClient = HkoClient(),
         locationRepository = locationRepository,
@@ -68,6 +71,7 @@ class WeatherViewModel(application: Application) : AndroidViewModel(application)
 
             val location = weatherRepository.resolveLocation(settings.value.preciseLocation)
             _toolLocation.value = location
+            bindPersonalizedNotificationLocation(location)
             runCatching {
                 weatherRepository.refreshAt(location)
             }.onSuccess(::showResult).onFailure { error ->
@@ -88,6 +92,11 @@ class WeatherViewModel(application: Application) : AndroidViewModel(application)
 
     fun setPreciseLocation(value: Boolean) {
         settingsRepository.setPreciseLocation(value)
+        val application = getApplication<Application>()
+        if (!value) {
+            personalizedLocationStore.clear()
+            LocationHeavyRainScheduler.reset(application)
+        }
         refresh()
     }
 
@@ -99,10 +108,27 @@ class WeatherViewModel(application: Application) : AndroidViewModel(application)
             messaging.subscribeToTopic(NotificationChannels.TOPIC_PRODUCTION)
             NotificationReconcileScheduler.ensurePeriodic(application)
             NotificationReconcileScheduler.enqueueNow(application)
+            scheduleLocationHeavyRainIfEnabled()
         } else {
             messaging.unsubscribeFromTopic(NotificationChannels.TOPIC_PRODUCTION)
             NotificationReconcileScheduler.disable(application)
             NotificationJournalState(application).resetSubscriptionBaseline()
+            LocationHeavyRainScheduler.reset(application)
+        }
+    }
+
+    fun setLocationHeavyRainNotificationsEnabled(value: Boolean) {
+        settingsRepository.setLocationHeavyRainNotificationsEnabled(value)
+        val application = getApplication<Application>()
+        if (
+            value &&
+            settings.value.notificationsEnabled &&
+            settings.value.preciseLocation
+        ) {
+            LocationHeavyRainScheduler.ensurePeriodic(application)
+            LocationHeavyRainScheduler.enqueueNow(application)
+        } else {
+            LocationHeavyRainScheduler.reset(application)
         }
     }
 
@@ -112,6 +138,7 @@ class WeatherViewModel(application: Application) : AndroidViewModel(application)
             FirebaseMessaging.getInstance().subscribeToTopic(NotificationChannels.TOPIC_PRODUCTION)
             NotificationReconcileScheduler.ensurePeriodic(application)
             NotificationReconcileScheduler.enqueueNow(application)
+            scheduleLocationHeavyRainIfEnabled()
         }
     }
 
@@ -138,6 +165,26 @@ class WeatherViewModel(application: Application) : AndroidViewModel(application)
             weatherRepository.clearCache()
             refresh()
         }
+    }
+
+    private fun bindPersonalizedNotificationLocation(location: LocationInfo) {
+        if (!settings.value.preciseLocation || location.accuracyMetres == null) return
+        personalizedLocationStore.record(location)
+        scheduleLocationHeavyRainIfEnabled()
+    }
+
+    private fun scheduleLocationHeavyRainIfEnabled() {
+        val current = settings.value
+        if (
+            !current.notificationsEnabled ||
+            !current.locationHeavyRainNotificationsEnabled ||
+            !current.preciseLocation
+        ) {
+            return
+        }
+        val application = getApplication<Application>()
+        LocationHeavyRainScheduler.ensurePeriodic(application)
+        LocationHeavyRainScheduler.enqueueNow(application)
     }
 
     private fun showResult(result: RefreshResult) {

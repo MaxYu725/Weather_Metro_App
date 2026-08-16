@@ -16,6 +16,18 @@ import com.weather.metro.MainActivity
 import com.weather.metro.R
 import com.weather.metro.data.settings.SettingsRepository
 
+internal const val SOURCE_TYPE_LOCATION_DERIVED = "HKO_LOCATION_DERIVED"
+private const val LOCATION_DERIVED_POST_TTL_MS = 90 * 60 * 1000L
+
+internal fun shouldExpireBeforePosting(
+    event: WeatherNotificationEvent,
+    nowEpochMs: Long,
+): Boolean {
+    if (event.sourceType != SOURCE_TYPE_LOCATION_DERIVED) return false
+    if (event.sentAtEpochMillis <= 0L || nowEpochMs <= 0L) return true
+    return nowEpochMs - event.sentAtEpochMillis > LOCATION_DERIVED_POST_TTL_MS
+}
+
 class WeatherNotificationPublisher(
     context: Context,
     private val store: NotificationEventStore = NotificationEventStore(context),
@@ -35,7 +47,15 @@ class WeatherNotificationPublisher(
         if (!SettingsRepository.notificationsEnabled(applicationContext)) return@synchronized
         NotificationChannels.create(applicationContext)
         val postedIds = mutableSetOf<String>()
+        val now = System.currentTimeMillis()
         store.pending().forEach { stored ->
+            if (shouldExpireBeforePosting(stored.event, now)) {
+                // Derived location conditions are time-sensitive. Archive an old
+                // local event rather than surfacing it hours after the condition.
+                // Official journal publications deliberately do not use this TTL.
+                postedIds += stored.event.eventId
+                return@forEach
+            }
             if (!canPost(stored.event.channel)) return@forEach
             runCatching { post(stored.event) }
                 .onSuccess { postedIds += stored.event.eventId }
@@ -78,7 +98,7 @@ class WeatherNotificationPublisher(
                 NotificationCompat.BigTextStyle()
                     .setBigContentTitle(event.title)
                     .bigText(event.body)
-                    .setSummaryText("香港天文台官方內容"),
+                    .setSummaryText(summaryText(event)),
             )
             .setContentIntent(pendingIntent)
             .setAutoCancel(true)
@@ -103,6 +123,13 @@ class WeatherNotificationPublisher(
 
         notifications.notify(event.eventId, NOTIFICATION_ID, notification)
     }
+
+    private fun summaryText(event: WeatherNotificationEvent): String =
+        if (event.sourceType == SOURCE_TYPE_LOCATION_DERIVED) {
+            "根據香港天文台公開數據"
+        } else {
+            "香港天文台官方內容"
+        }
 
     private companion object {
         const val NOTIFICATION_GROUP = "hko_weather_updates"

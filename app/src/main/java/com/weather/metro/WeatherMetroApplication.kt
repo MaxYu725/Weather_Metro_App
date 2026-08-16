@@ -3,6 +3,7 @@ package com.weather.metro
 import android.app.Application
 import com.google.firebase.messaging.FirebaseMessaging
 import com.weather.metro.data.settings.SettingsRepository
+import com.weather.metro.notification.LocationHeavyRainScheduler
 import com.weather.metro.notification.NotificationChannels
 import com.weather.metro.notification.NotificationReconcileScheduler
 
@@ -16,6 +17,15 @@ class WeatherMetroApplication : Application() {
             FirebaseMessaging.getInstance().subscribeToTopic(NotificationChannels.TOPIC_PRODUCTION)
             NotificationReconcileScheduler.ensurePeriodic(this)
             NotificationReconcileScheduler.enqueueNow(this)
+            if (
+                SettingsRepository.locationHeavyRainNotificationsEnabled(this) &&
+                SettingsRepository.preciseLocationEnabled(this)
+            ) {
+                // This worker consumes the last precise location already resolved
+                // by Weather Metro. Startup never creates a second location owner.
+                LocationHeavyRainScheduler.ensurePeriodic(this)
+                LocationHeavyRainScheduler.enqueueNow(this)
+            }
         }
     }
 }
