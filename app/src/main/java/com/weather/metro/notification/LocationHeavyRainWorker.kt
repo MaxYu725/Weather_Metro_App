@@ -50,14 +50,15 @@ internal class LocationHeavyRainWorker(
         }
 
         try {
-            if (state.pendingLevel != null) {
+            val pendingLevel = state.pendingLevel
+            if (pendingLevel != null) {
                 if (!publishPending(location, state, now)) return Result.success()
                 state = state.copy(
                     pendingLevel = null,
                     pendingObservedMm = null,
                     pendingObservedAt = "",
                     lastNotificationEpochMs = now,
-                    status = "NOTIFIED_${state.pendingLevel.thresholdMm}",
+                    status = "NOTIFIED_${pendingLevel.thresholdMm}",
                     lastError = "",
                 )
                 stateStore.write(state)
