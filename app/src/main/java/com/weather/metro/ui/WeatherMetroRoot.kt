@@ -76,6 +76,7 @@ fun WeatherMetroRoot(
     val radarViewModel: RainRadarHostViewModel = viewModel()
     val stormViewModel: StormHostViewModel = viewModel()
     val settings by viewModel.settings.collectAsStateWithLifecycle()
+    val notificationDiagnostics by viewModel.notificationDiagnostics.collectAsStateWithLifecycle()
     val loadState by viewModel.loadState.collectAsStateWithLifecycle()
     val toolLocation by viewModel.toolLocation.collectAsStateWithLifecycle()
     val navigationRequest by viewModel.navigationRequest.collectAsStateWithLifecycle()
@@ -123,6 +124,7 @@ fun WeatherMetroRoot(
 
         LaunchedEffect(pageIndex) {
             if (activePage != PageColourSlot.TOOLS) fullscreenTool = false
+            if (activePage == PageColourSlot.SETTINGS) viewModel.refreshNotificationDiagnostics()
         }
 
         LaunchedEffect(navigationRequest?.token) {
@@ -224,6 +226,7 @@ fun WeatherMetroRoot(
 
                         PageColourSlot.SETTINGS -> SettingsScreen(
                             settings = settings,
+                            notificationDiagnostics = notificationDiagnostics,
                             pageColour = pageColour,
                             onPageColourChange = viewModel::setPageColour,
                             onTextScaleChange = viewModel::setTextScale,
@@ -238,6 +241,7 @@ fun WeatherMetroRoot(
                                 viewModel::setLocationHeavyRainNotificationsEnabled,
                             onPersonalizedRainNotificationsChange =
                                 viewModel::setPersonalizedRainNotificationsEnabled,
+                            onRefreshNotificationDiagnostics = viewModel::refreshNotificationDiagnostics,
                             onOpenNotificationSettings = openNotificationSettings,
                             onClearCache = {
                                 viewModel.clearCache()
