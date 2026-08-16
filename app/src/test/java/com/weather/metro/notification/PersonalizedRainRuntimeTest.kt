@@ -240,8 +240,8 @@ class PersonalizedRainRuntimeTest {
 
     private class FakeFrameSource(
         private val runEpochMs: Long,
-        private val amountForFrame: (Int) -> Double,
         private val actions: MutableList<String>? = null,
+        private val amountForFrame: (Int) -> Double,
     ) : PersonalizedRainFrameSource {
         val loadedIndices = mutableListOf<Int>()
         private val grid = testGrid()
