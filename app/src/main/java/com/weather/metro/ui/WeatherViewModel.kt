@@ -16,6 +16,7 @@ import com.weather.metro.data.settings.UiSettings
 import com.weather.metro.domain.LocationInfo
 import com.weather.metro.domain.WeatherLoadState
 import com.weather.metro.notification.NotificationChannels
+import com.weather.metro.notification.NotificationJournalState
 import com.weather.metro.notification.NotificationReconcileScheduler
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -101,6 +102,7 @@ class WeatherViewModel(application: Application) : AndroidViewModel(application)
         } else {
             messaging.unsubscribeFromTopic(NotificationChannels.TOPIC_PRODUCTION)
             NotificationReconcileScheduler.disable(application)
+            NotificationJournalState(application).resetSubscriptionBaseline()
         }
     }
 
