@@ -55,6 +55,7 @@ fun SettingsScreen(
     onPreciseLocationChange: (Boolean) -> Unit,
     onNotificationsChange: (Boolean) -> Unit,
     onLocationHeavyRainNotificationsChange: (Boolean) -> Unit,
+    onPersonalizedRainNotificationsChange: (Boolean) -> Unit,
     onOpenNotificationSettings: () -> Unit,
     onClearCache: () -> Unit,
 ) {
@@ -185,6 +186,16 @@ fun SettingsScreen(
                 pageColour = pageColour,
                 checked = settings.locationHeavyRainNotificationsEnabled,
                 onChange = onLocationHeavyRainNotificationsChange,
+            )
+        }
+        item {
+            PersonalizedSettingToggle(
+                seed = "notification-personalized-rain",
+                title = "rain approaching",
+                description = "使用天文台 SWIRLS 預報本機判斷未來降雨及雨勢變化；位置只在裝置取樣，不會上傳",
+                pageColour = pageColour,
+                checked = settings.personalizedRainNotificationsEnabled,
+                onChange = onPersonalizedRainNotificationsChange,
             )
         }
         item {
