@@ -27,36 +27,99 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
       - name: Test alert monitor
         run: node --test backend/apps-script/*.test.mjs
-      - name: Test, lint, and assemble
+      - name: Test, lint, debug, and full bundle
         run: |
           chmod +x gradlew
-          ./gradlew testDebugUnitTest lintDebug assembleDebug assembleRelease bundleRelease --stacktrace
+          ./gradlew testDebugUnitTest lintDebug assembleDebug bundleRelease --stacktrace
+      - name: Build slim per-ABI release APKs
+        run: ./gradlew -PWEATHER_SLIM_RELEASE_APKS=true assembleRelease --stacktrace
+      - name: Verify release ABI packaging
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import pathlib
+          import zipfile
+
+          expected = {"armeabi-v7a", "arm64-v8a", "x86", "x86_64"}
+          apk_paths = sorted(pathlib.Path("app/build/outputs/apk/release").glob("*.apk"))
+          if len(apk_paths) != 4:
+              raise SystemExit(f"Expected exactly 4 split APKs, found {len(apk_paths)}: {apk_paths}")
+
+          seen = set()
+          for apk in apk_paths:
+              with zipfile.ZipFile(apk) as archive:
+                  native = [
+                      info for info in archive.infolist()
+                      if info.filename.startswith("lib/") and info.filename.endswith("/libmaplibre.so")
+                  ]
+                  if len(native) != 1:
+                      raise SystemExit(f"{apk}: expected one libmaplibre.so, found {len(native)}")
+                  abi = native[0].filename.split("/")[1]
+                  if native[0].compress_type == zipfile.ZIP_STORED:
+                      raise SystemExit(f"{apk}: libmaplibre.so is still stored uncompressed")
+                  seen.add(abi)
+                  print(f"{apk}: {abi}, compressed native payload")
+
+          if seen != expected:
+              raise SystemExit(f"APK ABI set mismatch: expected {sorted(expected)}, got {sorted(seen)}")
+
+          aabs = list(pathlib.Path("app/build/outputs/bundle/release").glob("*.aab"))
+          if len(aabs) != 1:
+              raise SystemExit(f"Expected one AAB, found {len(aabs)}")
+          with zipfile.ZipFile(aabs[0]) as archive:
+              bundle_abis = {
+                  info.filename.split("/")[2]
+                  for info in archive.infolist()
+                  if info.filename.startswith("base/lib/") and info.filename.endswith("/libmaplibre.so")
+              }
+          if bundle_abis != expected:
+              raise SystemExit(
+                  f"AAB must retain all ABIs: expected {sorted(expected)}, got {sorted(bundle_abis)}"
+              )
+          print(f"{aabs[0]}: full ABI bundle retained")
+          PY
       - name: Measure optimized release artifacts
         shell: bash
         run: |
           set -euo pipefail
-          APK="$(find app/build/outputs/apk/release -maxdepth 1 -type f -name '*.apk' | head -n 1)"
-          AAB="$(find app/build/outputs/bundle/release -maxdepth 1 -type f -name '*.aab' | head -n 1)"
-          test -n "$APK"
-          test -n "$AAB"
-          APK_BYTES="$(stat -c '%s' "$APK")"
-          AAB_BYTES="$(stat -c '%s' "$AAB")"
-          {
-            echo "release_apk=$APK"
-            echo "release_apk_bytes=$APK_BYTES"
-            echo "release_aab=$AAB"
-            echo "release_aab_bytes=$AAB_BYTES"
-          } | tee release-size.txt
-          {
-            echo "### Optimized release size"
-            echo
-            echo "| Artifact | Bytes | MiB |"
-            echo "| --- | ---: | ---: |"
-            awk -v b="$APK_BYTES" 'BEGIN { printf "| APK | %d | %.2f |\n", b, b/1048576 }'
-            awk -v b="$AAB_BYTES" 'BEGIN { printf "| AAB | %d | %.2f |\n", b, b/1048576 }'
-            echo
-            echo "Release uses the production R8/resource-shrinking build type; signing is intentionally absent in PR CI."
-          } >> "$GITHUB_STEP_SUMMARY"
+          python3 - <<'PY'
+          import os
+          import pathlib
+          import zipfile
+
+          apk_paths = sorted(pathlib.Path("app/build/outputs/apk/release").glob("*.apk"))
+          aab = next(pathlib.Path("app/build/outputs/bundle/release").glob("*.aab"))
+          rows = []
+          lines = []
+
+          for apk in apk_paths:
+              with zipfile.ZipFile(apk) as archive:
+                  native = next(
+                      info for info in archive.infolist()
+                      if info.filename.startswith("lib/") and info.filename.endswith("/libmaplibre.so")
+                  )
+                  abi = native.filename.split("/")[1]
+              size = apk.stat().st_size
+              rows.append((f"APK {abi}", size))
+              lines.extend((f"release_apk_{abi}={apk}", f"release_apk_{abi}_bytes={size}"))
+
+          aab_size = aab.stat().st_size
+          rows.append(("AAB all ABIs", aab_size))
+          lines.extend((f"release_aab={aab}", f"release_aab_bytes={aab_size}"))
+          pathlib.Path("release-size.txt").write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+          summary = pathlib.Path(os.environ["GITHUB_STEP_SUMMARY"])
+          with summary.open("a", encoding="utf-8") as handle:
+              handle.write("### Optimized release size\n\n")
+              handle.write("| Artifact | Bytes | MiB |\n| --- | ---: | ---: |\n")
+              for label, size in rows:
+                  handle.write(f"| {label} | {size} | {size / 1048576:.2f} |\n")
+              handle.write(
+                  "\nAAB retains all supported ABIs. APKs are ABI-specific and compress native libraries for sideload distribution.\n"
+              )
+          print(pathlib.Path("release-size.txt").read_text(encoding="utf-8"))
+          PY
       - name: Upload debug APK
         uses: actions/upload-artifact@v4
         with:

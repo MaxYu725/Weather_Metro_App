@@ -14,6 +14,7 @@ val notificationJournalUrl = providers.gradleProperty("WEATHER_NOTIFICATION_JOUR
 val escapedNotificationJournalUrl = notificationJournalUrl
     .replace("\\", "\\\\")
     .replace("\"", "\\\"")
+val slimReleaseApks = providers.gradleProperty("WEATHER_SLIM_RELEASE_APKS").orNull == "true"
 
 android {
     namespace = "com.weather.metro"
@@ -55,6 +56,15 @@ android {
         }
     }
 
+    splits {
+        abi {
+            isEnable = slimReleaseApks
+            reset()
+            include("armeabi-v7a", "arm64-v8a", "x86", "x86_64")
+            isUniversalApk = false
+        }
+    }
+
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
@@ -66,6 +76,9 @@ android {
     }
 
     packaging {
+        jniLibs {
+            useLegacyPackaging = slimReleaseApks
+        }
         resources.excludes += "/META-INF/{AL2.0,LGPL2.1}"
     }
 
