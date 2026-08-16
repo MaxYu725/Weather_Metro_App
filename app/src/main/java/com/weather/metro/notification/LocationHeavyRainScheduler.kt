@@ -24,6 +24,8 @@ object LocationHeavyRainScheduler {
     const val SOURCE_TYPE = "HKO_LOCATION_DERIVED"
     internal const val INPUT_DISPATCH_LOCATION_HEAVY_RAIN = "dispatch_location_heavy_rain"
     internal const val INPUT_DISPATCH_PERSONALIZED_RAIN = "dispatch_personalized_rain"
+    internal const val PERIODIC_WORK_NAME = "weather-location-heavy-rain-periodic"
+    internal const val IMMEDIATE_WORK_NAME = "weather-location-heavy-rain-now"
 
     private val networkConstraint = Constraints.Builder()
         .setRequiredNetworkType(NetworkType.CONNECTED)
@@ -100,9 +102,6 @@ object LocationHeavyRainScheduler {
 
     /** Compatibility alias for pre-2D2E callers while this Draft PR remains open. */
     fun reset(context: Context) = resetAll(context)
-
-    private const val PERIODIC_WORK_NAME = "weather-location-heavy-rain-periodic"
-    private const val IMMEDIATE_WORK_NAME = "weather-location-heavy-rain-now"
 }
 
 internal fun shouldSchedulePersonalizedLocationNotifications(
