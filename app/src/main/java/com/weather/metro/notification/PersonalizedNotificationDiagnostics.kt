@@ -5,7 +5,7 @@ import androidx.work.WorkInfo
 import androidx.work.WorkManager
 import com.weather.metro.data.settings.SettingsRepository
 
-internal enum class PersonalizedNotificationDiagnosticVerdict {
+enum class PersonalizedNotificationDiagnosticVerdict {
     READY,
     DISABLED,
     LOCATION_UNAVAILABLE,
@@ -17,7 +17,7 @@ internal enum class PersonalizedNotificationDiagnosticVerdict {
     READ_ERROR,
 }
 
-internal data class PersonalizedNotificationDiagnostics(
+data class PersonalizedNotificationDiagnostics(
     val checkedAtEpochMs: Long = 0L,
     val verdict: PersonalizedNotificationDiagnosticVerdict = PersonalizedNotificationDiagnosticVerdict.DISABLED,
     val scheduleExpected: Boolean = false,
@@ -97,11 +97,11 @@ internal class PersonalizedNotificationDiagnosticsReader(context: Context) {
             val periodic = workManager
                 .getWorkInfosForUniqueWork(LocationHeavyRainScheduler.PERIODIC_WORK_NAME)
                 .get()
-                .filter(WorkInfo::isActiveForPersonalizedDiagnostics)
+                .filter { it.isActiveForPersonalizedDiagnostics() }
             val immediate = workManager
                 .getWorkInfosForUniqueWork(LocationHeavyRainScheduler.IMMEDIATE_WORK_NAME)
                 .get()
-                .filter(WorkInfo::isActiveForPersonalizedDiagnostics)
+                .filter { it.isActiveForPersonalizedDiagnostics() }
 
             val periodicHeavy = periodic.any {
                 it.inputData.getBoolean(LocationHeavyRainScheduler.INPUT_DISPATCH_LOCATION_HEAVY_RAIN, false)
