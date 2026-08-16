@@ -83,6 +83,9 @@ function checkWeatherUpdatesJournalled() {
   try {
     assertConfiguration_();
     const properties = PropertiesService.getScriptProperties();
+    if (typeof notificationPipelineMarkAttempt_ === 'function') {
+      notificationPipelineMarkAttempt_(properties, Date.now());
+    }
     const retryResult = flushJournalOutbox_(properties, Date.now());
 
     const responses = UrlFetchApp.fetchAll([
@@ -91,6 +94,9 @@ function checkWeatherUpdatesJournalled() {
       hkoRequest_('swt'),
     ]);
     const payloads = responses.map(parseHkoResponse_);
+    if (typeof notificationPipelineMarkSourceSuccess_ === 'function') {
+      notificationPipelineMarkSourceSuccess_(properties, Date.now());
+    }
     const publications = normaliseJournalPublications_(payloads[0], payloads[1], payloads[2]);
     const currentState = journalStateForPublications_(publications);
     const previousState = readJournalState_(properties);
@@ -101,6 +107,9 @@ function checkWeatherUpdatesJournalled() {
     // The journal write comes first. If execution stops afterwards, the next
     // run finds the same eventId in the sheet and resumes without duplication.
     const journalEvents = ensureJournalEvents_(properties, newPublications, Date.now());
+    if (typeof notificationPipelineMarkJournalCommit_ === 'function') {
+      notificationPipelineMarkJournalCommit_(properties, Date.now(), journalEvents);
+    }
     const outbox = enqueueJournalEvents_(readOutbox_(properties), journalEvents, Date.now());
 
     // The outbox is persisted before advancing source state. If the state write
@@ -111,6 +120,12 @@ function checkWeatherUpdatesJournalled() {
     const result = flushJournalOutbox_(properties, Date.now());
     const sent = retryResult.sent + result.sent;
     const failed = retryResult.failed + result.failed;
+    if (typeof notificationPipelineMarkFlush_ === 'function') {
+      notificationPipelineMarkFlush_(properties, Date.now(), result.pending, failed);
+    }
+    if (typeof refreshNotificationPipelineHealth_ === 'function') {
+      refreshNotificationPipelineHealth_(properties, Date.now());
+    }
     console.log(
       'Journalled ' + journalEvents.length + ' new HKO publication(s); sent ' + sent +
       ', pending ' + result.pending + '.',
@@ -118,6 +133,22 @@ function checkWeatherUpdatesJournalled() {
     if (failed > 0) {
       throw new Error(failed + ' queued FCM wake-up attempt(s) failed and will be retried.');
     }
+  } catch (error) {
+    try {
+      const properties = PropertiesService.getScriptProperties();
+      if (typeof notificationPipelineMarkFailure_ === 'function') {
+        notificationPipelineMarkFailure_(properties, Date.now(), error);
+      }
+      if (typeof refreshNotificationPipelineHealth_ === 'function') {
+        refreshNotificationPipelineHealth_(properties, Date.now());
+      }
+    } catch (healthError) {
+      console.error(
+        'Notification pipeline health recording failed: ' +
+        String(healthError && healthError.message ? healthError.message : healthError),
+      );
+    }
+    throw error;
   } finally {
     lock.releaseLock();
   }
@@ -127,11 +158,26 @@ function checkWeatherUpdatesJournalled() {
  * Public read-only journal endpoint.
  *
  * GET ?after=<cursor>&limit=<1..200>
+ * GET ?mode=health
  */
 function doGet(event) {
   const properties = PropertiesService.getScriptProperties();
-  const sheet = ensureJournalSheet_(properties);
   const parameters = event && event.parameter ? event.parameter : {};
+
+  if (String(parameters.mode || '').toLowerCase() === 'health') {
+    const health = typeof refreshNotificationPipelineHealth_ === 'function'
+      ? refreshNotificationPipelineHealth_(properties, Date.now())
+      : null;
+    return ContentService
+      .createTextOutput(JSON.stringify({
+        schemaVersion: 1,
+        generatedAtEpochMs: Date.now(),
+        health: health,
+      }))
+      .setMimeType(ContentService.MimeType.JSON);
+  }
+
+  const sheet = ensureJournalSheet_(properties);
   const after = parseNonNegativeInteger_(parameters.after, 0);
   const requestedLimit = parsePositiveInteger_(parameters.limit, JOURNAL_CONFIG.apiPageSize);
   const limit = Math.min(requestedLimit, JOURNAL_CONFIG.apiMaxPageSize);
@@ -163,6 +209,9 @@ function verifyReliableNotificationSetup() {
     triggerCount: ScriptApp.getProjectTriggers().filter(function (trigger) {
       return trigger.getHandlerFunction() === JOURNAL_CONFIG.triggerFunction;
     }).length,
+    pipelineHealth: typeof refreshNotificationPipelineHealth_ === 'function'
+      ? refreshNotificationPipelineHealth_(properties, Date.now())
+      : null,
   };
   console.log(JSON.stringify(result));
   return result;
