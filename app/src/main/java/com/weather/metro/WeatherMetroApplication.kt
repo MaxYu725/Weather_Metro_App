@@ -6,6 +6,7 @@ import com.weather.metro.data.settings.SettingsRepository
 import com.weather.metro.notification.LocationHeavyRainScheduler
 import com.weather.metro.notification.NotificationChannels
 import com.weather.metro.notification.NotificationReconcileScheduler
+import com.weather.metro.notification.shouldSchedulePersonalizedLocationNotifications
 
 class WeatherMetroApplication : Application() {
     override fun onCreate() {
@@ -17,12 +18,21 @@ class WeatherMetroApplication : Application() {
             FirebaseMessaging.getInstance().subscribeToTopic(NotificationChannels.TOPIC_PRODUCTION)
             NotificationReconcileScheduler.ensurePeriodic(this)
             NotificationReconcileScheduler.enqueueNow(this)
+
+            val preciseLocationEnabled = SettingsRepository.preciseLocationEnabled(this)
+            val locationHeavyRainEnabled = SettingsRepository.locationHeavyRainNotificationsEnabled(this)
+            val personalizedRainEnabled = SettingsRepository.personalizedRainNotificationsEnabled(this)
             if (
-                SettingsRepository.locationHeavyRainNotificationsEnabled(this) &&
-                SettingsRepository.preciseLocationEnabled(this)
+                shouldSchedulePersonalizedLocationNotifications(
+                    notificationsEnabled = true,
+                    preciseLocationEnabled = preciseLocationEnabled,
+                    locationHeavyRainEnabled = locationHeavyRainEnabled,
+                    personalizedRainEnabled = personalizedRainEnabled,
+                )
             ) {
-                // This worker consumes the last precise location already resolved
-                // by Weather Metro. Startup never creates a second location owner.
+                // A single existing WorkManager cadence consumes the last precise location
+                // already resolved by Weather Metro. Startup never creates a second location
+                // owner or a second 15-minute personalised-weather periodic request.
                 LocationHeavyRainScheduler.ensurePeriodic(this)
                 LocationHeavyRainScheduler.enqueueNow(this)
             }
