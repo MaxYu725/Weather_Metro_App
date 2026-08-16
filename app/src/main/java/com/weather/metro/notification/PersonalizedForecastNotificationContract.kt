@@ -66,6 +66,9 @@ internal object PersonalizedForecastNotificationPolicy {
      */
     const val RAIN_SOURCE_MAX_AGE_MS = 45 * 60 * 1000L
 
+    /** Avoid near-identical rain transition notifications from rapid foreground refreshes. */
+    const val RAIN_TRANSITION_COOLDOWN_MS = 12 * 60 * 1000L
+
     /**
      * LLIS observations are published on a five-minute cycle and may be delayed by a few
      * minutes. The first client should fail closed if its machine feed is older than this.
