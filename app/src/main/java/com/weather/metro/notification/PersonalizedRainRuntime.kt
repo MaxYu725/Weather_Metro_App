@@ -286,11 +286,11 @@ internal fun buildPersonalizedRainNotificationEvent(
     val body = when (kind) {
         PersonalizedForecastEventKind.RAIN_APPROACHING,
         PersonalizedForecastEventKind.RAIN_STARTING_SOON,
-        -> "香港天文台 SWIRLS 降雨臨近預報顯示，$place $horizonText可能開始有雨。這是 Weather Metro 按你裝置上的位置計算的本機提示。"
+        -> "香港天文台 SWIRLS 降雨臨近預報顯示，$place ${horizonText}可能開始有雨。這是 Weather Metro 按你裝置上的位置計算的本機提示。"
         PersonalizedForecastEventKind.HEAVY_RAIN_APPROACHING ->
-            "香港天文台 SWIRLS 降雨臨近預報顯示，$place $horizonText可能出現較大雨勢。這是 Weather Metro 的本機衍生提示，並非天文台雨量警告。"
+            "香港天文台 SWIRLS 降雨臨近預報顯示，$place ${horizonText}可能出現較大雨勢。這是 Weather Metro 的本機衍生提示，並非天文台雨量警告。"
         PersonalizedForecastEventKind.RAIN_INTENSIFYING ->
-            "香港天文台 SWIRLS 降雨臨近預報顯示，$place $horizonText雨勢可能增強。請按實際天氣及官方警告安排出行。"
+            "香港天文台 SWIRLS 降雨臨近預報顯示，$place ${horizonText}雨勢可能增強。請按實際天氣及官方警告安排出行。"
         PersonalizedForecastEventKind.RAIN_ENDING ->
             "香港天文台 SWIRLS 降雨臨近預報顯示，$place 的短時間預報已轉乾，這一輪雨勢可能逐步減弱或結束。"
         else -> error("Unsupported personalised rain event kind: $kind")
