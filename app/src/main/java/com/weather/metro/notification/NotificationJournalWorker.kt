@@ -21,9 +21,22 @@ class NotificationJournalWorker(
         val endpoint = state.endpoint() ?: return@withContext Result.success()
         val client = NotificationJournalClient()
         val publisher = WeatherNotificationPublisher(applicationContext)
-        var cursor = state.cursor()
 
         try {
+            // A fresh installation should not replay months of historical alerts.
+            // Ask for a cursor beyond the journal tail; the API returns an empty
+            // page whose latestCursor is an atomic server-side baseline. Anything
+            // appended after this response remains greater than the saved cursor
+            // and will be recovered normally. An FCM wake-up can initialize one
+            // cursor earlier before this worker starts so that wake-up event is
+            // never accidentally classified as historical.
+            if (!state.isInitialized()) {
+                val baseline = client.fetch(endpoint, BOOTSTRAP_AFTER_CURSOR, 1)
+                state.initializeAt(baseline.latestCursor)
+                return@withContext Result.success()
+            }
+
+            var cursor = state.cursor()
             repeat(MAX_PAGES_PER_RUN) {
                 val page = client.fetch(endpoint, cursor, PAGE_SIZE)
                 check(page.latestCursor >= cursor) {
@@ -59,5 +72,7 @@ class NotificationJournalWorker(
     private companion object {
         const val PAGE_SIZE = 100
         const val MAX_PAGES_PER_RUN = 20
+        // JavaScript's largest exact integer; safely beyond any realistic Sheet row cursor.
+        const val BOOTSTRAP_AFTER_CURSOR = 9_007_199_254_740_991L
     }
 }
