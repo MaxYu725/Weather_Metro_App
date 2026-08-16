@@ -16,6 +16,8 @@ import com.weather.metro.data.settings.UiSettings
 import com.weather.metro.domain.LocationInfo
 import com.weather.metro.domain.WeatherLoadState
 import com.weather.metro.notification.NotificationChannels
+import com.weather.metro.notification.NotificationJournalState
+import com.weather.metro.notification.NotificationReconcileScheduler
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -91,14 +93,25 @@ class WeatherViewModel(application: Application) : AndroidViewModel(application)
 
     fun setNotificationsEnabled(value: Boolean) {
         settingsRepository.setNotificationsEnabled(value)
+        val application = getApplication<Application>()
         val messaging = FirebaseMessaging.getInstance()
-        if (value) messaging.subscribeToTopic(NotificationChannels.TOPIC_PRODUCTION)
-        else messaging.unsubscribeFromTopic(NotificationChannels.TOPIC_PRODUCTION)
+        if (value) {
+            messaging.subscribeToTopic(NotificationChannels.TOPIC_PRODUCTION)
+            NotificationReconcileScheduler.ensurePeriodic(application)
+            NotificationReconcileScheduler.enqueueNow(application)
+        } else {
+            messaging.unsubscribeFromTopic(NotificationChannels.TOPIC_PRODUCTION)
+            NotificationReconcileScheduler.disable(application)
+            NotificationJournalState(application).resetSubscriptionBaseline()
+        }
     }
 
     fun subscribeIfEnabled() {
         if (settings.value.notificationsEnabled) {
+            val application = getApplication<Application>()
             FirebaseMessaging.getInstance().subscribeToTopic(NotificationChannels.TOPIC_PRODUCTION)
+            NotificationReconcileScheduler.ensurePeriodic(application)
+            NotificationReconcileScheduler.enqueueNow(application)
         }
     }
 

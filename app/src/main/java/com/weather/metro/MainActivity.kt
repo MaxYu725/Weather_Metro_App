@@ -10,15 +10,16 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
-import androidx.lifecycle.lifecycleScope
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
+import androidx.lifecycle.lifecycleScope
+import com.weather.metro.notification.NotificationEventStore
+import com.weather.metro.notification.NotificationReconcileScheduler
+import com.weather.metro.notification.WeatherNotificationPublisher
 import com.weather.metro.ui.WeatherMetroRoot
 import com.weather.metro.ui.WeatherViewModel
 import com.weather.metro.ui.rain.RainHostViewModel
-import com.weather.metro.notification.NotificationEventStore
-import com.weather.metro.notification.WeatherNotificationPublisher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
@@ -40,6 +41,8 @@ class MainActivity : ComponentActivity() {
     ) { granted ->
         if (granted) {
             viewModel.subscribeIfEnabled()
+            NotificationReconcileScheduler.ensurePeriodic(this)
+            NotificationReconcileScheduler.enqueueNow(this)
             replayPendingNotifications()
         }
     }
@@ -62,6 +65,8 @@ class MainActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
+        NotificationReconcileScheduler.ensurePeriodic(this)
+        NotificationReconcileScheduler.enqueueNow(this)
         replayPendingNotifications()
         if (notificationStore.consumeFullSyncRequired()) viewModel.refresh()
     }
@@ -96,6 +101,8 @@ class MainActivity : ComponentActivity() {
             notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
         } else {
             viewModel.subscribeIfEnabled()
+            NotificationReconcileScheduler.ensurePeriodic(this)
+            NotificationReconcileScheduler.enqueueNow(this)
             replayPendingNotifications()
         }
     }

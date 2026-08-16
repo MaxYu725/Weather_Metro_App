@@ -31,12 +31,19 @@ function loadScript() {
   return context;
 }
 
-function alert(overrides = {}) {
+function publication(overrides = {}) {
   return {
-    id: 'warning:WRAINB',
+    id: 'publication:1',
+    sourceType: 'WARNING',
+    sourceKey: 'warning:WRAIN',
+    family: 'WRAIN',
     code: 'WRAINB',
+    actionCode: 'ISSUE',
     title: '黑色暴雨警告',
     body: '香港天文台警告內容',
+    issueTime: '2026-08-15T19:00:00+08:00',
+    expireTime: '',
+    updateTime: '2026-08-15T19:00:00+08:00',
     updatedAt: '2026-08-15T19:00:00+08:00',
     severity: 'URGENT',
     isTip: false,
@@ -66,6 +73,28 @@ function properties(initial = []) {
   };
 }
 
+function warningSummary(actionCode = 'ISSUE', updateTime = '2026-08-16T10:00:00+08:00') {
+  return {
+    WHOT: {
+      name: '酷熱天氣警告',
+      code: 'WHOT',
+      actionCode,
+      issueTime: '2026-08-16T09:00:00+08:00',
+      updateTime,
+    },
+  };
+}
+
+function warningDetails(contents = ['第一段\n第二行']) {
+  return {
+    details: [{
+      warningStatementCode: 'WHOT',
+      contents,
+      updateTime: '2026-08-16T10:00:00+08:00',
+    }],
+  };
+}
+
 test('UTF-8 truncation respects the FCM byte budget without splitting CJK text', () => {
   const script = loadScript();
   const result = script.truncateUtf8_('香港天文台'.repeat(400), 900);
@@ -74,58 +103,128 @@ test('UTF-8 truncation respects the FCM byte budget without splitting CJK text',
   assert.equal(result.includes('\uFFFD'), false);
 });
 
-test('a first run emits every active alert instead of creating a silent baseline', () => {
+test('first run emits the official HKO action code instead of synthesizing ISSUE', () => {
   const script = loadScript();
-  const events = script.initialEvents_({ b: alert({ id: 'b' }), a: alert({ id: 'a' }) });
-  assert.deepEqual(
-    Array.from(events, (event) => `${event.kind}:${event.item.id}`),
-    ['ISSUE:a', 'ISSUE:b'],
+  const state = script.normaliseState_(warningSummary('REISSUE'), warningDetails(), { swt: [] });
+  const events = script.initialEvents_(state);
+  assert.equal(events.length, 1);
+  assert.equal(events[0].kind, 'REISSUE');
+  assert.equal(events[0].item.actionCode, 'REISSUE');
+});
+
+test('same warning text with a new official action/time is a new publication', () => {
+  const script = loadScript();
+  const previous = script.normaliseState_(
+    warningSummary('ISSUE', '2026-08-16T10:00:00+08:00'),
+    warningDetails(),
+    { swt: [] },
   );
-});
-
-test('diff emits issue, content update, and cancellation events', () => {
-  const script = loadScript();
-  const previous = {
-    old: alert({ id: 'old', fingerprint: 'same' }),
-    changed: alert({ id: 'changed', fingerprint: 'before' }),
-  };
-  const current = {
-    new: alert({ id: 'new', fingerprint: 'new' }),
-    changed: alert({ id: 'changed', fingerprint: 'after' }),
-  };
+  const current = script.normaliseState_(
+    warningSummary('EXTEND', '2026-08-16T11:00:00+08:00'),
+    warningDetails(),
+    { swt: [] },
+  );
   const events = script.diffStates_(previous, current);
-  assert.deepEqual(Array.from(events, (event) => `${event.kind}:${event.item.id}`), [
-    'UPDATE:changed',
-    'ISSUE:new',
-    'CANCEL:old',
-  ]);
+  assert.equal(events.length, 1);
+  assert.equal(events[0].kind, 'EXTEND');
 });
 
-test('queued messages are byte-bounded, versioned, and deduplicated by event id', () => {
+test('explicit HKO cancellation is preserved with its official cancellation detail', () => {
   const script = loadScript();
-  const event = { kind: 'ISSUE', item: alert({ body: '暴雨'.repeat(1000) }) };
+  const current = script.normaliseState_({
+    WTCSGNL: {
+      type: '熱帶氣旋警告信號',
+      code: 'CANCEL',
+      actionCode: 'CANCEL',
+      updateTime: '2026-08-16T12:00:00+08:00',
+    },
+  }, {
+    details: [{
+      warningStatementCode: 'WTCSGNL',
+      subtype: 'CANCEL',
+      contents: ['所有熱帶氣旋警告信號取消。'],
+      updateTime: '2026-08-16T12:00:00+08:00',
+    }],
+  }, { swt: [] });
+  const events = script.initialEvents_(current);
+  assert.equal(events.length, 1);
+  assert.equal(events[0].kind, 'CANCEL');
+  assert.equal(events[0].item.body, '所有熱帶氣旋警告信號取消。');
+});
+
+test('disappearance from a snapshot never fabricates a cancellation', () => {
+  const script = loadScript();
+  const previous = { old: publication() };
+  assert.deepEqual(Array.from(script.diffStates_(previous, {})), []);
+});
+
+test('warningInfo-only WTCPRE8 is emitted as an official statement', () => {
+  const script = loadScript();
+  const state = script.normaliseState_({}, {
+    details: [{
+      warningStatementCode: 'WTCPRE8',
+      contents: ['天文台將考慮在下午四時至六時之間改發八號烈風或暴風信號。'],
+      updateTime: '2026-08-16T14:00:00+08:00',
+    }],
+  }, { swt: [] });
+  const events = script.initialEvents_(state);
+  assert.equal(events.length, 1);
+  assert.equal(events[0].kind, 'STATEMENT');
+  assert.equal(events[0].item.code, 'WTCPRE8');
+  assert.equal(events[0].item.title, '八號信號預警特別報告');
+});
+
+test('Special Weather Tip disappearance never produces a fake cancel event', () => {
+  const script = loadScript();
+  const previous = script.normaliseState_({}, { details: [] }, {
+    swt: [{ desc: '局部地區大雨提示', updateTime: '2026-08-16T10:00:00+08:00' }],
+  });
+  const events = script.diffStates_(previous, {});
+  assert.deepEqual(Array.from(events), []);
+});
+
+test('official detail line breaks are preserved', () => {
+  const script = loadScript();
+  const state = script.normaliseState_(warningSummary(), warningDetails(['第一段\n第二行', '第三段']), { swt: [] });
+  const item = Object.values(state)[0];
+  assert.equal(item.body, '第一段\n第二行\n\n第三段');
+});
+
+test('FCM preview uses the HKO title directly and carries source semantics', () => {
+  const script = loadScript();
+  const event = { kind: 'REISSUE', item: publication({ actionCode: 'REISSUE' }) };
+  const message = script.messageForEvent_(event, 1234);
+  assert.equal(message.title, '黑色暴雨警告');
+  assert.equal(message.title.startsWith('已'), false);
+  assert.equal(message.eventKind, 'REISSUE');
+  assert.equal(message.sourceType, 'WARNING');
+  assert.equal(message.schemaVersion, '3');
+});
+
+test('queued messages remain byte-bounded and deduplicated by source publication id', () => {
+  const script = loadScript();
+  const event = { kind: 'ISSUE', item: publication({ body: '暴雨'.repeat(1000) }) };
   const once = script.enqueueEvents_([], [event], 1234);
   const twice = script.enqueueEvents_(once, [event], 5678);
   assert.equal(twice.length, 1);
-  assert.equal(twice[0].message.schemaVersion, '2');
+  assert.equal(twice[0].message.schemaVersion, '3');
   assert.equal(twice[0].message.sentAtEpochMs, '1234');
   assert.equal(twice[0].message.bodyTruncated, 'true');
   assert.ok(Buffer.byteLength(twice[0].message.body, 'utf8') <= 900);
 });
 
-test('a later occurrence with the same wording receives a new event id', () => {
+test('a later source publication with identical wording receives a new event id', () => {
   const script = loadScript();
-  const first = script.messageForEvent_({ kind: 'ISSUE', item: alert() }, 1);
-  const later = script.messageForEvent_({
-    kind: 'ISSUE',
-    item: alert({ updatedAt: '2026-08-16T19:00:00+08:00' }),
-  }, 2);
+  const firstState = script.normaliseState_(warningSummary('ISSUE', '2026-08-16T10:00:00+08:00'), warningDetails(), { swt: [] });
+  const laterState = script.normaliseState_(warningSummary('ISSUE', '2026-08-16T11:00:00+08:00'), warningDetails(), { swt: [] });
+  const first = script.messageForEvent_(script.initialEvents_(firstState)[0], 1);
+  const later = script.messageForEvent_(script.initialEvents_(laterState)[0], 2);
   assert.notEqual(first.eventId, later.eventId);
 });
 
 test('failed sends stay in the durable outbox with retry metadata', () => {
   const script = loadScript();
-  const queued = script.enqueueEvents_([], [{ kind: 'ISSUE', item: alert() }], 1000);
+  const queued = script.enqueueEvents_([], [{ kind: 'ISSUE', item: publication() }], 1000);
   const store = properties(queued);
   script.sendFcm_ = () => { throw new Error('temporary outage'); };
   const result = script.flushOutbox_(store, 2000);
@@ -137,7 +236,7 @@ test('failed sends stay in the durable outbox with retry metadata', () => {
 
 test('successful sends are removed from the durable outbox', () => {
   const script = loadScript();
-  const queued = script.enqueueEvents_([], [{ kind: 'ISSUE', item: alert() }], 1000);
+  const queued = script.enqueueEvents_([], [{ kind: 'ISSUE', item: publication() }], 1000);
   const store = properties(queued);
   script.sendFcm_ = () => {};
   const result = script.flushOutbox_(store, 2000);
@@ -149,15 +248,13 @@ test('outbox stores each event below the Apps Script per-property quota', () => 
   const script = loadScript();
   const queued = [];
   for (let index = 0; index < 100; index += 1) {
-    queued.push(...script.enqueueEvents_(queued, [{
-      kind: 'ISSUE',
-      item: alert({
-        id: `warning:${index}`,
-        code: String(index),
-        fingerprint: `fingerprint-${index}`,
-        body: '警告'.repeat(1000),
-      }),
-    }], index + 1).slice(queued.length));
+    const item = publication({
+      id: `publication:${index}`,
+      sourceKey: `warning:${index}`,
+      code: String(index),
+      body: '警告'.repeat(1000),
+    });
+    queued.push(...script.enqueueEvents_(queued, [{ kind: 'ISSUE', item }], index + 1).slice(queued.length));
   }
   const store = properties();
   script.writeOutbox_(store, queued);
@@ -166,14 +263,15 @@ test('outbox stores each event below the Apps Script per-property quota', () => 
   assert.ok(Math.max(...byteSizes) < 9 * 1024);
 });
 
-test('state uses per-alert properties and round-trips below the property quota', () => {
+test('publication state round-trips below the per-property quota', () => {
   const script = loadScript();
   const state = {};
   for (let index = 0; index < 30; index += 1) {
-    state[`warning:${index}`] = alert({
-      id: `warning:${index}`,
+    state[`publication:${index}`] = publication({
+      id: `publication:${index}`,
+      sourceKey: `warning:${index}`,
       code: String(index),
-      body: script.truncateUtf8_('天文台警告內容'.repeat(1000), 3000),
+      body: script.truncateUtf8_('天文台警告內容'.repeat(1000), 6000),
     });
   }
   const store = properties();
@@ -186,15 +284,15 @@ test('state uses per-alert properties and round-trips below the property quota',
   assert.ok(Math.max(...byteSizes) < 9 * 1024);
 });
 
-test('corrupt indexes fail visibly instead of silently dropping an alert event', () => {
+test('corrupt indexes fail visibly instead of silently dropping a publication', () => {
   const script = loadScript();
-  const queued = script.enqueueEvents_([], [{ kind: 'ISSUE', item: alert() }], 1000);
+  const queued = script.enqueueEvents_([], [{ kind: 'ISSUE', item: publication() }], 1000);
   const outboxStore = properties(queued);
   outboxStore.raw().delete(`HKO_ALERT_OUTBOX_EVENT_V2_${queued[0].id}`);
   assert.throws(() => script.readOutbox_(outboxStore), /Missing FCM outbox property/);
 
   const stateStore = properties();
-  script.writeState_(stateStore, { alert: alert({ id: 'alert' }) });
-  stateStore.raw().delete(`HKO_ALERT_STATE_ITEM_V5_${script.digest_('alert')}`);
-  assert.throws(() => script.readState_(stateStore), /Missing alert state property/);
+  script.writeState_(stateStore, { 'publication:1': publication() });
+  stateStore.raw().delete(`HKO_PUBLICATION_STATE_ITEM_V6_${script.digest_('publication:1')}`);
+  assert.throws(() => script.readState_(stateStore), /Missing publication state property/);
 });

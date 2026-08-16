@@ -12,13 +12,16 @@ class WeatherNotificationEventTest {
         val event = WeatherNotificationEventParser.parse(
             data = mapOf(
                 "eventId" to "hko:event-1",
-                "title" to "已發出：黑色暴雨警告",
+                "title" to "黑色暴雨警告",
                 "body" to "警告內容",
                 "channel" to NotificationContract.URGENT,
                 "target" to "weathermetro://current/alerts?code=WRAINB",
                 "alertId" to "warning:WRAINB",
                 "alertCode" to "WRAINB",
                 "eventKind" to "issue",
+                "sourceType" to "warning",
+                "sourceTime" to "2026-08-16T10:00:00+08:00",
+                "journalCursor" to "17",
                 "sentAtEpochMs" to "12345",
             ),
             messageId = "fcm-id",
@@ -31,6 +34,8 @@ class WeatherNotificationEventTest {
         assertEquals("hko:event-1", event.eventId)
         assertEquals(NotificationContract.URGENT, event.channel)
         assertEquals("ISSUE", event.eventKind)
+        assertEquals("WARNING", event.sourceType)
+        assertEquals(17L, event.journalCursor)
         assertEquals(12345L, event.sentAtEpochMillis)
     }
 
@@ -79,6 +84,44 @@ class WeatherNotificationEventTest {
         val decoded = NotificationInboxCodec.decode(NotificationInboxCodec.encode(inbox))
         assertEquals(inbox, decoded)
         assertFalse(decoded.any(StoredNotificationEvent::posted))
+    }
+
+    @Test
+    fun `authoritative journal event upgrades a posted FCM preview and is reposted`() {
+        val preview = event("same").copy(
+            body = "截短預覽…",
+            sourceType = "WARNING",
+            journalCursor = 7,
+        )
+        val full = preview.copy(body = "完整天文台正文\n第二段")
+        val inbox = listOf(StoredNotificationEvent(preview, receivedAtEpochMillis = 1, posted = true))
+
+        val upgraded = NotificationInboxCodec.addOrUpgrade(inbox, full, 2)
+
+        assertEquals(1, upgraded.size)
+        assertEquals("完整天文台正文\n第二段", upgraded.single().event.body)
+        assertFalse(upgraded.single().posted)
+    }
+
+    @Test
+    fun `journal metadata upgrade does not repost an already complete notification`() {
+        val legacy = event("same").copy(
+            eventKind = "UPDATE",
+            journalCursor = 0,
+        )
+        val journal = legacy.copy(
+            sourceType = "WARNING",
+            sourceTime = "2026-08-16T10:00:00+08:00",
+            journalCursor = 7,
+        )
+        val inbox = listOf(StoredNotificationEvent(legacy, receivedAtEpochMillis = 1, posted = true))
+
+        val upgraded = NotificationInboxCodec.addOrUpgrade(inbox, journal, 2)
+
+        assertEquals(1, upgraded.size)
+        assertEquals(7L, upgraded.single().event.journalCursor)
+        assertEquals("WARNING", upgraded.single().event.sourceType)
+        assertTrue(upgraded.single().posted)
     }
 
     @Test
