@@ -6,9 +6,11 @@ plugins {
     alias(libs.plugins.google.services)
 }
 
+val defaultNotificationJournalUrl =
+    "https://script.google.com/macros/s/AKfycbyIFgLekUH827G6LkgbEnYwh9fykejZjHzga5ce-roXruFwTHqr0-MlpPKaFTj_bgHo/exec"
 val notificationJournalUrl = providers.gradleProperty("WEATHER_NOTIFICATION_JOURNAL_URL").orNull
     ?: System.getenv("WEATHER_NOTIFICATION_JOURNAL_URL")
-    ?: ""
+    ?: defaultNotificationJournalUrl
 val escapedNotificationJournalUrl = notificationJournalUrl
     .replace("\\", "\\\\")
     .replace("\"", "\\\"")
