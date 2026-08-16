@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
 import com.weather.metro.data.settings.SettingsRepository
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -22,7 +23,7 @@ class NotificationJournalWorker(
         val publisher = WeatherNotificationPublisher(applicationContext)
         var cursor = state.cursor()
 
-        runCatching {
+        try {
             repeat(MAX_PAGES_PER_RUN) {
                 val page = client.fetch(endpoint, cursor, PAGE_SIZE)
                 check(page.latestCursor >= cursor) {
@@ -48,10 +49,11 @@ class NotificationJournalWorker(
                 }
             }
             error("Notification journal exceeded $MAX_PAGES_PER_RUN pages in one reconciliation")
-        }.fold(
-            onSuccess = { Result.success() },
-            onFailure = { Result.retry() },
-        )
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            Result.retry()
+        }
     }
 
     private companion object {
