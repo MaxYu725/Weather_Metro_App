@@ -24,8 +24,8 @@ hydration. The next production soak collected 18 executions:
 - `projectedRuntimeRisk=true`
 - zero journal failures, busy skips and component failures
 
-2C4B therefore removed most quota pressure but remained above the consumer
-reference. Territory-wide warning polling is not slowed to hide that result.
+2C4B removed most quota pressure but remained above the consumer reference.
+Territory-wide warning polling is not slowed to hide that result.
 
 ## Runtime model
 
@@ -117,9 +117,9 @@ Expected post-soak gate:
 - `busySkipsToday=0`
 - `componentFailuresToday=0`
 
-CI must pass all Apps Script tests, including prefetched hydration request shape,
-state-write suppression, and durable outbox-before-state ordering, plus the
-existing Android unit/lint/assemble gate.
+CI covers prefetched hydration request shape, suppression of unchanged state
+writes, durable outbox-before-state ordering, fast-poll V1 -> V2 migration, plus
+the existing Apps Script and Android unit/lint/assemble gates.
 
 If measured runtime still exceeds the consumer reference after duplicate source
 and state work is removed, move server-side polling to a runtime with a more
