@@ -20,6 +20,7 @@ import com.weather.metro.notification.NotificationChannels
 import com.weather.metro.notification.NotificationJournalState
 import com.weather.metro.notification.NotificationReconcileScheduler
 import com.weather.metro.notification.PersonalizedNotificationLocationStore
+import com.weather.metro.notification.PersonalizedRainScheduler
 import com.weather.metro.notification.shouldSchedulePersonalizedLocationNotifications
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -109,7 +110,10 @@ class WeatherViewModel(application: Application) : AndroidViewModel(application)
             messaging.subscribeToTopic(NotificationChannels.TOPIC_PRODUCTION)
             NotificationReconcileScheduler.ensurePeriodic(application)
             NotificationReconcileScheduler.enqueueNow(application)
-            reconcilePersonalizedLocationNotificationSchedule(enqueueNow = true)
+            reconcilePersonalizedLocationNotificationSchedule(
+                enqueueHeavyRainNow = true,
+                enqueuePersonalizedRainNow = true,
+            )
         } else {
             messaging.unsubscribeFromTopic(NotificationChannels.TOPIC_PRODUCTION)
             NotificationReconcileScheduler.disable(application)
@@ -121,15 +125,24 @@ class WeatherViewModel(application: Application) : AndroidViewModel(application)
     fun setLocationHeavyRainNotificationsEnabled(value: Boolean) {
         settingsRepository.setLocationHeavyRainNotificationsEnabled(value)
         val application = getApplication<Application>()
-        if (!value) LocationHeavyRainScheduler.resetHeavyRain(application)
-        reconcilePersonalizedLocationNotificationSchedule(enqueueNow = value)
+        if (!value) {
+            LocationHeavyRainScheduler.cancelImmediate(application)
+            LocationHeavyRainScheduler.resetHeavyRain(application)
+        }
+        reconcilePersonalizedLocationNotificationSchedule(
+            enqueueHeavyRainNow = value,
+            enqueuePersonalizedRainNow = false,
+        )
     }
 
     fun setPersonalizedRainNotificationsEnabled(value: Boolean) {
         settingsRepository.setPersonalizedRainNotificationsEnabled(value)
         val application = getApplication<Application>()
-        if (!value) LocationHeavyRainScheduler.resetPersonalizedRain(application)
-        reconcilePersonalizedLocationNotificationSchedule(enqueueNow = value)
+        if (!value) PersonalizedRainScheduler.reset(application)
+        reconcilePersonalizedLocationNotificationSchedule(
+            enqueueHeavyRainNow = false,
+            enqueuePersonalizedRainNow = value,
+        )
     }
 
     fun subscribeIfEnabled() {
@@ -138,7 +151,10 @@ class WeatherViewModel(application: Application) : AndroidViewModel(application)
             FirebaseMessaging.getInstance().subscribeToTopic(NotificationChannels.TOPIC_PRODUCTION)
             NotificationReconcileScheduler.ensurePeriodic(application)
             NotificationReconcileScheduler.enqueueNow(application)
-            reconcilePersonalizedLocationNotificationSchedule(enqueueNow = true)
+            reconcilePersonalizedLocationNotificationSchedule(
+                enqueueHeavyRainNow = true,
+                enqueuePersonalizedRainNow = true,
+            )
         }
     }
 
@@ -170,10 +186,16 @@ class WeatherViewModel(application: Application) : AndroidViewModel(application)
     private fun bindPersonalizedNotificationLocation(location: LocationInfo) {
         if (!settings.value.preciseLocation || location.accuracyMetres == null) return
         personalizedLocationStore.record(location)
-        reconcilePersonalizedLocationNotificationSchedule(enqueueNow = true)
+        reconcilePersonalizedLocationNotificationSchedule(
+            enqueueHeavyRainNow = true,
+            enqueuePersonalizedRainNow = true,
+        )
     }
 
-    private fun reconcilePersonalizedLocationNotificationSchedule(enqueueNow: Boolean) {
+    private fun reconcilePersonalizedLocationNotificationSchedule(
+        enqueueHeavyRainNow: Boolean,
+        enqueuePersonalizedRainNow: Boolean,
+    ) {
         val current = settings.value
         val application = getApplication<Application>()
         if (
@@ -185,9 +207,15 @@ class WeatherViewModel(application: Application) : AndroidViewModel(application)
             )
         ) {
             LocationHeavyRainScheduler.ensurePeriodic(application)
-            if (enqueueNow) LocationHeavyRainScheduler.enqueueNow(application)
+            if (enqueueHeavyRainNow && current.locationHeavyRainNotificationsEnabled) {
+                LocationHeavyRainScheduler.enqueueNow(application)
+            }
+            if (enqueuePersonalizedRainNow && current.personalizedRainNotificationsEnabled) {
+                PersonalizedRainScheduler.enqueueNow(application)
+            }
         } else {
             LocationHeavyRainScheduler.disable(application)
+            PersonalizedRainScheduler.disable(application)
         }
     }
 
