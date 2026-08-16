@@ -210,7 +210,9 @@ internal class LocationHeavyRainWorker(
         location: PersonalizedNotificationLocation,
         now: Long,
     ): RunOutcome = try {
-        personalizedRainRuntime.execute(location, now)
+        PersonalizedRainExecutionLock.withLock {
+            personalizedRainRuntime.execute(location, now)
+        }
         RunOutcome.SUCCESS
     } catch (error: CancellationException) {
         throw error
