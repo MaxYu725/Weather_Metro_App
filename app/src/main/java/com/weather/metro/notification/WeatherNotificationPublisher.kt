@@ -78,7 +78,7 @@ class WeatherNotificationPublisher(
                 NotificationCompat.BigTextStyle()
                     .setBigContentTitle(event.title)
                     .bigText(event.body)
-                    .setSummaryText("香港天文台官方內容"),
+                    .setSummaryText(summaryText(event)),
             )
             .setContentIntent(pendingIntent)
             .setAutoCancel(true)
@@ -104,7 +104,15 @@ class WeatherNotificationPublisher(
         notifications.notify(event.eventId, NOTIFICATION_ID, notification)
     }
 
+    private fun summaryText(event: WeatherNotificationEvent): String =
+        if (event.sourceType == SOURCE_TYPE_LOCATION_DERIVED) {
+            "根據香港天文台公開數據"
+        } else {
+            "香港天文台官方內容"
+        }
+
     private companion object {
+        const val SOURCE_TYPE_LOCATION_DERIVED = "HKO_LOCATION_DERIVED"
         const val NOTIFICATION_GROUP = "hko_weather_updates"
         const val NOTIFICATION_ID = 0
         val REPLAY_LOCK = Any()
