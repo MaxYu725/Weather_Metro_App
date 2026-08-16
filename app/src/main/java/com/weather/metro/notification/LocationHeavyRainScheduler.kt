@@ -11,6 +11,13 @@ import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import java.util.concurrent.TimeUnit
 
+/**
+ * Shared cadence owner for location-derived weather notifications.
+ *
+ * The original 2D1 unique work names and worker class are intentionally retained so upgrades do
+ * not create a second 15-minute periodic request. Phase 2D2E makes LocationHeavyRainWorker the
+ * host for both the district-observation stream and the optional local SWIRLS stream.
+ */
 object LocationHeavyRainScheduler {
     const val SOURCE_TYPE = "HKO_LOCATION_DERIVED"
 
@@ -50,12 +57,35 @@ object LocationHeavyRainScheduler {
         }
     }
 
-    fun reset(context: Context) {
-        disable(context)
+    fun resetHeavyRain(context: Context) {
         LocationHeavyRainStateStore(context).reset()
         NotificationEventStore(context).discardPendingBySourceType(SOURCE_TYPE)
     }
 
+    fun resetPersonalizedRain(context: Context) {
+        PersonalizedRainEpisodeStateStore(context).reset()
+        NotificationEventStore(context).discardPendingBySourceType(SOURCE_TYPE_PERSONALIZED_RAIN)
+    }
+
+    fun resetAll(context: Context) {
+        disable(context)
+        resetHeavyRain(context)
+        resetPersonalizedRain(context)
+    }
+
+    /** Compatibility alias for pre-2D2E callers while this Draft PR remains open. */
+    fun reset(context: Context) = resetAll(context)
+
     private const val PERIODIC_WORK_NAME = "weather-location-heavy-rain-periodic"
     private const val IMMEDIATE_WORK_NAME = "weather-location-heavy-rain-now"
 }
+
+internal fun shouldSchedulePersonalizedLocationNotifications(
+    notificationsEnabled: Boolean,
+    preciseLocationEnabled: Boolean,
+    locationHeavyRainEnabled: Boolean,
+    personalizedRainEnabled: Boolean,
+): Boolean =
+    notificationsEnabled &&
+        preciseLocationEnabled &&
+        (locationHeavyRainEnabled || personalizedRainEnabled)
