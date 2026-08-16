@@ -117,6 +117,10 @@ Expected post-soak gate:
 - `busySkipsToday=0`
 - `componentFailuresToday=0`
 
+CI must pass all Apps Script tests, including prefetched hydration request shape,
+state-write suppression, and durable outbox-before-state ordering, plus the
+existing Android unit/lint/assemble gate.
+
 If measured runtime still exceeds the consumer reference after duplicate source
 and state work is removed, move server-side polling to a runtime with a more
 suitable execution budget rather than weakening the one-minute territory-wide
