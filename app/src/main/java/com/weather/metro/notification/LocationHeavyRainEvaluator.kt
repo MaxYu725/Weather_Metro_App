@@ -68,3 +68,15 @@ internal fun evaluateLocationHeavyRain(
         notificationLevel = notificationLevel,
     )
 }
+
+internal fun isLocationHeavyRainSourceFresh(
+    sourceEpochMs: Long?,
+    nowEpochMs: Long,
+    maxAgeMs: Long = 45 * 60 * 1000L,
+    futureToleranceMs: Long = 5 * 60 * 1000L,
+): Boolean {
+    val source = sourceEpochMs ?: return false
+    if (source <= 0L || nowEpochMs <= 0L) return false
+    val age = nowEpochMs - source
+    return age in -futureToleranceMs..maxAgeMs
+}
