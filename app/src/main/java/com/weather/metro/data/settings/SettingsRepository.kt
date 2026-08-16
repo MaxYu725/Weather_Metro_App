@@ -49,6 +49,7 @@ data class UiSettings(
     val highContrast: Boolean = false,
     val preciseLocation: Boolean = true,
     val notificationsEnabled: Boolean = true,
+    val locationHeavyRainNotificationsEnabled: Boolean = true,
 )
 
 class SettingsRepository(context: Context) {
@@ -78,6 +79,11 @@ class SettingsRepository(context: Context) {
     fun setNotificationsEnabled(value: Boolean) =
         update(_settings.value.copy(notificationsEnabled = value)) { putBoolean(KEY_NOTIFICATIONS, value) }
 
+    fun setLocationHeavyRainNotificationsEnabled(value: Boolean) =
+        update(_settings.value.copy(locationHeavyRainNotificationsEnabled = value)) {
+            putBoolean(KEY_LOCATION_HEAVY_RAIN_NOTIFICATIONS, value)
+        }
+
     private fun read() = UiSettings(
         pageColours = PageColours(
             currentArgb = preferences.getLong(
@@ -93,6 +99,10 @@ class SettingsRepository(context: Context) {
         highContrast = preferences.getBoolean(KEY_HIGH_CONTRAST, false),
         preciseLocation = preferences.getBoolean(KEY_PRECISE_LOCATION, true),
         notificationsEnabled = preferences.getBoolean(KEY_NOTIFICATIONS, true),
+        locationHeavyRainNotificationsEnabled = preferences.getBoolean(
+            KEY_LOCATION_HEAVY_RAIN_NOTIFICATIONS,
+            true,
+        ),
     )
 
     private inline fun update(
@@ -126,9 +136,18 @@ class SettingsRepository(context: Context) {
         private const val KEY_HIGH_CONTRAST = "high_contrast"
         private const val KEY_PRECISE_LOCATION = "precise_location"
         private const val KEY_NOTIFICATIONS = "notifications"
+        private const val KEY_LOCATION_HEAVY_RAIN_NOTIFICATIONS = "notification_location_heavy_rain"
+
+        private fun preferences(context: Context): SharedPreferences =
+            context.getSharedPreferences(PREFERENCES_NAME, Context.MODE_PRIVATE)
 
         fun notificationsEnabled(context: Context): Boolean =
-            context.getSharedPreferences(PREFERENCES_NAME, Context.MODE_PRIVATE)
-                .getBoolean(KEY_NOTIFICATIONS, true)
+            preferences(context).getBoolean(KEY_NOTIFICATIONS, true)
+
+        fun locationHeavyRainNotificationsEnabled(context: Context): Boolean =
+            preferences(context).getBoolean(KEY_LOCATION_HEAVY_RAIN_NOTIFICATIONS, true)
+
+        fun preciseLocationEnabled(context: Context): Boolean =
+            preferences(context).getBoolean(KEY_PRECISE_LOCATION, true)
     }
 }
