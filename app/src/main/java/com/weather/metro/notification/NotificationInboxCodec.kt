@@ -89,7 +89,9 @@ object NotificationInboxCodec {
         val existing = events[existingIndex]
         if (!shouldUpgrade(existing.event, event)) return events
         val updated = events.toMutableList().apply {
-            this[existingIndex] = existing.copy(event = event)
+            // An authoritative journal event replaces an earlier FCM preview.
+            // Reset posted so the system notification is updated with full text.
+            this[existingIndex] = existing.copy(event = event, posted = false)
         }
         return trim(updated)
     }
