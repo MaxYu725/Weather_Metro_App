@@ -62,6 +62,25 @@ class PersonalizedNotificationDiagnosticsTest {
         )
     }
 
+    @Test
+    fun `SWIRLS durable runtime error is surfaced only for an active error state`() {
+        assertEquals(
+            "SWIRLS runtime · HTTP 503 from radar.max-yu.workers.dev",
+            personalizedRainDiagnosticError(
+                status = "ERROR",
+                lastError = "HTTP 503 from radar.max-yu.workers.dev",
+            ),
+        )
+        assertEquals(
+            "",
+            personalizedRainDiagnosticError(
+                status = "EVALUATED",
+                lastError = "old transient failure",
+            ),
+        )
+        assertEquals("", personalizedRainDiagnosticError(status = "ERROR", lastError = ""))
+    }
+
     private fun gate(
         scheduleExpected: Boolean = true,
         locationAvailable: Boolean = true,
