@@ -27,10 +27,38 @@ class NotificationJournalState(context: Context) {
         return configured
     }
 
+    fun isInitialized(): Boolean = preferences.getBoolean(KEY_INITIALIZED, false)
+
     fun cursor(): Long = preferences.getLong(KEY_CURSOR, 0L).coerceAtLeast(0L)
+
+    fun initializeAt(value: Long) {
+        require(value >= 0L) { "Journal cursor must be non-negative" }
+        if (isInitialized()) return
+        if (!preferences.edit()
+                .putLong(KEY_CURSOR, value)
+                .putBoolean(KEY_INITIALIZED, true)
+                .commit()
+        ) {
+            throw IllegalStateException("Failed to initialize notification journal cursor")
+        }
+    }
+
+    /**
+     * If the first thing a fresh installation sees is an FCM wake-up, start one
+     * cursor before that event. This prevents the bootstrap baseline from
+     * classifying the wake-up event itself as historical.
+     */
+    fun initializeForWakeup(eventCursor: Long) {
+        require(eventCursor > 0L) { "Wake-up cursor must be positive" }
+        initializeAt((eventCursor - 1L).coerceAtLeast(0L))
+    }
 
     fun advanceCursor(value: Long) {
         require(value >= 0L) { "Journal cursor must be non-negative" }
+        if (!isInitialized()) {
+            initializeAt(value)
+            return
+        }
         val current = cursor()
         if (value <= current) return
         if (!preferences.edit().putLong(KEY_CURSOR, value).commit()) {
@@ -38,10 +66,26 @@ class NotificationJournalState(context: Context) {
         }
     }
 
+    /**
+     * Disabling notifications ends the current subscription window. The next
+     * enable starts from a fresh server baseline rather than replaying alerts
+     * that were intentionally ignored while notifications were off.
+     */
+    fun resetSubscriptionBaseline() {
+        if (!preferences.edit()
+                .remove(KEY_CURSOR)
+                .putBoolean(KEY_INITIALIZED, false)
+                .commit()
+        ) {
+            throw IllegalStateException("Failed to reset notification journal baseline")
+        }
+    }
+
     internal companion object {
         const val PREFERENCES_NAME = "weather_notification_journal"
         const val KEY_ENDPOINT = "endpoint_v1"
         const val KEY_CURSOR = "cursor_v1"
+        const val KEY_INITIALIZED = "initialized_v1"
 
         fun normaliseEndpoint(value: String?): String? {
             val trimmed = value?.trim()?.takeIf(String::isNotEmpty) ?: return null
