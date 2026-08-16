@@ -40,12 +40,14 @@ internal class LocationHeavyRainWorker(
         val locationHeavyRainEnabled = shouldRunPersonalizedNotificationStream(
             dispatchRequested = inputData.getBoolean(
                 LocationHeavyRainScheduler.INPUT_DISPATCH_LOCATION_HEAVY_RAIN,
+                false,
             ),
             settingEnabled = SettingsRepository.locationHeavyRainNotificationsEnabled(applicationContext),
         )
         val personalizedRainEnabled = shouldRunPersonalizedNotificationStream(
             dispatchRequested = inputData.getBoolean(
                 LocationHeavyRainScheduler.INPUT_DISPATCH_PERSONALIZED_RAIN,
+                false,
             ),
             settingEnabled = SettingsRepository.personalizedRainNotificationsEnabled(applicationContext),
         )
