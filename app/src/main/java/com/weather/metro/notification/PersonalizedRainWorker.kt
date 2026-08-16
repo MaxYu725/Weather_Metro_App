@@ -9,9 +9,9 @@ import kotlinx.coroutines.CancellationException
 /**
  * WorkManager adapter for the Phase 2D2 personalised SWIRLS runtime.
  *
- * Phase 2D2E activates the runtime through the existing shared LocationHeavyRainWorker cadence,
- * so this adapter remains unscheduled. Keeping it setting-aware preserves a safe manual/test entry
- * point without creating a second persistent WorkManager schedule.
+ * Phase 2D2E activates production through the existing shared LocationHeavyRainWorker cadence.
+ * This adapter remains unscheduled, but keeps the same setting and execution-lock invariants for
+ * tests or a future explicit entry point without creating another periodic WorkManager owner.
  */
 internal class PersonalizedRainWorker(
     appContext: Context,
@@ -54,7 +54,9 @@ internal class PersonalizedRainWorker(
         }
 
         return try {
-            runtime.execute(location, nowEpochMs)
+            PersonalizedRainExecutionLock.withLock {
+                runtime.execute(location, nowEpochMs)
+            }
             Result.success()
         } catch (error: CancellationException) {
             throw error
@@ -86,10 +88,16 @@ internal class PersonalizedRainWorker(
 }
 
 internal class AndroidPersonalizedRainEventSink(context: Context) : PersonalizedRainEventSink {
-    private val inboxStore = NotificationEventStore(context)
-    private val publisher = WeatherNotificationPublisher(context, inboxStore)
+    private val applicationContext = context.applicationContext
+    private val inboxStore = NotificationEventStore(applicationContext)
+    private val publisher = WeatherNotificationPublisher(applicationContext, inboxStore)
 
-    override fun accept(event: WeatherNotificationEvent): Boolean = publisher.accept(event)
+    override fun accept(event: WeatherNotificationEvent): Boolean {
+        if (!SettingsRepository.notificationsEnabled(applicationContext)) return false
+        if (!SettingsRepository.preciseLocationEnabled(applicationContext)) return false
+        if (!SettingsRepository.personalizedRainNotificationsEnabled(applicationContext)) return false
+        return publisher.accept(event)
+    }
 
     override fun discardPendingRainEvents() {
         inboxStore.discardPendingBySourceType(SOURCE_TYPE_PERSONALIZED_RAIN)
