@@ -72,9 +72,12 @@ Further steady-state savings:
 - successful hydration does not recompute full pipeline health;
 - Spreadsheet access remains skipped when there is no new event.
 
-The fast-poll state moves V1 -> V2. On first V2 execution only the supervisor
-runtime telemetry is reset for a clean post-2C4C soak. Durable journal state,
-outbox and journal cursor are never reset.
+The fast-poll state moves V1 -> V2 without resetting durable notification state.
+A clean runtime soak is started explicitly with
+`resetNotificationSupervisorSoakTelemetry()` so trigger repair/setup cannot
+silently erase quota history. The helper deletes only
+`HKO_NOTIFICATION_SUPERVISOR_RUNTIME_V2`; journal state, outbox, cursor, fast-poll
+digest and recovery evidence remain untouched.
 
 ## FCM outbox and source redundancy
 
@@ -91,14 +94,20 @@ Update the existing Apps Script project with:
 
 1. add `NotificationJournalHydration.gs`
 2. replace `NotificationFastPoll.gs`
-3. keep `NotificationSupervisor.gs` and every other notification file unchanged
-4. run `setupNotificationSupervisor()` once
-5. wait for at least 10 automatic runs
-6. run `verifyNotificationSupervisor()`
-7. only after the runtime soak passes, update the existing Web App deployment to
+3. add `NotificationQuotaTelemetry.gs`
+4. keep `NotificationSupervisor.gs` and every other notification file unchanged
+5. run `setupNotificationSupervisor()` once
+6. run `resetNotificationSupervisorSoakTelemetry()` once
+7. wait for at least 10 automatic supervisor runs
+8. run `verifyNotificationSupervisor()`
+9. only after the runtime soak passes, update the existing Web App deployment to
    a new version while preserving the same `/exec` URL and verify health
 
-Expected immediate state:
+Immediately after the explicit reset, `verifyNotificationSupervisor()` should
+show `runtime.dayRunCount=0`. After the next automatic supervisor execution it
+starts at 1.
+
+Expected runtime state:
 
 - `supervisorTriggerCount=1`
 - `legacyTriggerCount=0`
@@ -118,8 +127,8 @@ Expected post-soak gate:
 - `componentFailuresToday=0`
 
 CI covers prefetched hydration request shape, suppression of unchanged state
-writes, durable outbox-before-state ordering, fast-poll V1 -> V2 migration, plus
-the existing Apps Script and Android unit/lint/assemble gates.
+writes, durable outbox-before-state ordering, explicit runtime-only soak reset,
+plus the existing Apps Script and Android unit/lint/assemble gates.
 
 If measured runtime still exceeds the consumer reference after duplicate source
 and state work is removed, move server-side polling to a runtime with a more
