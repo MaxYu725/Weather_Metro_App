@@ -13,14 +13,16 @@
  */
 
 const NOTIFICATION_FAST_POLL_CONFIG = Object.freeze({
-  statePropertyKey: 'HKO_NOTIFICATION_FAST_POLL_V1',
+  statePropertyKey: 'HKO_NOTIFICATION_FAST_POLL_V2',
+  legacyStatePropertyKey: 'HKO_NOTIFICATION_FAST_POLL_V1',
   fullRefreshIntervalMs: 170 * 1000,
-  schemaVersion: 1,
+  schemaVersion: 2,
 });
 
 function runNotificationFastPoll_(properties, nowEpochMs) {
   const now = Number(nowEpochMs || Date.now());
   assertNotificationFastPollDependencies_();
+  notificationFastPollMigrateV2_(properties);
 
   let summary;
   try {
@@ -47,9 +49,13 @@ function runNotificationFastPoll_(properties, nowEpochMs) {
   if (reason) {
     // Do not advance the committed digest until the full authoritative journal
     // pass succeeds. A failed hydration is therefore retried next supervisor run.
-    // The full owner records its own attempt/source-success telemetry, avoiding
-    // duplicate Script Properties writes on heavy cycles.
-    checkWeatherUpdatesJournalled();
+    // Prefer the optimized owner that reuses this exact warnsum snapshot and only
+    // fetches warningInfo + SWT. The legacy full owner remains a safe fallback.
+    if (typeof checkWeatherUpdatesJournalledFromSummary_ === 'function') {
+      checkWeatherUpdatesJournalledFromSummary_(summary);
+    } else {
+      checkWeatherUpdatesJournalled();
+    }
     writeNotificationFastPollState_(properties, {
       schemaVersion: NOTIFICATION_FAST_POLL_CONFIG.schemaVersion,
       committedSummaryDigest: summaryDigest,
@@ -99,6 +105,22 @@ function notificationFetchParams_(request) {
     if (key !== 'url') params[key] = request[key];
   });
   return params;
+}
+
+/**
+ * V2 switches full hydration to the prefetched-warnsum owner. Reset the V2
+ * supervisor runtime once so the post-deployment soak is not contaminated by
+ * the pre-optimization measurements. The durable journal/source state is never
+ * reset here.
+ */
+function notificationFastPollMigrateV2_(properties) {
+  if (properties.getProperty(NOTIFICATION_FAST_POLL_CONFIG.statePropertyKey) !== null) return;
+  const legacy = properties.getProperty(NOTIFICATION_FAST_POLL_CONFIG.legacyStatePropertyKey);
+  if (legacy === null) return;
+  if (typeof properties.deleteProperty === 'function') {
+    properties.deleteProperty(NOTIFICATION_FAST_POLL_CONFIG.legacyStatePropertyKey);
+    properties.deleteProperty('HKO_NOTIFICATION_SUPERVISOR_RUNTIME_V2');
+  }
 }
 
 function notificationFastPollMarkPrimarySuccess_(properties, nowEpochMs) {
@@ -264,6 +286,7 @@ function notificationFastPollVerification_() {
   return {
     schemaVersion: NOTIFICATION_FAST_POLL_CONFIG.schemaVersion,
     fullRefreshIntervalMs: NOTIFICATION_FAST_POLL_CONFIG.fullRefreshIntervalMs,
+    optimizedHydrationAvailable: typeof checkWeatherUpdatesJournalledFromSummary_ === 'function',
     committedSummaryDigestPresent: Boolean(state.committedSummaryDigest),
     lastFullRefreshEpochMs: lastFull,
     fullRefreshAgeMs: lastFull > 0 ? Math.max(0, now - lastFull) : null,
@@ -275,7 +298,11 @@ function assertNotificationFastPollDependencies_() {
     ['hkoRequest_', typeof hkoRequest_ === 'function'],
     ['parseHkoResponse_', typeof parseHkoResponse_ === 'function'],
     ['digest_', typeof digest_ === 'function'],
-    ['checkWeatherUpdatesJournalled', typeof checkWeatherUpdatesJournalled === 'function'],
+    [
+      'journal hydration owner',
+      typeof checkWeatherUpdatesJournalledFromSummary_ === 'function' ||
+        typeof checkWeatherUpdatesJournalled === 'function',
+    ],
   ];
   const missing = required.filter(function (entry) { return !entry[1]; }).map(function (entry) { return entry[0]; });
   if (missing.length > 0) {
