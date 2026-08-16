@@ -28,7 +28,7 @@ Notification semantics are upward-only within one rain episode:
 - 70 mm later falling into the 50–69.9 mm band → no downgrade notification;
 - the episode resets only after the district maximum falls below 50 mm.
 
-Missing or invalid HKO data never clears an active episode.
+Missing or invalid HKO data never clears an active episode. The source `updateTime` must also be parseable and no more than 45 minutes old; stale source data is recorded for diagnostics but cannot trigger or clear an episode.
 
 ## Location ownership and privacy
 
@@ -70,9 +70,9 @@ Events use:
 - `eventKind = LOCATION_HEAVY_RAIN`;
 - `sourceType = HKO_LOCATION_DERIVED`;
 - `LOC_RAIN_50` / `LOC_RAIN_70` alert codes;
-- the normal Weather Metro general / urgent notification channels.
+- the normal Weather Metro general notification channel.
 
-The notification UI labels these as **derived from HKO public data**, rather than "HKO official content".
+The notification UI labels these as **derived from HKO public data**, rather than "HKO official content". The 70 mm tier receives a stronger title but is not promoted to Weather Metro's official-warning urgent channel because HKO's public threshold documentation does not define Android notification-channel importance.
 
 ## User controls
 
