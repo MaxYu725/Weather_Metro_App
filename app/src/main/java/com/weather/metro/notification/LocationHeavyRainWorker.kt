@@ -37,12 +37,18 @@ internal class LocationHeavyRainWorker(
     override suspend fun doWork(): Result {
         if (!SettingsRepository.notificationsEnabled(applicationContext)) return Result.success()
 
-        val locationHeavyRainEnabled =
-            inputData.getBoolean(LocationHeavyRainScheduler.INPUT_DISPATCH_LOCATION_HEAVY_RAIN) &&
-                SettingsRepository.locationHeavyRainNotificationsEnabled(applicationContext)
-        val personalizedRainEnabled =
-            inputData.getBoolean(LocationHeavyRainScheduler.INPUT_DISPATCH_PERSONALIZED_RAIN) &&
-                SettingsRepository.personalizedRainNotificationsEnabled(applicationContext)
+        val locationHeavyRainEnabled = shouldRunPersonalizedNotificationStream(
+            dispatchRequested = inputData.getBoolean(
+                LocationHeavyRainScheduler.INPUT_DISPATCH_LOCATION_HEAVY_RAIN,
+            ),
+            settingEnabled = SettingsRepository.locationHeavyRainNotificationsEnabled(applicationContext),
+        )
+        val personalizedRainEnabled = shouldRunPersonalizedNotificationStream(
+            dispatchRequested = inputData.getBoolean(
+                LocationHeavyRainScheduler.INPUT_DISPATCH_PERSONALIZED_RAIN,
+            ),
+            settingEnabled = SettingsRepository.personalizedRainNotificationsEnabled(applicationContext),
+        )
         if (!locationHeavyRainEnabled && !personalizedRainEnabled) return Result.success()
 
         if (!SettingsRepository.preciseLocationEnabled(applicationContext)) {
@@ -68,11 +74,23 @@ internal class LocationHeavyRainWorker(
         }
 
         var retryRequired = false
-        if (locationHeavyRainEnabled && runLocationHeavyRain(location, now) == RunOutcome.RETRY) {
-            retryRequired = true
+        if (locationHeavyRainEnabled) {
+            val outcome = runLocationHeavyRain(location, now)
+            if (!heavyRainStillEnabled()) {
+                stateStore.reset()
+                inboxStore.discardPendingBySourceType(SOURCE_TYPE_LOCATION_DERIVED)
+            } else if (outcome == RunOutcome.RETRY) {
+                retryRequired = true
+            }
         }
-        if (personalizedRainEnabled && runPersonalizedRain(location, now) == RunOutcome.RETRY) {
-            retryRequired = true
+        if (personalizedRainEnabled) {
+            val outcome = runPersonalizedRain(location, now)
+            if (!personalizedRainStillEnabled()) {
+                personalizedRainStateStore.reset()
+                inboxStore.discardPendingBySourceType(SOURCE_TYPE_PERSONALIZED_RAIN)
+            } else if (outcome == RunOutcome.RETRY) {
+                retryRequired = true
+            }
         }
         return if (retryRequired) Result.retry() else Result.success()
     }
@@ -235,6 +253,7 @@ internal class LocationHeavyRainWorker(
         state: LocationHeavyRainState,
         nowEpochMs: Long,
     ): Boolean {
+        if (!heavyRainStillEnabled()) return false
         val level = state.pendingLevel ?: return true
         val observedMm = state.pendingObservedMm ?: return true
         val episode = state.episodeId.ifBlank { state.pendingObservedAt.ifBlank { nowEpochMs.toString() } }
@@ -292,6 +311,16 @@ internal class LocationHeavyRainWorker(
             ),
         )
     }
+
+    private fun heavyRainStillEnabled(): Boolean =
+        SettingsRepository.notificationsEnabled(applicationContext) &&
+            SettingsRepository.preciseLocationEnabled(applicationContext) &&
+            SettingsRepository.locationHeavyRainNotificationsEnabled(applicationContext)
+
+    private fun personalizedRainStillEnabled(): Boolean =
+        SettingsRepository.notificationsEnabled(applicationContext) &&
+            SettingsRepository.preciseLocationEnabled(applicationContext) &&
+            SettingsRepository.personalizedRainNotificationsEnabled(applicationContext)
 
     private fun stableDigest(value: String): String =
         MessageDigest.getInstance("SHA-256")
