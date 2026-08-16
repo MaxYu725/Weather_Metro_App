@@ -6,6 +6,7 @@ import androidx.work.WorkerParameters
 import com.weather.metro.data.settings.SettingsRepository
 import kotlinx.coroutines.CancellationException
 import java.security.MessageDigest
+import java.time.OffsetDateTime
 import java.util.Locale
 
 internal class LocationHeavyRainWorker(
@@ -65,9 +66,24 @@ internal class LocationHeavyRainWorker(
             }
 
             val observation = rainClient.load(location.district)
-            val decision = evaluateLocationHeavyRain(observation.pastHourMaxMm, state.activeLevel)
             val observedAt = observation.observedAt
             val observedMm = observation.pastHourMaxMm
+            val sourceEpochMs = runCatching {
+                OffsetDateTime.parse(observedAt).toInstant().toEpochMilli()
+            }.getOrNull()
+
+            if (!isLocationHeavyRainSourceFresh(sourceEpochMs, now)) {
+                stateStore.write(
+                    state.copy(
+                        lastObservedMm = observedMm,
+                        lastObservedAt = observedAt,
+                        lastCheckedEpochMs = now,
+                        status = "SOURCE_STALE",
+                        lastError = "",
+                    ),
+                )
+                return Result.success()
+            }
 
             if (observedMm == null) {
                 stateStore.write(
@@ -82,6 +98,7 @@ internal class LocationHeavyRainWorker(
                 return Result.success()
             }
 
+            val decision = evaluateLocationHeavyRain(observedMm, state.activeLevel)
             val resetEpisode = decision.nextActiveLevel == LocationHeavyRainLevel.NONE
             var episodeId = if (resetEpisode) "" else state.episodeId
             if (episodeId.isBlank() && decision.nextActiveLevel != LocationHeavyRainLevel.NONE) {
@@ -166,11 +183,7 @@ internal class LocationHeavyRainWorker(
                 "所在地區大雨通知"
             },
             body = buildBody(location.district, observedMm, level.thresholdMm),
-            channel = if (level == LocationHeavyRainLevel.VERY_HEAVY_70) {
-                NotificationChannels.URGENT
-            } else {
-                NotificationChannels.GENERAL
-            },
+            channel = NotificationChannels.GENERAL,
             target = "weathermetro://current",
             alertId = "location-heavy-rain:${location.district}",
             alertCode = "LOC_RAIN_${level.thresholdMm}",
