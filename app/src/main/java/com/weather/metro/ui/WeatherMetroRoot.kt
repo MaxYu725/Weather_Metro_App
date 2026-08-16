@@ -236,6 +236,8 @@ fun WeatherMetroRoot(
                             },
                             onLocationHeavyRainNotificationsChange =
                                 viewModel::setLocationHeavyRainNotificationsEnabled,
+                            onPersonalizedRainNotificationsChange =
+                                viewModel::setPersonalizedRainNotificationsEnabled,
                             onOpenNotificationSettings = openNotificationSettings,
                             onClearCache = {
                                 viewModel.clearCache()
