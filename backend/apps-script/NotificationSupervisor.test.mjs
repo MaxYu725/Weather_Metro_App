@@ -69,7 +69,15 @@ function loadScript(extra = {}) {
     recoveryFailoverEnabled_() { return true; },
     readWarningSourceCrossCheck_() { return null; },
     refreshNotificationPipelineHealth_() { return { status: 'HEALTHY' }; },
-    notificationFastPollVerification_() { return { fullRefreshAgeMs: 10_000 }; },
+    notificationFastPollVerification_() {
+      return {
+        schemaVersion: 2,
+        fullRefreshIntervalMs: 170000,
+        optimizedHydrationAvailable: true,
+        committedSummaryDigestPresent: true,
+        fullRefreshAgeMs: 10_000,
+      };
+    },
     ...extra,
   };
   vm.createContext(context);
