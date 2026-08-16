@@ -44,6 +44,8 @@ The backend also keeps compact sent state per active warning token. If a trigger
 
 The sent-state record is cleared only after both healthy warning-summary sources no longer show that token, allowing a later independent warning episode to recover again.
 
+A later primary JSON publication is **not suppressed merely because a recovery event was sent**. If JSON catches up with a distinct official `UPDATE`, `EXTEND`, `REISSUE`, or other publication, Weather Metro should still deliver it. In the rare case where JSON later exposes the original issue after RSS recovery, this can produce a second official notification. That trade-off is intentional: a duplicate during an upstream source-gap recovery is safer than silently discarding a distinct HKO publication.
+
 ## Deliberate limitation: no inferred cancellation
 
 The HKO RSS datasets are documented as warning information **in force**. Disappearance from an active-warning feed is therefore not treated as an official cancellation publication.
