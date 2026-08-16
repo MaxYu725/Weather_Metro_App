@@ -30,12 +30,48 @@ jobs:
       - name: Test, lint, and assemble
         run: |
           chmod +x gradlew
-          ./gradlew testDebugUnitTest lintDebug assembleDebug --stacktrace
+          ./gradlew testDebugUnitTest lintDebug assembleDebug assembleRelease bundleRelease --stacktrace
+      - name: Measure optimized release artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK="$(find app/build/outputs/apk/release -maxdepth 1 -type f -name '*.apk' | head -n 1)"
+          AAB="$(find app/build/outputs/bundle/release -maxdepth 1 -type f -name '*.aab' | head -n 1)"
+          test -n "$APK"
+          test -n "$AAB"
+          APK_BYTES="$(stat -c '%s' "$APK")"
+          AAB_BYTES="$(stat -c '%s' "$AAB")"
+          {
+            echo "release_apk=$APK"
+            echo "release_apk_bytes=$APK_BYTES"
+            echo "release_aab=$AAB"
+            echo "release_aab_bytes=$AAB_BYTES"
+          } | tee release-size.txt
+          {
+            echo "### Optimized release size"
+            echo
+            echo "| Artifact | Bytes | MiB |"
+            echo "| --- | ---: | ---: |"
+            awk -v b="$APK_BYTES" 'BEGIN { printf "| APK | %d | %.2f |\n", b, b/1048576 }'
+            awk -v b="$AAB_BYTES" 'BEGIN { printf "| AAB | %d | %.2f |\n", b, b/1048576 }'
+            echo
+            echo "Release uses the production R8/resource-shrinking build type; signing is intentionally absent in PR CI."
+          } >> "$GITHUB_STEP_SUMMARY"
       - name: Upload debug APK
         uses: actions/upload-artifact@v4
         with:
           name: WeatherMetro-debug-${{ github.sha }}
           path: app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          retention-days: 14
+      - name: Upload release size baseline
+        uses: actions/upload-artifact@v4
+        with:
+          name: WeatherMetro-release-baseline-${{ github.sha }}
+          path: |
+            app/build/outputs/apk/release/*.apk
+            app/build/outputs/bundle/release/*.aab
+            release-size.txt
           if-no-files-found: error
           retention-days: 14
       - name: Upload reports on failure
