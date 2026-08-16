@@ -106,6 +106,20 @@ object NotificationInboxCodec {
             if (stored.event.eventId in eventIds) stored.copy(posted = true) else stored
         })
 
+    /**
+     * Removes only not-yet-posted events for a disabled personalized source.
+     * Posted history remains available for dedupe; unrelated official journal
+     * events are never touched.
+     */
+    fun discardPendingBySourceType(
+        events: List<StoredNotificationEvent>,
+        sourceType: String,
+    ): List<StoredNotificationEvent> = trim(
+        events.filterNot { stored ->
+            !stored.posted && stored.event.sourceType == sourceType
+        },
+    )
+
     private fun shouldUpgrade(
         existing: WeatherNotificationEvent,
         incoming: WeatherNotificationEvent,
