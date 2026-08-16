@@ -16,13 +16,14 @@ import java.util.concurrent.TimeUnit
  * Shared cadence owner for location-derived weather notifications.
  *
  * The original 2D1 unique work names and worker class are intentionally retained so upgrades do
- * not create a second 15-minute periodic request. The periodic request carries an explicit input
- * marker that lets LocationHeavyRainWorker run the opt-in SWIRLS stream in the same execution slot.
- * Immediate 2D1 checks do not carry that marker, so they cannot accidentally multiply SWIRLS loads.
+ * not create a second 15-minute periodic request. Both periodic and immediate work use explicit
+ * dispatch flags, allowing callers to request only the local rain stream that needs an immediate
+ * refresh while keeping a single WorkManager owner.
  */
 object LocationHeavyRainScheduler {
     const val SOURCE_TYPE = "HKO_LOCATION_DERIVED"
-    internal const val INPUT_DISPATCH_PERSONALIZED_RAIN = "dispatch_personalized_rain_cadence"
+    internal const val INPUT_DISPATCH_LOCATION_HEAVY_RAIN = "dispatch_location_heavy_rain"
+    internal const val INPUT_DISPATCH_PERSONALIZED_RAIN = "dispatch_personalized_rain"
 
     private val networkConstraint = Constraints.Builder()
         .setRequiredNetworkType(NetworkType.CONNECTED)
@@ -31,7 +32,12 @@ object LocationHeavyRainScheduler {
     fun ensurePeriodic(context: Context) {
         val request = PeriodicWorkRequestBuilder<LocationHeavyRainWorker>(15, TimeUnit.MINUTES)
             .setConstraints(networkConstraint)
-            .setInputData(workDataOf(INPUT_DISPATCH_PERSONALIZED_RAIN to true))
+            .setInputData(
+                workDataOf(
+                    INPUT_DISPATCH_LOCATION_HEAVY_RAIN to true,
+                    INPUT_DISPATCH_PERSONALIZED_RAIN to true,
+                ),
+            )
             .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 1, TimeUnit.MINUTES)
             .build()
         WorkManager.getInstance(context.applicationContext).enqueueUniquePeriodicWork(
@@ -41,9 +47,20 @@ object LocationHeavyRainScheduler {
         )
     }
 
-    fun enqueueNow(context: Context) {
+    fun enqueueNow(
+        context: Context,
+        dispatchHeavyRain: Boolean = true,
+        dispatchPersonalizedRain: Boolean = true,
+    ) {
+        if (!dispatchHeavyRain && !dispatchPersonalizedRain) return
         val request = OneTimeWorkRequestBuilder<LocationHeavyRainWorker>()
             .setConstraints(networkConstraint)
+            .setInputData(
+                workDataOf(
+                    INPUT_DISPATCH_LOCATION_HEAVY_RAIN to dispatchHeavyRain,
+                    INPUT_DISPATCH_PERSONALIZED_RAIN to dispatchPersonalizedRain,
+                ),
+            )
             .setExpedited(androidx.work.OutOfQuotaPolicy.RUN_AS_NON_EXPEDITED_WORK_REQUEST)
             .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 1, TimeUnit.MINUTES)
             .build()
@@ -71,7 +88,8 @@ object LocationHeavyRainScheduler {
     }
 
     fun resetPersonalizedRain(context: Context) {
-        PersonalizedRainScheduler.reset(context)
+        PersonalizedRainEpisodeStateStore(context).reset()
+        NotificationEventStore(context).discardPendingBySourceType(SOURCE_TYPE_PERSONALIZED_RAIN)
     }
 
     fun resetAll(context: Context) {
