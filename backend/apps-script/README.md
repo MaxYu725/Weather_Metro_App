@@ -53,6 +53,25 @@ The Google Sheet contains only already-public HKO publication content and event
 metadata. Firebase service-account credentials remain in Script Properties and
 are never exposed through `doGet`.
 
+## Production schedule and Apps Script quota hardening
+
+`NotificationSupervisor.gs` is the **only production time-trigger owner**.
+`runNotificationSupervisor` runs every minute and:
+
+1. executes the authoritative HKO JSON journal poll every cycle;
+2. samples the independent warning-summary RSS cross-check about every two minutes;
+3. runs detailed recovery evidence only after a persistent source gap reaches streak 2;
+4. runs guarded recovery failover only when that evidence is needed and failover is enabled;
+5. records measured runtime and refreshes pipeline health.
+
+This replaces the previous independent one-minute journal/source/evidence/failover
+triggers. The old functions remain callable manually, but their time triggers must
+be absent in production after migration.
+
+The supervisor records a conservative consumer-account runtime projection. This
+is local telemetry, not a Google quota API; Google can change quotas and Workspace
+accounts can have different limits. See `docs/NOTIFICATION_APPS_SCRIPT_QUOTA.md`.
+
 ## One-time owner setup
 
 ### 1. Copy the Apps Script files
@@ -61,6 +80,11 @@ Create or open the Apps Script project and copy:
 
 - `Code.gs`
 - `Journal.gs`
+- `PipelineHealth.gs`
+- `SourceRedundancy.gs`
+- `RecoveryEvidence.gs`
+- `RecoveryFailover.gs`
+- `NotificationSupervisor.gs`
 - `appsscript.json`
 
 Enable the manifest in Apps Script project settings if needed.
@@ -81,11 +105,14 @@ breaks is accepted.
 
 Run `setupReliableNotifications()` once from the Apps Script editor and approve
 the requested permissions. It creates a spreadsheet named
-`Weather Metro Notification Journal`, stores only its ID in Script Properties,
-and installs one one-minute `checkWeatherUpdatesJournalled` trigger.
+`Weather Metro Notification Journal` and stores only its ID in Script Properties.
 
-The manifest now requires the Google Sheets scope because the complete event
-journal is intentionally not stored in Script Properties.
+For an existing deployment this compatibility setup can temporarily create its
+legacy journal trigger. The final `setupNotificationSupervisor()` step below
+removes every notification-owned legacy trigger.
+
+The manifest requires the Google Sheets scope because the complete event journal
+is intentionally not stored in Script Properties.
 
 ### 4. Deploy the read-only journal API
 
@@ -97,12 +124,10 @@ Deploy the Apps Script project as a **Web app**:
 The endpoint exposes only public HKO publication events. It does not expose
 Firebase credentials or Script Properties.
 
-After deploying, run `setupReliableNotifications()` again, then run
-`verifyReliableNotificationSetup()`. Verify that:
-
-- `journalUrl` is a non-empty `https://script.google.com/macros/s/.../exec` URL
-- `triggerCount` is exactly `1`
-- `pendingOutboxEvents` is normally `0`
+After deploying, run `setupReliableNotifications()` again if the deployment URL
+was not previously available, then verify that `journalUrl` is a non-empty
+`https://script.google.com/macros/s/.../exec` URL and `pendingOutboxEvents` is
+normally `0`.
 
 The journal API is:
 
@@ -111,19 +136,55 @@ The journal API is:
 and returns `nextCursor`, `latestCursor`, `hasMore`, and the complete ordered
 `events` array.
 
-### 5. Configure the production Android build
+### 5. Install the single production trigger
+
+If guarded RSS recovery has never been enabled for this Apps Script project, run
+`setupSourceGapRecoveryFailover()` once first. It may temporarily create its old
+standalone trigger.
+
+Then run:
+
+`setupNotificationSupervisor()`
+
+This removes all notification-owned legacy triggers and installs exactly one
+one-minute `runNotificationSupervisor` trigger.
+
+Run:
+
+`verifyNotificationSupervisor()`
+
+Expected steady state:
+
+- `supervisorTriggerCount = 1`
+- `legacyTriggerCount = 0`
+- `pipelineHealth.status = HEALTHY`
+- `pipelineHealth.journalTriggerCount = 0`
+- `pipelineHealth.sourceTriggerCount = 0`
+- `pipelineHealth.pendingOutboxEvents = 0`
+
+The zero journal/source trigger counts are intentional: those functions are now
+called by the supervisor instead of owning separate time triggers.
+
+### 6. Configure the production Android build
 
 Set `WEATHER_NOTIFICATION_JOURNAL_URL` to the production `/exec` URL as either a
-Gradle property or build environment variable. Debug/CI builds may leave it blank.
+Gradle property or build environment variable. The repository also has the
+current production endpoint as its default build value.
 
 FCM schema v4 also sends the URL and Android caches it, but the build-time URL is
 important for a fresh installation: it lets the app reconcile the journal even
 if the **first** FCM message is the one that is missed.
 
-### 6. Run a setup verification
+### 7. Run health verification
 
-Run `verifyReliableNotificationSetup()` after deployment or credential changes.
-Inspect Apps Script **Executions** for HKO, Sheets, OAuth, FCM, or outbox failures.
+Run `verifyNotificationPipelineHealth()` and `verifyNotificationSupervisor()`
+after deployment, credential changes, or trigger migration. Inspect Apps Script
+**Executions** for HKO, Sheets, OAuth, FCM, outbox, supervisor-busy, or quota-risk
+signals.
+
+The public health endpoint remains:
+
+`GET <journalUrl>?mode=health`
 
 ## Android recovery behaviour
 
@@ -165,9 +226,8 @@ This is materially stronger than treating FCM acceptance as proof of delivery.
 
 ## Scope note
 
-This journal covers the territory-wide official publication stream currently
-integrated by Weather Metro: weather warnings, warning information/statements,
-and Special Weather Tips. HKO also offers personalised location-based rain,
-lightning, and location-specific heavy-rain notifications. Those depend on a
-user/device location stream and should be integrated separately with Weather
-Metro's Rain/location owner rather than duplicated in this global warning journal.
+The global journal covers territory-wide official publication streams: weather
+warnings, warning information/statements, and Special Weather Tips. Personalized
+location heavy-rain notifications are evaluated locally on Android from HKO
+public district rainfall data. Location-based rain/lightning forecast remains a
+separate personalized stream rather than being mixed into the global journal.

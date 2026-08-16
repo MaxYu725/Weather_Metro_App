@@ -9,7 +9,7 @@
 const PIPELINE_HEALTH_CONFIG = Object.freeze({
   runtimePropertyKey: 'HKO_NOTIFICATION_PIPELINE_RUNTIME_V1',
   snapshotPropertyKey: 'HKO_NOTIFICATION_PIPELINE_HEALTH_V1',
-  schemaVersion: 1,
+  schemaVersion: 2,
   maxPollAgeMs: 3 * 60 * 1000,
   maxSourceCheckAgeMs: 4 * 60 * 1000,
   maxOutboxAgeMs: 5 * 60 * 1000,
@@ -119,8 +119,27 @@ function refreshNotificationPipelineHealth_(properties, nowEpochMs) {
   const triggers = typeof ScriptApp !== 'undefined' && ScriptApp.getProjectTriggers
     ? ScriptApp.getProjectTriggers()
     : [];
+  const supervisorHandler = typeof NOTIFICATION_SUPERVISOR_CONFIG !== 'undefined'
+    ? NOTIFICATION_SUPERVISOR_CONFIG.triggerFunction
+    : 'runNotificationSupervisor';
+  const legacyHandlers = typeof NOTIFICATION_LEGACY_TRIGGER_HANDLERS !== 'undefined'
+    ? NOTIFICATION_LEGACY_TRIGGER_HANDLERS
+    : [
+        'checkWeatherUpdates',
+        'checkWeatherUpdatesJournalled',
+        'checkWarningSourceRedundancy',
+        'checkSourceGapRecoveryEvidence',
+        'checkSourceGapRecoveryFailover',
+      ];
+  const supervisorTriggerCount = triggers.filter(function (trigger) {
+    return trigger.getHandlerFunction() === supervisorHandler;
+  }).length;
+  const legacyTriggerCount = triggers.filter(function (trigger) {
+    return legacyHandlers.indexOf(trigger.getHandlerFunction()) >= 0;
+  }).length;
   const journalTriggerCount = triggers.filter(function (trigger) {
-    return trigger.getHandlerFunction() === JOURNAL_CONFIG.triggerFunction;
+    return typeof JOURNAL_CONFIG !== 'undefined' &&
+      trigger.getHandlerFunction() === JOURNAL_CONFIG.triggerFunction;
   }).length;
   const sourceTriggerCount = triggers.filter(function (trigger) {
     return typeof SOURCE_REDUNDANCY_CONFIG !== 'undefined' &&
@@ -131,14 +150,23 @@ function refreshNotificationPipelineHealth_(properties, nowEpochMs) {
     if (!Number.isFinite(queuedAt) || queuedAt <= 0) return oldest;
     return oldest === 0 ? queuedAt : Math.min(oldest, queuedAt);
   }, 0);
+  const supervisorRuntime = typeof readNotificationSupervisorRuntime_ === 'function'
+    ? readNotificationSupervisorRuntime_(properties)
+    : null;
+  const supervisorQuota = supervisorRuntime && typeof deriveNotificationSupervisorQuotaTelemetry_ === 'function'
+    ? deriveNotificationSupervisorQuotaTelemetry_(supervisorRuntime)
+    : null;
 
   const facts = {
     nowEpochMs: now,
     runtime: runtime,
     pendingOutboxEvents: outbox.length,
     oldestOutboxQueuedAtEpochMs: oldestQueuedAt,
+    supervisorTriggerCount: supervisorTriggerCount,
+    legacyTriggerCount: legacyTriggerCount,
     journalTriggerCount: journalTriggerCount,
     sourceTriggerCount: sourceTriggerCount,
+    supervisorQuota: supervisorQuota,
     sourceHealth: sourceHealth,
   };
   const snapshot = deriveNotificationPipelineHealth_(facts);
@@ -150,6 +178,7 @@ function deriveNotificationPipelineHealth_(facts) {
   const now = Number(facts.nowEpochMs || Date.now());
   const runtime = facts.runtime || {};
   const source = facts.sourceHealth || null;
+  const quota = facts.supervisorQuota || null;
   const lastPoll = Number(runtime.lastHkoPollSuccessEpochMs || 0);
   const sourceCheckedAt = Number(source && source.checkedAtEpochMs || 0);
   const oldestQueuedAt = Number(facts.oldestOutboxQueuedAtEpochMs || 0);
@@ -157,21 +186,25 @@ function deriveNotificationPipelineHealth_(facts) {
   const sourceCheckAgeMs = sourceCheckedAt > 0 ? Math.max(0, now - sourceCheckedAt) : null;
   const oldestOutboxAgeMs = oldestQueuedAt > 0 ? Math.max(0, now - oldestQueuedAt) : 0;
   const pendingOutboxEvents = Math.max(0, Number(facts.pendingOutboxEvents || 0));
+  const supervisorTriggerCount = Number(facts.supervisorTriggerCount || 0);
+  const legacyTriggerCount = Number(facts.legacyTriggerCount || 0);
   const journalTriggerCount = Number(facts.journalTriggerCount || 0);
   const sourceTriggerCount = Number(facts.sourceTriggerCount || 0);
   const sourceStatus = source && source.status ? String(source.status) : 'UNAVAILABLE';
   const sourceGapStreak = Number(source && source.consecutiveSecondaryOnly || 0);
   const recentFailure = Number(runtime.lastFailureEpochMs || 0) >
     Number(runtime.lastCompletedEpochMs || 0);
+  const actualQuotaRisk = Boolean(quota && quota.actualRuntimeRisk);
+  const projectedQuotaRisk = Boolean(quota && quota.projectedRuntimeRisk);
 
   let status = 'HEALTHY';
   let actionRequired = false;
 
-  if (journalTriggerCount !== 1) {
-    status = 'JOURNAL_TRIGGER_INVALID';
+  if (supervisorTriggerCount !== 1) {
+    status = 'SUPERVISOR_TRIGGER_INVALID';
     actionRequired = true;
-  } else if (sourceTriggerCount !== 1) {
-    status = 'SOURCE_TRIGGER_INVALID';
+  } else if (legacyTriggerCount !== 0) {
+    status = 'LEGACY_TRIGGER_PRESENT';
     actionRequired = true;
   } else if (lastPoll <= 0) {
     status = 'POLL_UNPROVEN';
@@ -196,6 +229,9 @@ function deriveNotificationPipelineHealth_(facts) {
     sourceStatus !== 'MATCH_AFTER_RETRY'
   ) {
     status = 'SOURCE_DEGRADED';
+  } else if (actualQuotaRisk) {
+    status = 'QUOTA_RUNTIME_HIGH';
+    actionRequired = true;
   } else if (recentFailure) {
     status = 'RECENT_FAILURE';
   }
@@ -206,6 +242,8 @@ function deriveNotificationPipelineHealth_(facts) {
     status: status,
     healthy: status === 'HEALTHY',
     actionRequired: actionRequired,
+    supervisorTriggerCount: supervisorTriggerCount,
+    legacyTriggerCount: legacyTriggerCount,
     journalTriggerCount: journalTriggerCount,
     sourceTriggerCount: sourceTriggerCount,
     lastAttemptEpochMs: Number(runtime.lastAttemptEpochMs || 0),
@@ -226,6 +264,17 @@ function deriveNotificationPipelineHealth_(facts) {
     sourceGapStreak: sourceGapStreak,
     sourceSecondaryOnly: source && Array.isArray(source.secondaryOnly) ? source.secondaryOnly.slice() : [],
     sourcePrimaryOnly: source && Array.isArray(source.primaryOnly) ? source.primaryOnly.slice() : [],
+    quotaTelemetryAvailable: Boolean(quota),
+    consumerQuotaRisk: actualQuotaRisk || projectedQuotaRisk,
+    actualRuntimeRisk: actualQuotaRisk,
+    projectedRuntimeRisk: projectedQuotaRisk,
+    supervisorDayRunCount: quota ? Number(quota.dayRunCount || 0) : 0,
+    supervisorDayRuntimeMs: quota ? Number(quota.dayRuntimeMs || 0) : 0,
+    supervisorAverageRunMs: quota ? Number(quota.averageRunMs || 0) : 0,
+    supervisorProjectedDailyRuntimeMs: quota ? Number(quota.projectedDailyRuntimeMs || 0) : 0,
+    consumerDailyReferenceBudgetMs: quota ? Number(quota.consumerDailyReferenceBudgetMs || 0) : 0,
+    supervisorBusySkipsToday: quota ? Number(quota.busySkipsToday || 0) : 0,
+    supervisorComponentFailuresToday: quota ? Number(quota.componentFailuresToday || 0) : 0,
   };
 }
 
