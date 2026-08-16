@@ -15,6 +15,7 @@ internal class LocationHeavyRainWorker(
 ) : CoroutineWorker(appContext, params) {
     private val locationStore = PersonalizedNotificationLocationStore(appContext)
     private val stateStore = LocationHeavyRainStateStore(appContext)
+    private val inboxStore = NotificationEventStore(appContext)
     private val rainClient = HkoDistrictRainClient()
     private val publisher = WeatherNotificationPublisher(appContext)
 
@@ -43,6 +44,7 @@ internal class LocationHeavyRainWorker(
 
         var state = stateStore.read()
         if (state.district.isNotBlank() && state.district != location.district) {
+            inboxStore.discardPendingBySourceType(SOURCE_TYPE_LOCATION_DERIVED)
             state = LocationHeavyRainState(district = location.district, status = "LOCATION_CHANGED")
             stateStore.write(state)
         } else if (state.district.isBlank()) {
@@ -188,7 +190,7 @@ internal class LocationHeavyRainWorker(
             alertId = "location-heavy-rain:${location.district}",
             alertCode = "LOC_RAIN_${level.thresholdMm}",
             eventKind = "LOCATION_HEAVY_RAIN",
-            sourceType = SOURCE_TYPE,
+            sourceType = SOURCE_TYPE_LOCATION_DERIVED,
             sourceTime = state.pendingObservedAt,
             journalCursor = 0,
             sentAtEpochMillis = nowEpochMs,
@@ -224,7 +226,6 @@ internal class LocationHeavyRainWorker(
             .joinToString("") { byte -> "%02x".format(byte.toInt() and 0xff) }
 
     private companion object {
-        const val SOURCE_TYPE = "HKO_LOCATION_DERIVED"
         const val MAX_LOCATION_AGE_MS = 6 * 60 * 60 * 1000L
     }
 }
