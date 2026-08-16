@@ -9,8 +9,9 @@ import kotlinx.coroutines.CancellationException
 /**
  * WorkManager adapter for the Phase 2D2 personalised SWIRLS runtime.
  *
- * This class is intentionally not scheduled by 2D2D. Activation/cadence remains a separate
- * checkpoint so the runtime can be verified before adding another persistent background job.
+ * Phase 2D2E activates the runtime through the existing shared LocationHeavyRainWorker cadence,
+ * so this adapter remains unscheduled. Keeping it setting-aware preserves a safe manual/test entry
+ * point without creating a second persistent WorkManager schedule.
  */
 internal class PersonalizedRainWorker(
     appContext: Context,
@@ -27,6 +28,10 @@ internal class PersonalizedRainWorker(
     override suspend fun doWork(): Result {
         if (!SettingsRepository.notificationsEnabled(applicationContext)) {
             recordIdle("NOTIFICATIONS_DISABLED")
+            return Result.success()
+        }
+        if (!SettingsRepository.personalizedRainNotificationsEnabled(applicationContext)) {
+            recordIdle("PERSONALIZED_RAIN_DISABLED")
             return Result.success()
         }
         if (!SettingsRepository.preciseLocationEnabled(applicationContext)) {
