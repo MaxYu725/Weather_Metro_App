@@ -32,6 +32,9 @@ object NotificationInboxCodec {
                                 alertId = item.optString("alertId"),
                                 alertCode = item.optString("alertCode"),
                                 eventKind = item.optString("eventKind"),
+                                sourceType = item.optString("sourceType"),
+                                sourceTime = item.optString("sourceTime"),
+                                journalCursor = item.optLong("journalCursor").coerceAtLeast(0L),
                                 sentAtEpochMillis = item.optLong("sentAtEpochMillis"),
                             ),
                             receivedAtEpochMillis = item.optLong("receivedAtEpochMillis"),
@@ -56,6 +59,9 @@ object NotificationInboxCodec {
                     .put("alertId", stored.event.alertId)
                     .put("alertCode", stored.event.alertCode)
                     .put("eventKind", stored.event.eventKind)
+                    .put("sourceType", stored.event.sourceType)
+                    .put("sourceTime", stored.event.sourceTime)
+                    .put("journalCursor", stored.event.journalCursor)
                     .put("sentAtEpochMillis", stored.event.sentAtEpochMillis)
                     .put("receivedAtEpochMillis", stored.receivedAtEpochMillis)
                     .put("posted", stored.posted),
@@ -68,15 +74,39 @@ object NotificationInboxCodec {
         events: List<StoredNotificationEvent>,
         event: WeatherNotificationEvent,
         receivedAtEpochMillis: Long,
+    ): List<StoredNotificationEvent> = addOrUpgrade(events, event, receivedAtEpochMillis)
+
+    fun addOrUpgrade(
+        events: List<StoredNotificationEvent>,
+        event: WeatherNotificationEvent,
+        receivedAtEpochMillis: Long,
     ): List<StoredNotificationEvent> {
-        if (events.any { it.event.eventId == event.eventId }) return events
-        return trim(events + StoredNotificationEvent(event, receivedAtEpochMillis))
+        val existingIndex = events.indexOfFirst { it.event.eventId == event.eventId }
+        if (existingIndex < 0) {
+            return trim(events + StoredNotificationEvent(event, receivedAtEpochMillis))
+        }
+
+        val existing = events[existingIndex]
+        if (!shouldUpgrade(existing.event, event)) return events
+        val updated = events.toMutableList().apply {
+            this[existingIndex] = existing.copy(event = event)
+        }
+        return trim(updated)
     }
 
     fun markPosted(events: List<StoredNotificationEvent>, eventIds: Set<String>): List<StoredNotificationEvent> =
         trim(events.map { stored ->
             if (stored.event.eventId in eventIds) stored.copy(posted = true) else stored
         })
+
+    private fun shouldUpgrade(
+        existing: WeatherNotificationEvent,
+        incoming: WeatherNotificationEvent,
+    ): Boolean {
+        if (incoming.journalCursor <= 0L) return false
+        if (existing.journalCursor > incoming.journalCursor) return false
+        return existing != incoming
+    }
 
     private fun trim(events: List<StoredNotificationEvent>): List<StoredNotificationEvent> {
         val pending = events.filterNot(StoredNotificationEvent::posted)
