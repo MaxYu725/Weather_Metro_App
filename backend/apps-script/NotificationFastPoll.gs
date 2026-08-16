@@ -22,22 +22,13 @@ function runNotificationFastPoll_(properties, nowEpochMs) {
   const now = Number(nowEpochMs || Date.now());
   assertNotificationFastPollDependencies_();
 
-  if (typeof notificationPipelineMarkAttempt_ === 'function') {
-    notificationPipelineMarkAttempt_(properties, now);
-  }
-
   let summary;
   try {
     const request = hkoRequest_('warnsum');
     const response = UrlFetchApp.fetch(request.url, notificationFetchParams_(request));
     summary = parseHkoResponse_(response);
-    if (typeof notificationPipelineMarkSourceSuccess_ === 'function') {
-      notificationPipelineMarkSourceSuccess_(properties, Date.now());
-    }
   } catch (error) {
-    if (typeof notificationPipelineMarkFailure_ === 'function') {
-      notificationPipelineMarkFailure_(properties, Date.now(), error);
-    }
+    notificationFastPollMarkPrimaryFailure_(properties, now, error);
     throw error;
   }
 
@@ -56,6 +47,8 @@ function runNotificationFastPoll_(properties, nowEpochMs) {
   if (reason) {
     // Do not advance the committed digest until the full authoritative journal
     // pass succeeds. A failed hydration is therefore retried next supervisor run.
+    // The full owner records its own attempt/source-success telemetry, avoiding
+    // duplicate Script Properties writes on heavy cycles.
     checkWeatherUpdatesJournalled();
     writeNotificationFastPollState_(properties, {
       schemaVersion: NOTIFICATION_FAST_POLL_CONFIG.schemaVersion,
@@ -70,6 +63,10 @@ function runNotificationFastPoll_(properties, nowEpochMs) {
       fullAgeMs: 0,
     };
   }
+
+  // Fast-only success updates attempt + primary-source freshness in one compact
+  // runtime-state write rather than two read/modify/write cycles.
+  notificationFastPollMarkPrimarySuccess_(properties, now);
 
   // FCM delivery retries must not wait for the next full source hydration.
   const outbox = typeof readOutbox_ === 'function' ? readOutbox_(properties) : [];
@@ -102,6 +99,48 @@ function notificationFetchParams_(request) {
     if (key !== 'url') params[key] = request[key];
   });
   return params;
+}
+
+function notificationFastPollMarkPrimarySuccess_(properties, nowEpochMs) {
+  const now = Number(nowEpochMs || Date.now());
+  if (
+    typeof readNotificationPipelineRuntime_ === 'function' &&
+    typeof writeNotificationPipelineRuntime_ === 'function'
+  ) {
+    const runtime = readNotificationPipelineRuntime_(properties);
+    runtime.lastAttemptEpochMs = now;
+    runtime.lastHkoPollSuccessEpochMs = now;
+    writeNotificationPipelineRuntime_(properties, runtime);
+    return;
+  }
+  if (typeof notificationPipelineMarkAttempt_ === 'function') {
+    notificationPipelineMarkAttempt_(properties, now);
+  }
+  if (typeof notificationPipelineMarkSourceSuccess_ === 'function') {
+    notificationPipelineMarkSourceSuccess_(properties, now);
+  }
+}
+
+function notificationFastPollMarkPrimaryFailure_(properties, nowEpochMs, error) {
+  const now = Number(nowEpochMs || Date.now());
+  if (
+    typeof readNotificationPipelineRuntime_ === 'function' &&
+    typeof writeNotificationPipelineRuntime_ === 'function'
+  ) {
+    const runtime = readNotificationPipelineRuntime_(properties);
+    runtime.lastAttemptEpochMs = now;
+    runtime.lastFailureEpochMs = now;
+    runtime.lastError = String(error && error.message ? error.message : error || 'Unknown fast-poll failure')
+      .slice(0, 500);
+    writeNotificationPipelineRuntime_(properties, runtime);
+    return;
+  }
+  if (typeof notificationPipelineMarkAttempt_ === 'function') {
+    notificationPipelineMarkAttempt_(properties, now);
+  }
+  if (typeof notificationPipelineMarkFailure_ === 'function') {
+    notificationPipelineMarkFailure_(properties, now, error);
+  }
 }
 
 function notificationWarnsumDigest_(summary) {
