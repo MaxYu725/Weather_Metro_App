@@ -1,37 +1,33 @@
-# Notification source-fidelity review
+# Notification source-fidelity and recovery review
 
 Reviewed: 2026-08-16
 
 ## Goal
 
 Weather Metro should treat Hong Kong Observatory publications as the source of
-truth: if HKO publishes a warning action, detailed warning statement, or Special
-Weather Tip, Weather Metro should preserve that publication instead of inferring
-a different event from the before/after warning state.
+truth. If HKO publishes a warning action, detailed warning statement, or Special
+Weather Tip, Weather Metro should preserve that publication rather than infer a
+different event from before/after state. A missed FCM delivery must also be
+recoverable instead of becoming a permanent notification gap.
 
-This is separate from transport reliability. The previous notification phase
-made FCM delivery retryable and made Android receipt durable. This review found
-that the source-normalisation layer could still change or omit HKO semantics even
-when transport worked perfectly.
+## Findings and disposition
 
-## Findings
-
-| Severity | Finding | Previous behaviour | Required behaviour |
+| Severity | Finding | Previous behaviour | Current disposition |
 | --- | --- | --- | --- |
-| Critical | Official warning actions were not preserved | `warnsum.actionCode` was only consulted to skip `CANCEL`; the app reconstructed ISSUE/UPDATE/CANCEL from state presence and a content fingerprint | Preserve the HKO action code, including ISSUE, REISSUE, CANCEL, EXTEND and UPDATE |
-| Critical | A same-text publication could be missed | Fingerprints excluded HKO action and timestamps, so an official reissue/extension with unchanged wording could look unchanged | Publication identity includes action plus official timestamps and content |
-| High | Cancellation could be fabricated from disappearance | Any warning missing from the next snapshot generated a synthetic CANCEL using the previous state | Emit cancellation only when HKO publishes a cancellation action/statement |
-| High | `warningInfo`-only statements could be dropped | Detailed rows were only used as enrichment for a `warnsum` row | Preserve unmatched official warningInfo statements, including WTCPRE8 |
-| High | Special Weather Tips could generate fake cancellations | A changed/disappeared body was treated as state removal | Treat each SWT item as a publication; disappearance is not an HKO cancellation |
-| Medium | HKO formatting was altered | All whitespace was collapsed to spaces | Keep source line breaks and only normalise line endings/trailing horizontal whitespace |
-| Medium | Notification title added Weather Metro semantics | The backend prefixed titles with `已發出`, `已更新`, or `已取消` | Use the HKO-derived title directly; keep action as structured metadata |
-| High | FCM is still not a complete source record | Visible body is limited to the safe FCM payload excerpt and there is no server cursor | Add a durable full-text event journal and client reconciliation in the next checkpoint |
+| Critical | Official warning actions were not preserved | `warnsum.actionCode` was mostly discarded and ISSUE/UPDATE/CANCEL were reconstructed locally | Fixed: preserve ISSUE, REISSUE, CANCEL, EXTEND, UPDATE and future source action strings |
+| Critical | A same-text publication could be missed | Action/timestamps were absent from identity | Fixed: action, official timestamps and content are part of publication identity |
+| High | Cancellation could be fabricated | Snapshot disappearance generated a synthetic CANCEL | Fixed: cancellation is emitted only from HKO cancellation semantics |
+| High | `warningInfo`-only statements could be dropped | Detail rows only enriched `warnsum` | Fixed: unmatched official statements such as WTCPRE8 are preserved |
+| High | SWT disappearance could create a fake cancellation | Tips were treated like active state | Fixed: SWT is a source publication; disappearance is not cancellation |
+| Medium | Source formatting/title was altered | Whitespace collapsed and local action prefixes were added | Fixed: retain source line breaks and HKO-derived title |
+| Critical | FCM was the only discovery path | A push lost by FCM/Android could never be recovered | Fixed in Phase 2B: authoritative cursor journal + WorkManager reconciliation |
+| High | FCM preview could truncate official body | Payload had a safe ~900-byte body limit | Fixed for journal-capable clients: preview wakes the client; complete journal event is displayed |
+| High | Local inbox writes were not verified | `SharedPreferences.commit()` result was ignored | Fixed: durable write failure throws and cursor cannot advance |
+| Medium | Journal migration could repost existing complete notifications | New metadata can differ even when visible content is identical | Fixed: metadata-only upgrade preserves posted state; changed visible content is reposted |
 
-## Phase 2A implementation
+## Phase 2A — source publication fidelity
 
-The Apps Script baseline moves to a V6 source-publication model.
-
-A publication ID is derived from:
+The source-publication model identifies an HKO publication from:
 
 - source type (`WARNING`, `STATEMENT`, `SWT`)
 - stable source key / warning family
@@ -41,79 +37,96 @@ A publication ID is derived from:
 - title
 - source body
 
-`diffStates_` now only emits publications present in the new HKO snapshot whose
-publication ID was not in the previous snapshot. It no longer converts a missing
-item into a cancellation.
+Only newly observed publication IDs become events. Missing snapshot rows do not
+become cancellations. `warningInfo` statements without a matching summary row are
+retained. WTCPRE8 uses the HKO wording `預警八號熱帶氣旋警告信號特別報告`.
 
-For warning summary rows, the HKO action is the event kind. For unmatched
-`warningInfo` rows the event kind is `STATEMENT`. For Special Weather Tips the
-event kind is `SWT`.
+## Phase 2B — durable full-text journal and client recovery
 
-The FCM schema moves to version 3 and carries `sourceType` and `sourceTime` in
-addition to the existing event metadata. Android can ignore these extra values
-until the journal/cursor client is introduced.
+The authoritative flow is now:
 
-## Verification added
+`HKO JSON -> publication ID -> Google Sheets journal -> FCM wake-up -> WorkManager -> local inbox -> system notification`
 
-Backend tests now cover:
+The complete event is journalled before FCM is queued. FCM schema v4 carries the
+journal URL/cursor and a byte-bounded compatibility preview. A journal-capable
+Android client fetches the complete ordered journal instead of displaying the
+preview directly.
 
-- official REISSUE being preserved on first observation
-- EXTEND being emitted even when the warning text is unchanged
-- explicit HKO cancellation text
-- no synthetic cancellation when a snapshot item disappears
-- WTCPRE8 as a warningInfo-only statement
-- no fake cancellation for disappearing SWT content
-- preservation of source line breaks
-- HKO title without Weather Metro-generated action prefixes
-- deterministic source-publication IDs and existing durable outbox behaviour
-- Script Properties per-value size limits and corrupt-index failure handling
+Android reconciles:
 
-## Remaining work before claiming end-to-end eventual delivery
-
-### Phase 2B — durable publication journal
-
-FCM must stop being the only path by which an Android installation can learn an
-event exists. Apps Script (or a more suitable backend store) should append each
-source publication to a durable, cursor-addressable journal before the FCM send.
-The journal must retain the complete HKO body, not the 900-byte FCM preview.
-
-Android should reconcile the journal:
-
-- on application startup/resume
-- immediately after an FCM wake-up
+- on application startup
+- on application resume
+- immediately after a schema v4 FCM wake-up
 - after `onDeletedMessages`
-- after notification permission/channel access is restored
+- periodically as a network-connected safety net
+- when notification permission is enabled/restored
 
-A local last-seen cursor plus the existing event-ID inbox makes a missed FCM push
-recoverable instead of permanent.
+Journal pages are parsed fail-closed. A malformed event is not skipped. The local
+cursor advances only after the corresponding complete event has been committed
+to the durable inbox. If a previously displayed preview is later replaced by
+complete source content, it is updated/reposted; a metadata-only migration does
+not generate a duplicate visible notification.
 
-### Phase 2C — receipt proof and redundant detection
+The journal uses Google Sheets because complete historical event bodies do not
+fit the bounded Apps Script property store. Script Properties continue to hold
+small state/outbox metadata and Firebase credentials only.
 
-For a measurable delivery objective, register installations and record an ACK for
-journal events after durable client receipt. Add operational alarms for stale
-unacknowledged critical events and the oldest unsent outbox entry.
+## Verification
 
-A second independent HKO detection path should also be evaluated. HKO publishes
-official Weather Warning Summary and Weather Warning Information RSS feeds "as
-necessary"; these can be used as a cross-check/redundant source for the JSON open
-data endpoints rather than as a second user-visible notification stream.
+Backend tests cover:
 
-## External constraints
+- REISSUE / EXTEND with unchanged text
+- explicit cancellation and no synthetic cancellation
+- WTCPRE8 and SWT source behaviour
+- source line-break preservation
+- deterministic event IDs
+- full journal body versus bounded FCM preview
+- ordered cursor paging with no aggregation
+- journal/outbox retry and corruption handling
+- Apps Script property-size safety
 
-HKO documents its mobile-app notification service as using FCM and explicitly
-states that successful or timely reception cannot be guaranteed. Weather Metro
-therefore cannot honestly guarantee that Android will display a system
-notification while a device is force-stopped, offline indefinitely, or blocked
-by OS/user notification controls. The engineering target is instead:
+Android tests cover:
 
-> Every HKO publication detected by the backend is durably journaled, and every
-> enabled installation eventually receives and displays each journal event once
-> when it next has network/execution/notification capability.
+- source/journal metadata parsing
+- unsafe routing rejection
+- full journal body preservation beyond FCM preview size
+- strict increasing cursors
+- production Apps Script endpoint validation
+- local inbox round-trip/deduplication
+- preview-to-full-content upgrade
+- metadata-only migration without duplicate repost
+- posted-history bounding without deleting pending events
 
-That target is testable and can recover from missed push delivery.
+CI runs all Apps Script tests plus Android unit tests, lint, and debug assembly.
 
-## References
+## Phase 2C — remaining reliability work
 
-- HKO Open Data API documentation (Weather Warning Summary / Warning Information / Special Weather Tips)
-- HKO RSS Weather Information: Weather Warning Summary and Weather Warning Information
-- HKO MyObservatory notes on FCM notification delivery limitations
+Phase 2B recovers **delivery-path loss** after the backend has detected an HKO
+publication. It does not yet make backend detection itself redundant. The next
+checkpoint should therefore focus on:
+
+1. **Independent official-source cross-check.** Evaluate HKO Weather Warning RSS
+   as a second detector for the JSON open-data stream. Canonicalise both detectors
+   into the same publication ID so redundancy cannot create duplicate user alerts.
+2. **Operational proof.** Record backend health such as oldest unsent outbox event,
+   last successful HKO poll, journal append failures, and cursor/API health.
+3. **Optional installation ACK.** If measurable per-installation receipt proof is
+   required, register installations and acknowledge events only after durable
+   local receipt. Topic-FCM acceptance alone cannot provide per-device proof.
+4. **Personalised weather stream.** Location-specific heavy-rain, rain and
+   lightning notifications should use Weather Metro's existing location/Rain
+   ownership rather than be mixed into this territory-wide publication journal.
+
+## External constraints and engineering target
+
+No Android app can force the operating system to display a notification while an
+app is force-stopped, a device remains offline indefinitely, or the user/OS has
+blocked notification permission/channel access. The enforceable target is:
+
+> Every HKO publication detected by the backend is durably journalled before
+> delivery is attempted. Every enabled installation eventually retrieves every
+> journal event once network/execution capability returns, and events that cannot
+> currently be posted remain in the local inbox for replay.
+
+This makes a missed push recoverable and separates backend detection, transport,
+durable client receipt, and visible OS posting into independently testable stages.
