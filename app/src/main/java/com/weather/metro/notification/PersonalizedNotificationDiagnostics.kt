@@ -68,6 +68,11 @@ internal fun assessPersonalizedNotificationDiagnostics(
     return PersonalizedNotificationDiagnosticVerdict.READY
 }
 
+internal fun personalizedRainDiagnosticError(status: String, lastError: String): String {
+    if (status != "ERROR" || lastError.isBlank()) return ""
+    return "SWIRLS runtime · ${lastError.take(260)}"
+}
+
 /**
  * Reads only local Android state for real-device activation verification.
  *
@@ -159,6 +164,10 @@ internal class PersonalizedNotificationDiagnosticsReader(context: Context) {
                 personalizedRainLastCheckedEpochMs = personalizedState.lastCheckedEpochMs,
                 personalizedRainLastSourceRunEpochMs = personalizedState.lastSourceRunEpochMs,
                 personalizedRainPendingKind = personalizedState.pendingTransition?.eventIdentity?.kind?.name.orEmpty(),
+                error = personalizedRainDiagnosticError(
+                    status = personalizedState.status,
+                    lastError = personalizedState.lastError,
+                ),
             )
         }.getOrElse { error ->
             PersonalizedNotificationDiagnostics(
