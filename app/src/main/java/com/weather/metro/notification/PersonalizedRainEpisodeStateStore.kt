@@ -3,6 +3,18 @@ package com.weather.metro.notification
 import android.content.Context
 import org.json.JSONObject
 
+internal data class PersonalizedRainEvaluationLocation(
+    val latitude: Double,
+    val longitude: Double,
+    val label: String,
+    val district: String,
+) {
+    init {
+        require(latitude in -90.0..90.0 && longitude in -180.0..180.0)
+        require(district.isNotBlank())
+    }
+}
+
 internal data class PersonalizedRainPendingTransition(
     val eventIdentity: PersonalizedForecastEventIdentity,
     val horizon: PersonalizedForecastHorizon?,
@@ -14,11 +26,17 @@ internal data class PersonalizedRainPendingTransition(
 internal data class PersonalizedRainDurableState(
     val committedEpisodeState: PersonalizedRainEpisodeState = PersonalizedRainEpisodeState(),
     val pendingTransition: PersonalizedRainPendingTransition? = null,
+    val evaluationLocation: PersonalizedRainEvaluationLocation? = null,
     val lastSourceRunEpochMs: Long = 0L,
     val lastCheckedEpochMs: Long = 0L,
     val status: String = "IDLE",
     val lastError: String = "",
 )
+
+internal interface PersonalizedRainStatePersistence {
+    fun read(): PersonalizedRainDurableState
+    fun write(state: PersonalizedRainDurableState)
+}
 
 /**
  * Durable local state for the Phase 2D2 personalised rain stream.
@@ -30,16 +48,16 @@ internal data class PersonalizedRainDurableState(
  * "detect -> persist pending -> durable inbox -> commit" reliability ordering without
  * writing personalised events into the territory-wide HKO publication journal.
  */
-internal class PersonalizedRainEpisodeStateStore(context: Context) {
+internal class PersonalizedRainEpisodeStateStore(context: Context) : PersonalizedRainStatePersistence {
     private val preferences = context.applicationContext.getSharedPreferences(
         PREFERENCES_NAME,
         Context.MODE_PRIVATE,
     )
 
-    fun read(): PersonalizedRainDurableState =
+    override fun read(): PersonalizedRainDurableState =
         PersonalizedRainEpisodeStateCodec.decode(preferences.getString(KEY_STATE, null))
 
-    fun write(state: PersonalizedRainDurableState) {
+    override fun write(state: PersonalizedRainDurableState) {
         check(
             preferences.edit()
                 .putString(KEY_STATE, PersonalizedRainEpisodeStateCodec.encode(state))
@@ -115,6 +133,7 @@ internal object PersonalizedRainEpisodeStateCodec {
     fun encode(state: PersonalizedRainDurableState): String = JSONObject()
         .put("committedEpisodeState", encodeEpisode(state.committedEpisodeState))
         .put("pendingTransition", state.pendingTransition?.let(::encodePending) ?: JSONObject.NULL)
+        .put("evaluationLocation", state.evaluationLocation?.let(::encodeLocation) ?: JSONObject.NULL)
         .put("lastSourceRunEpochMs", state.lastSourceRunEpochMs)
         .put("lastCheckedEpochMs", state.lastCheckedEpochMs)
         .put("status", state.status)
@@ -130,6 +149,7 @@ internal object PersonalizedRainEpisodeStateCodec {
                     json.optJSONObject("committedEpisodeState") ?: JSONObject(),
                 ),
                 pendingTransition = json.optJSONObject("pendingTransition")?.let(::decodePending),
+                evaluationLocation = json.optJSONObject("evaluationLocation")?.let(::decodeLocation),
                 lastSourceRunEpochMs = json.optLong("lastSourceRunEpochMs", 0L).coerceAtLeast(0L),
                 lastCheckedEpochMs = json.optLong("lastCheckedEpochMs", 0L).coerceAtLeast(0L),
                 status = json.optString("status", "IDLE").ifBlank { "IDLE" },
@@ -179,6 +199,20 @@ internal object PersonalizedRainEpisodeStateCodec {
             ),
         )
     }
+
+    private fun encodeLocation(value: PersonalizedRainEvaluationLocation): JSONObject = JSONObject()
+        .put("latitude", value.latitude)
+        .put("longitude", value.longitude)
+        .put("label", value.label)
+        .put("district", value.district)
+
+    private fun decodeLocation(json: JSONObject): PersonalizedRainEvaluationLocation =
+        PersonalizedRainEvaluationLocation(
+            latitude = json.getDouble("latitude"),
+            longitude = json.getDouble("longitude"),
+            label = json.optString("label"),
+            district = json.getString("district"),
+        )
 
     private fun encodeEpisode(value: PersonalizedRainEpisodeState): JSONObject = JSONObject()
         .put("episodeId", value.episodeId)
