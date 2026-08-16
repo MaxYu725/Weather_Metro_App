@@ -24,6 +24,8 @@ object LocationHeavyRainScheduler {
     const val SOURCE_TYPE = "HKO_LOCATION_DERIVED"
     internal const val INPUT_DISPATCH_LOCATION_HEAVY_RAIN = "dispatch_location_heavy_rain"
     internal const val INPUT_DISPATCH_PERSONALIZED_RAIN = "dispatch_personalized_rain"
+    internal const val TAG_DISPATCH_LOCATION_HEAVY_RAIN = "weather-dispatch-location-heavy-rain"
+    internal const val TAG_DISPATCH_PERSONALIZED_RAIN = "weather-dispatch-personalized-rain"
     internal const val PERIODIC_WORK_NAME = "weather-location-heavy-rain-periodic"
     internal const val IMMEDIATE_WORK_NAME = "weather-location-heavy-rain-now"
 
@@ -40,6 +42,8 @@ object LocationHeavyRainScheduler {
                     INPUT_DISPATCH_PERSONALIZED_RAIN to true,
                 ),
             )
+            .addTag(TAG_DISPATCH_LOCATION_HEAVY_RAIN)
+            .addTag(TAG_DISPATCH_PERSONALIZED_RAIN)
             .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 1, TimeUnit.MINUTES)
             .build()
         WorkManager.getInstance(context.applicationContext).enqueueUniquePeriodicWork(
@@ -55,7 +59,7 @@ object LocationHeavyRainScheduler {
         dispatchPersonalizedRain: Boolean = true,
     ) {
         if (!dispatchHeavyRain && !dispatchPersonalizedRain) return
-        val request = OneTimeWorkRequestBuilder<LocationHeavyRainWorker>()
+        val builder = OneTimeWorkRequestBuilder<LocationHeavyRainWorker>()
             .setConstraints(networkConstraint)
             .setInputData(
                 workDataOf(
@@ -65,11 +69,12 @@ object LocationHeavyRainScheduler {
             )
             .setExpedited(androidx.work.OutOfQuotaPolicy.RUN_AS_NON_EXPEDITED_WORK_REQUEST)
             .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 1, TimeUnit.MINUTES)
-            .build()
+        if (dispatchHeavyRain) builder.addTag(TAG_DISPATCH_LOCATION_HEAVY_RAIN)
+        if (dispatchPersonalizedRain) builder.addTag(TAG_DISPATCH_PERSONALIZED_RAIN)
         WorkManager.getInstance(context.applicationContext).enqueueUniqueWork(
             IMMEDIATE_WORK_NAME,
             ExistingWorkPolicy.REPLACE,
-            request,
+            builder.build(),
         )
     }
 
