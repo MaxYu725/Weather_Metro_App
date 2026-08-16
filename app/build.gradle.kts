@@ -14,6 +14,7 @@ val notificationJournalUrl = providers.gradleProperty("WEATHER_NOTIFICATION_JOUR
 val escapedNotificationJournalUrl = notificationJournalUrl
     .replace("\\", "\\\\")
     .replace("\"", "\\\"")
+val slimReleaseApks = providers.gradleProperty("WEATHER_SLIM_RELEASE_APKS").orNull == "true"
 
 android {
     namespace = "com.weather.metro"
@@ -23,8 +24,8 @@ android {
         applicationId = "com.weather.metro"
         minSdk = 26
         targetSdk = 37
-        versionCode = 3
-        versionName = "1.1.0"
+        versionCode = 4
+        versionName = "1.2.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables.useSupportLibrary = true
@@ -55,6 +56,15 @@ android {
         }
     }
 
+    splits {
+        abi {
+            isEnable = slimReleaseApks
+            reset()
+            include("armeabi-v7a", "arm64-v8a", "x86", "x86_64")
+            isUniversalApk = false
+        }
+    }
+
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
@@ -66,6 +76,9 @@ android {
     }
 
     packaging {
+        jniLibs {
+            useLegacyPackaging = slimReleaseApks
+        }
         resources.excludes += "/META-INF/{AL2.0,LGPL2.1}"
     }
 
@@ -85,7 +98,7 @@ kotlin {
 dependencies {
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.activity.compose)
-    implementation(libs.androidx.fragment.ktx)
+    implementation(libs.androidx.fragment)
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.androidx.lifecycle.runtime.compose)
     implementation(libs.androidx.lifecycle.viewmodel.compose)
