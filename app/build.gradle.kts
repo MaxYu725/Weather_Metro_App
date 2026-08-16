@@ -6,6 +6,13 @@ plugins {
     alias(libs.plugins.google.services)
 }
 
+val notificationJournalUrl = providers.gradleProperty("WEATHER_NOTIFICATION_JOURNAL_URL").orNull
+    ?: System.getenv("WEATHER_NOTIFICATION_JOURNAL_URL")
+    ?: ""
+val escapedNotificationJournalUrl = notificationJournalUrl
+    .replace("\\", "\\\\")
+    .replace("\"", "\\\"")
+
 android {
     namespace = "com.weather.metro"
     compileSdk = 37
@@ -19,6 +26,11 @@ android {
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables.useSupportLibrary = true
+        buildConfigField(
+            "String",
+            "NOTIFICATION_JOURNAL_URL",
+            "\"$escapedNotificationJournalUrl\"",
+        )
     }
 
     buildTypes {
@@ -75,6 +87,7 @@ dependencies {
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.androidx.lifecycle.runtime.compose)
     implementation(libs.androidx.lifecycle.viewmodel.compose)
+    implementation(libs.androidx.work.runtime.ktx)
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.play.services.location)
     implementation(libs.maplibre.android)
