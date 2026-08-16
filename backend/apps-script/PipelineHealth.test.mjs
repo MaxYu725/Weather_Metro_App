@@ -12,6 +12,7 @@ function loadScript() {
     Number,
     Object,
     String,
+    Boolean,
   };
   vm.createContext(context);
   vm.runInContext(
@@ -39,8 +40,22 @@ function facts(overrides = {}) {
     },
     pendingOutboxEvents: 0,
     oldestOutboxQueuedAtEpochMs: 0,
-    journalTriggerCount: 1,
-    sourceTriggerCount: 1,
+    supervisorTriggerCount: 1,
+    legacyTriggerCount: 0,
+    journalTriggerCount: 0,
+    sourceTriggerCount: 0,
+    supervisorQuota: {
+      dayRunCount: 20,
+      dayRuntimeMs: 40_000,
+      averageRunMs: 2_000,
+      projectedDailyRuntimeMs: 2_880_000,
+      consumerDailyReferenceBudgetMs: 5_400_000,
+      consumerQuotaRisk: false,
+      actualRuntimeRisk: false,
+      projectedRuntimeRisk: false,
+      busySkipsToday: 0,
+      componentFailuresToday: 0,
+    },
     sourceHealth: {
       status: 'MATCH',
       checkedAtEpochMs: now - 20_000,
@@ -52,13 +67,15 @@ function facts(overrides = {}) {
   };
 }
 
-test('fresh journal, source check and empty outbox are HEALTHY', () => {
+test('fresh supervisor, journal poll, source check and empty outbox are HEALTHY', () => {
   const script = loadScript();
   const health = script.deriveNotificationPipelineHealth_(facts());
   assert.equal(health.status, 'HEALTHY');
   assert.equal(health.healthy, true);
   assert.equal(health.actionRequired, false);
   assert.equal(health.latestJournalCursor, 8);
+  assert.equal(health.supervisorTriggerCount, 1);
+  assert.equal(health.legacyTriggerCount, 0);
 });
 
 test('stale HKO polling is action-required even if source cross-check is fresh', () => {
@@ -125,9 +142,46 @@ test('resolved retry result is accepted as healthy source parity', () => {
   assert.equal(health.status, 'HEALTHY');
 });
 
-test('missing journal trigger has highest operational priority', () => {
+test('missing supervisor trigger has highest operational priority', () => {
   const script = loadScript();
-  const health = script.deriveNotificationPipelineHealth_(facts({ journalTriggerCount: 0 }));
-  assert.equal(health.status, 'JOURNAL_TRIGGER_INVALID');
+  const health = script.deriveNotificationPipelineHealth_(facts({ supervisorTriggerCount: 0 }));
+  assert.equal(health.status, 'SUPERVISOR_TRIGGER_INVALID');
+  assert.equal(health.actionRequired, true);
+});
+
+test('legacy notification trigger is rejected after supervisor migration', () => {
+  const script = loadScript();
+  const health = script.deriveNotificationPipelineHealth_(facts({ legacyTriggerCount: 1, journalTriggerCount: 1 }));
+  assert.equal(health.status, 'LEGACY_TRIGGER_PRESENT');
+  assert.equal(health.actionRequired, true);
+});
+
+test('projected consumer quota risk is visible without declaring pipeline failure', () => {
+  const script = loadScript();
+  const value = facts();
+  value.supervisorQuota = {
+    ...value.supervisorQuota,
+    consumerQuotaRisk: true,
+    projectedRuntimeRisk: true,
+    projectedDailyRuntimeMs: 5_000_000,
+  };
+  const health = script.deriveNotificationPipelineHealth_(value);
+  assert.equal(health.status, 'HEALTHY');
+  assert.equal(health.consumerQuotaRisk, true);
+  assert.equal(health.projectedRuntimeRisk, true);
+  assert.equal(health.actionRequired, false);
+});
+
+test('actual consumer quota burn above threshold becomes action-required', () => {
+  const script = loadScript();
+  const value = facts();
+  value.supervisorQuota = {
+    ...value.supervisorQuota,
+    consumerQuotaRisk: true,
+    actualRuntimeRisk: true,
+    dayRuntimeMs: 4_500_000,
+  };
+  const health = script.deriveNotificationPipelineHealth_(value);
+  assert.equal(health.status, 'QUOTA_RUNTIME_HIGH');
   assert.equal(health.actionRequired, true);
 });
