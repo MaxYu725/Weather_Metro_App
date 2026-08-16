@@ -114,6 +114,9 @@ test('bootstrap uses prefetched warnsum hydration before committing digest', () 
   const stored = JSON.parse(script.properties.get(V2));
   assert.ok(stored.committedSummaryDigest);
   assert.ok(stored.lastFullRefreshEpochMs > 0);
+  const verification = script.context.notificationFastPollVerification_();
+  assert.equal(verification.schemaVersion, 2);
+  assert.equal(verification.optimizedHydrationAvailable, true);
 });
 
 test('legacy V1 migration resets only soak telemetry, never journal state', () => {
