@@ -28,7 +28,7 @@ The 15-minute periodic request dispatches both streams, after which each stream'
 
 The single immediate work request can selectively dispatch only the stream that needs an immediate refresh. This avoids an extra SWIRLS download when only 2D1 is toggled and avoids an unnecessary district-rain request when only the SWIRLS setting is toggled.
 
-The worker combines each dispatch flag with its corresponding current setting through the same pure stream-gate predicate. A dispatch request therefore cannot bypass a feature toggle. The activation and per-stream dispatch predicates are covered by `PersonalizedNotificationActivationTest`.
+The worker combines each dispatch flag with its corresponding current setting through the same pure stream-gate predicate. A dispatch request therefore cannot bypass a feature toggle. Missing WorkData flags explicitly default to `false`, so an old or incomplete work request fails closed instead of enabling a stream implicitly. The activation and per-stream dispatch predicates are covered by `PersonalizedNotificationActivationTest`.
 
 ## Independent streams inside one worker run
 
