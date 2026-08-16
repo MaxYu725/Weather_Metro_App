@@ -24,84 +24,66 @@ hydration. The next production soak collected 18 executions:
 - `projectedRuntimeRisk=true`
 - zero journal failures, busy skips and component failures
 
-2C4B therefore removed most of the quota pressure but remained slightly above the
-consumer-account reference budget. Territory-wide warning polling is not slowed
-to hide that result.
+2C4B therefore removed most quota pressure but remained above the consumer
+reference. Territory-wide warning polling is not slowed to hide that result.
 
 ## Runtime model
 
-The one-minute supervisor trigger remains. Territory-wide warning detection does
-**not** move to a slower trigger.
+The one-minute supervisor remains. Territory-wide warning detection does **not**
+move to a slower trigger.
 
 ### Every minute
 
-The supervisor fetches HKO `warnsum` and computes a stable digest from the
-official warning family/code/action/timestamps/title fields.
+The supervisor fetches HKO `warnsum` and computes a stable digest from official
+warning family/code/action/timestamps/title fields.
 
 If that digest changes, a full authoritative journal pass runs immediately. This
-keeps territory-wide warning ISSUE/UPDATE/EXTEND/REISSUE/CANCEL detection on the
-one-minute path.
+keeps territory-wide ISSUE/UPDATE/EXTEND/REISSUE/CANCEL detection on the one-minute
+path.
 
 ### Bounded auxiliary hydration
 
 When `warnsum` is unchanged, `warningInfo` + SWT hydration runs at least every
-170 seconds. This is needed because HKO can publish standalone `warningInfo`
-statements (for example WTCPRE8) or Special Weather Tips without a `warnsum`
-state transition.
+170 seconds. This covers standalone `warningInfo` statements such as WTCPRE8 and
+Special Weather Tips that can appear without a `warnsum` transition.
 
-Their maximum normal detection delay remains approximately three minutes plus
-Apps Script trigger jitter. The committed warnsum digest advances only after
-full hydration succeeds; a failure is retried on the next supervisor cycle.
+Their maximum normal detection delay remains about three minutes plus Apps Script
+trigger jitter. The committed warnsum digest advances only after full hydration
+succeeds; a failure retries on the next supervisor cycle.
 
 ## 2C4C: reuse the minute's authoritative warnsum
 
-The 2C4B full cycle still performed a second `warnsum` request inside
-`checkWeatherUpdatesJournalled()`, even though the supervisor had fetched the same
-authoritative source moments earlier. 2C4C removes that duplicate work without
-changing detection cadence.
+The 2C4B full cycle still performed a second `warnsum` request inside the legacy
+journal owner even though the supervisor had fetched the same source moments
+earlier. 2C4C removes that duplicate work without changing cadence.
 
-`NotificationJournalHydration.gs` now accepts the already-fetched warnsum object
-and fetches only:
-
-- `warningInfo`
-- `swt`
-
-It then runs the same durable sequence:
+`NotificationJournalHydration.gs` accepts the already-fetched warnsum object and
+fetches only `warningInfo` and `swt`, then preserves the same durable sequence:
 
 `source publications -> Google Sheets journal -> durable outbox -> FCM wake-up`
 
-The outbox is still persisted before source state, and deterministic event IDs
+The outbox is still persisted before source state and deterministic event IDs
 still protect crash recovery.
 
-Additional steady-state savings:
+Further steady-state savings:
 
-- if full hydration finds no new publication and the normalized source state is
-  unchanged, it does not rewrite the same journal state properties;
-- if no new event is queued, it does not perform a second outbox flush/write;
-- successful full hydration does not recompute the full pipeline-health snapshot;
-  verify/Web App health still derive it live, while supervisor failures refresh
-  health immediately;
+- unchanged normalized source state is not rewritten every full hydration;
+- no second outbox flush/write occurs when no new event exists;
+- successful hydration does not recompute full pipeline health;
 - Spreadsheet access remains skipped when there is no new event.
 
-The fast-poll state moves from V1 to V2. On the first V2 run, only the supervisor
-runtime telemetry is reset for a clean soak. Durable journal state and journal
-cursor are not reset.
+The fast-poll state moves V1 -> V2. On first V2 execution only the supervisor
+runtime telemetry is reset for a clean post-2C4C soak. Durable journal state,
+outbox and journal cursor are never reset.
 
-## FCM outbox
+## FCM outbox and source redundancy
 
-A fast-only cycle still checks for an existing durable FCM outbox. Pending wake-up
-messages are retried immediately and do not wait for the next full HKO hydration.
+Fast-only cycles continue to retry any durable FCM outbox immediately.
 
-## Independent source cross-check
-
-The normal RSS cross-check reuses the warnsum object already fetched during the
-same supervisor cycle, so a healthy MATCH needs only the RSS request instead of a
-second primary JSON request.
-
-If RSS is ahead of JSON, `retryPrimarySourceGap_()` still makes fresh cache-busted
-primary reads before a persistent gap can advance to evidence or failover.
-Healthy source parity is sampled about every 170 seconds; degraded parity is
-rechecked on the next minute.
+The RSS cross-check continues to reuse the current minute's warnsum. If RSS is
+ahead, `retryPrimarySourceGap_()` still performs fresh cache-busted JSON reads
+before evidence/failover can run. Healthy parity remains sampled around every
+170 seconds and degraded parity on the next minute.
 
 ## Production migration for 2C4C
 
@@ -109,12 +91,12 @@ Update the existing Apps Script project with:
 
 1. add `NotificationJournalHydration.gs`
 2. replace `NotificationFastPoll.gs`
-3. keep `NotificationSupervisor.gs` and all other notification files unchanged
+3. keep `NotificationSupervisor.gs` and every other notification file unchanged
 4. run `setupNotificationSupervisor()` once
 5. wait for at least 10 automatic runs
 6. run `verifyNotificationSupervisor()`
-7. after the runtime soak passes, update the existing Web App deployment to a new
-   version while preserving the same `/exec` URL and verify `/exec?mode=health`
+7. only after the runtime soak passes, update the existing Web App deployment to
+   a new version while preserving the same `/exec` URL and verify health
 
 Expected immediate state:
 
@@ -135,7 +117,7 @@ Expected post-soak gate:
 - `busySkipsToday=0`
 - `componentFailuresToday=0`
 
-If measured runtime still exceeds the consumer reference after removing duplicate
-source and state work, the next architecture step should move the server-side
-polling workload to a scheduler/runtime with a more suitable execution budget,
-rather than weakening the one-minute territory-wide warning path.
+If measured runtime still exceeds the consumer reference after duplicate source
+and state work is removed, move server-side polling to a runtime with a more
+suitable execution budget rather than weakening the one-minute territory-wide
+warning path.
