@@ -1,16 +1,35 @@
 # Apps Script alert monitor
 
-This folder contains the server-side one-minute HKO alert monitor. It uses the
-official `warnsum`, `warningInfo`, and `swt` endpoints, stores a stable state
-snapshot, and sends issue/update/cancel changes through FCM HTTP v1. Events are
-written to a durable Script Properties outbox before delivery and retained with
-exponential-backoff retry metadata until FCM accepts them. Each event uses its
-own property plus a small index, staying below Apps Script's 9 KB per-value limit.
-The baseline uses the same per-alert layout and stores a bounded body excerpt
-while retaining a fingerprint of the complete HKO text.
-Notifications are data-only so Android always builds the expandable notification
-and routes taps to the matching alert tile. HKO text is truncated to a safe UTF-8
-payload excerpt; opening the notification refreshes the complete official content.
+This folder contains the server-side one-minute HKO publication monitor. It uses
+the official `warnsum`, `warningInfo`, and `swt` endpoints and treats the fields
+published by HKO as the source of truth instead of reconstructing warning actions
+from an active-state diff.
+
+The current source-publication contract preserves `warnsum.actionCode` values
+such as `ISSUE`, `REISSUE`, `CANCEL`, `EXTEND`, and `UPDATE`. It also records
+non-empty `warningInfo` statements that do not have a matching `warnsum` row
+(including `WTCPRE8`) and Special Weather Tips. A publication disappearing from
+a later snapshot does **not** create a synthetic cancellation; cancellation is
+only emitted when HKO publishes it.
+
+Official detail text keeps its line breaks. Notification titles no longer add
+Weather Metro-generated `已發出` / `已更新` / `已取消` prefixes. Each observed
+source publication receives a deterministic ID derived from its source type,
+warning family/code, official action, official timestamps, title, and body.
+
+FCM delivery still uses the durable Script Properties outbox introduced by the
+previous reliability phase. Failed sends remain queued with exponential-backoff
+retry metadata until FCM accepts them. Each outbox event uses its own property
+plus a small index, staying below Apps Script's 9 KB per-value limit.
+
+## Reliability boundary
+
+This checkpoint fixes **source-event fidelity**. FCM remains an immediate-delivery
+transport, not a receipt guarantee. The FCM preview body is byte-bounded, so the
+next reliability checkpoint must add a durable full-text publication journal and
+client cursor reconciliation. That journal will let Android fetch any event it did
+not receive through FCM and will be the authoritative source for complete HKO
+content.
 
 ## One-time owner setup
 
@@ -26,10 +45,10 @@ payload excerpt; opening the notification refreshes the complete official conten
    and installs exactly one one-minute trigger. The old
    `installFiveMinuteTrigger` name remains as a compatibility alias.
 
-The first `checkWeatherUpdates` run sends every alert currently in force. This
-prevents a new or reset deployment from silently missing an important warning.
-Upgrading from the V3 or V4 state key preserves the existing baseline and does not
-resend unchanged alerts.
+The V6 source-publication state intentionally starts a new baseline. On the first
+`checkWeatherUpdates` run after upgrading from V3/V4/V5, every HKO publication
+still visible is emitted once. This favours avoiding a missed live warning over a
+silent migration that could incorrectly suppress an official publication.
 
 Alert events use Android high priority, a 24-hour FCM TTL, and no collapse key.
 The deterministic event ID allows the Android inbox to suppress duplicates when
@@ -38,7 +57,7 @@ the server retries an accepted event whose response was lost.
 ## Operations
 
 - Run `resetAlertBaseline` if the saved state is corrupt. The next run reissues
-  every alert still in force.
+  every HKO publication currently visible.
 - Inspect **Executions** in Apps Script for HKO, OAuth, FCM, or outbox errors.
   Failed trigger executions also generate Apps Script owner failure notices.
 - Run `node --test backend/apps-script/Code.test.mjs` before deploying changes.
