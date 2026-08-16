@@ -12,6 +12,8 @@ import androidx.work.WorkManager
 import java.util.concurrent.TimeUnit
 
 object LocationHeavyRainScheduler {
+    const val SOURCE_TYPE = "HKO_LOCATION_DERIVED"
+
     private val networkConstraint = Constraints.Builder()
         .setRequiredNetworkType(NetworkType.CONNECTED)
         .build()
@@ -51,6 +53,7 @@ object LocationHeavyRainScheduler {
     fun reset(context: Context) {
         disable(context)
         LocationHeavyRainStateStore(context).reset()
+        NotificationEventStore(context).discardPendingBySourceType(SOURCE_TYPE)
     }
 
     private const val PERIODIC_WORK_NAME = "weather-location-heavy-rain-periodic"
