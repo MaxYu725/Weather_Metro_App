@@ -21,6 +21,10 @@ class WeatherFirebaseMessagingService : FirebaseMessagingService() {
         val journalCursor = message.data["journalCursor"]?.toLongOrNull()?.coerceAtLeast(0L) ?: 0L
         if (journalCursor > 0L) {
             val state = NotificationJournalState(applicationContext)
+            // If this is the first journal-aware event seen by a fresh client,
+            // seed one cursor earlier before the bootstrap worker can baseline at
+            // the tail. This guarantees the wake-up event itself remains fetchable.
+            runCatching { state.initializeForWakeup(journalCursor) }
             val suppliedEndpoint = message.data["journalUrl"]
             runCatching { state.rememberEndpoint(suppliedEndpoint) }
             val endpointKnown = runCatching { state.endpoint() != null }.getOrDefault(false)
