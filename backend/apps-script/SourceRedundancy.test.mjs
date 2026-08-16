@@ -166,3 +166,33 @@ test('rainstorm and tropical-cyclone severity levels canonicalise to stable toke
   );
   assert.deepEqual([...tokens], ['MONSOON', 'RAIN:BLACK', 'TC:8']);
 });
+
+test('token comparison can resolve a propagation-lag mismatch without changing identity rules', () => {
+  const script = loadScript();
+  const result = script.applyWarningTokenComparison_({
+    primaryTokens: ['HOT', 'RAIN:RED'],
+    secondaryTokens: ['HOT', 'RAIN:RED'],
+  });
+  assert.equal(result.status, 'MATCH');
+  assert.deepEqual([...result.secondaryOnly], []);
+  assert.deepEqual([...result.primaryOnly], []);
+});
+
+test('primary retry failure is fail-soft and preserves the original RSS-only gap', () => {
+  const script = loadScript();
+  const initial = {
+    primaryOk: true,
+    secondaryOk: true,
+    status: 'SECONDARY_ONLY',
+    primaryTokens: ['HOT'],
+    secondaryTokens: ['HOT', 'RAIN:RED'],
+    secondaryOnly: ['RAIN:RED'],
+    primaryOnly: [],
+    secondaryOnlySignature: 'RAIN:RED',
+  };
+  const retried = script.retryPrimarySourceGap_(initial);
+  assert.equal(retried.status, 'SECONDARY_ONLY');
+  assert.deepEqual([...retried.secondaryOnly], ['RAIN:RED']);
+  assert.equal(retried.primaryRetryAttempts, 2);
+  assert.match(retried.primaryError, /Retry 2/);
+});

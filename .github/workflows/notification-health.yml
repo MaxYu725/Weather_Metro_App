@@ -1,0 +1,44 @@
+name: Notification health
+
+on:
+  schedule:
+    - cron: '*/15 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Probe production notification pipeline
+        env:
+          NOTIFICATION_HEALTH_URL: https://script.google.com/macros/s/AKfycbyIFgLekUH827G6LkgbEnYwh9fykejZjHzga5ce-roXruFwTHqr0-MlpPKaFTj_bgHo/exec?mode=health
+        run: |
+          node <<'NODE'
+          const url = process.env.NOTIFICATION_HEALTH_URL;
+          const response = await fetch(url, {
+            headers: {
+              accept: 'application/json',
+              'cache-control': 'no-cache',
+            },
+            redirect: 'follow',
+          });
+          if (!response.ok) {
+            throw new Error(`Notification health endpoint returned HTTP ${response.status}`);
+          }
+          const payload = await response.json();
+          const health = payload?.health;
+          if (!health || typeof health !== 'object') {
+            throw new Error('Notification health endpoint did not return a health object.');
+          }
+          console.log(JSON.stringify(health, null, 2));
+          if (health.actionRequired === true) {
+            throw new Error(`Notification pipeline requires action: ${health.status}`);
+          }
+          if (health.status !== 'HEALTHY') {
+            console.log(`::warning::Notification pipeline is degraded: ${health.status}`);
+          }
+          NODE

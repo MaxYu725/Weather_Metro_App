@@ -1,18 +1,20 @@
 /**
  * Weather Metro notification source redundancy monitor.
  *
- * Phase 2C1 deliberately runs in shadow mode: it compares the official HKO
- * JSON warning summary with HKO's separately hosted RSS warning summary and
- * records compact health only. It never creates a user-visible weather alert,
- * so a parser/source mismatch cannot duplicate or suppress the production
- * journal stream while the secondary detector is being validated in production.
+ * The official HKO JSON warning summary is cross-checked against HKO's
+ * separately hosted RSS warning summary. The secondary source remains a
+ * detector/health signal only: it never fabricates a user-visible warning.
+ * A mismatch triggers bounded fresh JSON re-reads before it is counted as a
+ * persistent source gap.
  */
 
 const SOURCE_REDUNDANCY_CONFIG = Object.freeze({
   triggerFunction: 'checkWarningSourceRedundancy',
   warningSummaryRssUrl: 'https://rss.weather.gov.hk/rss/WeatherWarningSummaryv2_uc.xml',
   healthPropertyKey: 'HKO_WARNING_SOURCE_CROSSCHECK_HEALTH_V1',
-  intervalMinutes: 5,
+  intervalMinutes: 1,
+  primaryRetryCount: 2,
+  primaryRetryDelayMs: 1500,
   schemaVersion: 1,
 });
 
@@ -37,10 +39,9 @@ const WARNING_TOKEN_RULES = Object.freeze([
 ]);
 
 /**
- * Installs one low-frequency shadow trigger. The production journal remains on
- * its existing one-minute trigger; this detector is intentionally separate
- * during validation to avoid changing alert semantics before observed parity is
- * proven.
+ * Installs one one-minute cross-check trigger. The production journal has its
+ * own one-minute trigger; both paths remain independent so a failure in the RSS
+ * detector can never block the authoritative journal.
  */
 function setupWarningSourceRedundancy() {
   ScriptApp.getProjectTriggers()
@@ -60,10 +61,10 @@ function setupWarningSourceRedundancy() {
 }
 
 /**
- * Compares two independent official publication paths. This function is
- * deliberately fail-soft: an RSS outage must never block the production JSON
- * journal. A persistent SECONDARY_ONLY result is the signal used by the next
- * phase to decide whether failover can be safely enabled.
+ * Compares two independent official publication paths. RSS remains fail-soft.
+ * If RSS contains an active warning absent from the first JSON snapshot, the
+ * primary source is re-read twice with cache-busting before the mismatch streak
+ * advances. This removes normal propagation lag from the persistent-gap signal.
  */
 function checkWarningSourceRedundancy() {
   const properties = PropertiesService.getScriptProperties();
@@ -76,6 +77,7 @@ function checkWarningSourceRedundancy() {
       warningSummaryRssRequest_(),
     ]);
     result = evaluateWarningSourceCrossCheck_(responses[0], responses[1], checkedAtEpochMs);
+    result = retryPrimarySourceGap_(result);
   } catch (error) {
     result = {
       schemaVersion: SOURCE_REDUNDANCY_CONFIG.schemaVersion,
@@ -89,6 +91,9 @@ function checkWarningSourceRedundancy() {
       primaryOnly: [],
       consecutiveSecondaryOnly: 0,
       secondaryOnlySignature: '',
+      primaryRetryAttempts: 0,
+      recoveredAfterPrimaryRetry: false,
+      initialStatus: '',
       primaryError: '',
       secondaryError: String(error && error.message ? error.message : error).slice(0, 300),
       secondaryDigest: '',
@@ -96,9 +101,13 @@ function checkWarningSourceRedundancy() {
   }
 
   const stored = recordWarningSourceCrossCheck_(properties, result);
+  if (typeof refreshNotificationPipelineHealth_ === 'function') {
+    refreshNotificationPipelineHealth_(properties, Date.now());
+  }
+
   if (stored.status === 'SECONDARY_ONLY' || stored.status === 'DIVERGED') {
     console.error('HKO source cross-check mismatch: ' + JSON.stringify(stored));
-  } else if (stored.status !== 'MATCH') {
+  } else if (stored.status !== 'MATCH' && stored.status !== 'MATCH_AFTER_RETRY') {
     console.warn('HKO source cross-check status: ' + JSON.stringify(stored));
   } else {
     console.log('HKO source cross-check matched: ' + JSON.stringify(stored));
@@ -130,6 +139,9 @@ function evaluateWarningSourceCrossCheck_(primaryResponse, secondaryResponse, ch
     primaryOnly: [],
     consecutiveSecondaryOnly: 0,
     secondaryOnlySignature: '',
+    primaryRetryAttempts: 0,
+    recoveredAfterPrimaryRetry: false,
+    initialStatus: '',
     primaryError: '',
     secondaryError: '',
     secondaryDigest: '',
@@ -167,24 +179,84 @@ function evaluateWarningSourceCrossCheck_(primaryResponse, secondaryResponse, ch
     return base;
   }
 
-  base.secondaryOnly = base.secondaryTokens.filter(function (token) {
-    return base.primaryTokens.indexOf(token) < 0;
-  });
-  base.primaryOnly = base.primaryTokens.filter(function (token) {
-    return base.secondaryTokens.indexOf(token) < 0;
-  });
-  base.secondaryOnlySignature = base.secondaryOnly.join('|');
+  return applyWarningTokenComparison_(base);
+}
 
-  if (base.secondaryOnly.length > 0 && base.primaryOnly.length > 0) {
-    base.status = 'DIVERGED';
-  } else if (base.secondaryOnly.length > 0) {
-    base.status = 'SECONDARY_ONLY';
-  } else if (base.primaryOnly.length > 0) {
-    base.status = 'PRIMARY_ONLY';
+function applyWarningTokenComparison_(result) {
+  const next = Object.assign({}, result);
+  next.primaryTokens = Array.isArray(next.primaryTokens) ? next.primaryTokens.slice().sort() : [];
+  next.secondaryTokens = Array.isArray(next.secondaryTokens) ? next.secondaryTokens.slice().sort() : [];
+  next.secondaryOnly = next.secondaryTokens.filter(function (token) {
+    return next.primaryTokens.indexOf(token) < 0;
+  });
+  next.primaryOnly = next.primaryTokens.filter(function (token) {
+    return next.secondaryTokens.indexOf(token) < 0;
+  });
+  next.secondaryOnlySignature = next.secondaryOnly.join('|');
+
+  if (next.secondaryOnly.length > 0 && next.primaryOnly.length > 0) {
+    next.status = 'DIVERGED';
+  } else if (next.secondaryOnly.length > 0) {
+    next.status = 'SECONDARY_ONLY';
+  } else if (next.primaryOnly.length > 0) {
+    next.status = 'PRIMARY_ONLY';
   } else {
-    base.status = 'MATCH';
+    next.status = 'MATCH';
   }
-  return base;
+  return next;
+}
+
+function retryPrimarySourceGap_(result) {
+  if (!result || !result.primaryOk || !result.secondaryOk || !result.secondaryOnly || result.secondaryOnly.length === 0) {
+    return result;
+  }
+
+  const initialStatus = result.status;
+  let latest = Object.assign({}, result, {
+    initialStatus: initialStatus,
+    primaryRetryAttempts: 0,
+    recoveredAfterPrimaryRetry: false,
+  });
+
+  for (let attempt = 1; attempt <= SOURCE_REDUNDANCY_CONFIG.primaryRetryCount; attempt += 1) {
+    try {
+      if (
+        SOURCE_REDUNDANCY_CONFIG.primaryRetryDelayMs > 0 &&
+        typeof Utilities !== 'undefined' &&
+        typeof Utilities.sleep === 'function'
+      ) {
+        Utilities.sleep(SOURCE_REDUNDANCY_CONFIG.primaryRetryDelayMs);
+      }
+      const request = hkoRequest_('warnsum');
+      const options = {
+        method: request.method || 'get',
+        headers: request.headers || {},
+        muteHttpExceptions: request.muteHttpExceptions !== false,
+      };
+      const response = UrlFetchApp.fetch(
+        request.url + '&weatherMetroRetry=' + encodeURIComponent(String(Date.now()) + '-' + attempt),
+        options,
+      );
+      const summary = parseCrossCheckJsonResponse_(response);
+      latest.primaryTokens = warningTokensFromSummary_(summary);
+      latest.primaryRetryAttempts = attempt;
+      latest.primaryError = '';
+      latest = applyWarningTokenComparison_(latest);
+      latest.initialStatus = initialStatus;
+      latest.primaryRetryAttempts = attempt;
+
+      if (latest.secondaryOnly.length === 0) {
+        latest.recoveredAfterPrimaryRetry = true;
+        if (latest.status === 'MATCH') latest.status = 'MATCH_AFTER_RETRY';
+        break;
+      }
+    } catch (error) {
+      latest.primaryRetryAttempts = attempt;
+      latest.primaryError = 'Retry ' + attempt + ': ' +
+        String(error && error.message ? error.message : error).slice(0, 240);
+    }
+  }
+  return latest;
 }
 
 function parseCrossCheckJsonResponse_(response) {
@@ -218,7 +290,7 @@ function parseCrossCheckRssResponse_(response) {
 }
 
 /**
- * The cross-check only needs the warning names, so it deliberately avoids a
+ * The cross-check only needs warning names, so it deliberately avoids a
  * schema-specific RSS parser. CDATA/HTML presentation can change without
  * breaking detection as long as the official warning wording remains visible.
  */
