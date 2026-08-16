@@ -4,15 +4,29 @@
 
 Phase 2D2E activates the Android personalised SWIRLS rain runtime without adding a second periodic WorkManager cadence.
 
-The existing 2D1 `LocationHeavyRainScheduler` remains the single cadence owner:
+The existing 2D1 `LocationHeavyRainScheduler` remains the single WorkManager owner:
 
 - unique periodic work: `weather-location-heavy-rain-periodic`
+- unique immediate work: `weather-location-heavy-rain-now`
 - interval: WorkManager 15-minute periodic minimum
 - network constraint: connected
-- existing 2D1 worker class remains the scheduled host
+- existing 2D1 `LocationHeavyRainWorker` remains the scheduled host
 - precise location continues to be supplied only by Weather Metro's existing location owner
 
-`PersonalizedRainWorker` remains unscheduled. The SWIRLS runtime is invoked from the existing `LocationHeavyRainWorker` execution slot when its dedicated setting is enabled.
+`PersonalizedRainWorker` remains unscheduled. The SWIRLS runtime is invoked from the existing `LocationHeavyRainWorker` execution slot when its dedicated setting and the personalised-rain dispatch flag are enabled.
+
+The periodic request uses `ExistingPeriodicWorkPolicy.UPDATE`. This deliberately upgrades an already-installed 2D1 periodic WorkSpec in place so it receives the new dispatch inputs without creating a second periodic request.
+
+## Selective shared dispatch
+
+Both periodic and immediate requests carry explicit local-stream dispatch flags:
+
+- `dispatch_location_heavy_rain`
+- `dispatch_personalized_rain`
+
+The 15-minute periodic request dispatches both streams, after which each stream's setting still gates execution inside the worker.
+
+The single immediate work request can selectively dispatch only the stream that needs an immediate refresh. This avoids an extra SWIRLS download when only 2D1 is toggled and avoids an unnecessary district-rain request when only the SWIRLS setting is toggled.
 
 ## Independent streams inside one worker run
 
@@ -57,9 +71,9 @@ The setting copy states that:
 
 ## Immediate evaluation
 
-When an enabled precise host location is freshly resolved by `WeatherViewModel`, the shared scheduler keeps the periodic request and replaces the existing unique immediate request. This preserves a single immediate-work owner while allowing a newly refreshed location to be evaluated promptly.
+When an enabled precise host location is freshly resolved by `WeatherViewModel`, the scheduler updates the shared periodic request and replaces the one existing unique immediate request with dispatch flags for all currently enabled local rain streams. This preserves a single immediate-work owner while allowing a newly refreshed location to be evaluated promptly.
 
-Enabling either local rain setting also enqueues one immediate evaluation. Disabling a setting does not unnecessarily run the remaining stream immediately.
+Enabling one local rain setting enqueues a selective immediate evaluation for only that stream. Disabling a setting does not unnecessarily run the remaining stream immediately.
 
 ## Targeted reset semantics
 
@@ -73,13 +87,14 @@ Turning off precise location or global notifications uses `resetAll()`. Turning 
 
 ## Startup behaviour
 
-`WeatherMetroApplication` does not create a second periodic request. At startup it evaluates the same activation predicate and retains the existing 2D1 unique work names. This makes app upgrades cadence-compatible with the already-installed WorkManager request.
+`WeatherMetroApplication` does not create a second scheduler. At startup it evaluates the same activation predicate, updates the existing 2D1 periodic unique work in place, and uses the same shared immediate unique work with dispatch flags for the currently enabled streams.
 
 ## Still outside this phase
 
 2D2E does not add:
 
 - a second SWIRLS periodic worker;
+- a second SWIRLS immediate-work owner;
 - a second location owner;
 - a location upload path;
 - production observed-lightning delivery;
@@ -91,9 +106,9 @@ Turning off precise location or global notifications uses `resetAll()`. Turning 
 
 Keep PR #66 Draft after CI. Before merge, production verification should confirm on a real Android device that:
 
-1. upgrading does not create duplicate periodic WorkManager requests;
+1. upgrading updates the existing periodic WorkSpec instead of creating a duplicate request;
 2. `rain approaching` remains off until explicitly enabled;
-3. enabling it produces one immediate shared work request;
+3. enabling it produces one selective immediate shared work request;
 4. disabling 2D1 while 2D2 remains enabled does not stop the shared schedule;
 5. disabling 2D2 while 2D1 remains enabled does not stop the shared schedule;
 6. disabling precise location or global notifications cancels both local streams;
