@@ -40,7 +40,8 @@ internal class LocationHeavyRainWorker(
         val locationHeavyRainEnabled =
             SettingsRepository.locationHeavyRainNotificationsEnabled(applicationContext)
         val personalizedRainEnabled =
-            SettingsRepository.personalizedRainNotificationsEnabled(applicationContext)
+            inputData.getBoolean(LocationHeavyRainScheduler.INPUT_DISPATCH_PERSONALIZED_RAIN) &&
+                SettingsRepository.personalizedRainNotificationsEnabled(applicationContext)
         if (!locationHeavyRainEnabled && !personalizedRainEnabled) return Result.success()
 
         if (!SettingsRepository.preciseLocationEnabled(applicationContext)) {
