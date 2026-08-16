@@ -28,7 +28,8 @@ function runNotificationFastPoll_(properties, nowEpochMs) {
 
   let summary;
   try {
-    const response = UrlFetchApp.fetch(hkoRequest_('warnsum'));
+    const request = hkoRequest_('warnsum');
+    const response = UrlFetchApp.fetch(request.url, notificationFetchParams_(request));
     summary = parseHkoResponse_(response);
     if (typeof notificationPipelineMarkSourceSuccess_ === 'function') {
       notificationPipelineMarkSourceSuccess_(properties, Date.now());
@@ -93,6 +94,14 @@ function runNotificationFastPoll_(properties, nowEpochMs) {
     summaryDigest: summaryDigest,
     fullAgeMs: fullAgeMs,
   };
+}
+
+function notificationFetchParams_(request) {
+  const params = {};
+  Object.keys(request || {}).forEach(function (key) {
+    if (key !== 'url') params[key] = request[key];
+  });
+  return params;
 }
 
 function notificationWarnsumDigest_(summary) {
