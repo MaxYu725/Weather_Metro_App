@@ -50,6 +50,7 @@ data class UiSettings(
     val preciseLocation: Boolean = true,
     val notificationsEnabled: Boolean = true,
     val locationHeavyRainNotificationsEnabled: Boolean = true,
+    val personalizedRainNotificationsEnabled: Boolean = false,
 )
 
 class SettingsRepository(context: Context) {
@@ -84,6 +85,11 @@ class SettingsRepository(context: Context) {
             putBoolean(KEY_LOCATION_HEAVY_RAIN_NOTIFICATIONS, value)
         }
 
+    fun setPersonalizedRainNotificationsEnabled(value: Boolean) =
+        update(_settings.value.copy(personalizedRainNotificationsEnabled = value)) {
+            putBoolean(KEY_PERSONALIZED_RAIN_NOTIFICATIONS, value)
+        }
+
     private fun read() = UiSettings(
         pageColours = PageColours(
             currentArgb = preferences.getLong(
@@ -102,6 +108,10 @@ class SettingsRepository(context: Context) {
         locationHeavyRainNotificationsEnabled = preferences.getBoolean(
             KEY_LOCATION_HEAVY_RAIN_NOTIFICATIONS,
             true,
+        ),
+        personalizedRainNotificationsEnabled = preferences.getBoolean(
+            KEY_PERSONALIZED_RAIN_NOTIFICATIONS,
+            false,
         ),
     )
 
@@ -137,6 +147,7 @@ class SettingsRepository(context: Context) {
         private const val KEY_PRECISE_LOCATION = "precise_location"
         private const val KEY_NOTIFICATIONS = "notifications"
         private const val KEY_LOCATION_HEAVY_RAIN_NOTIFICATIONS = "notification_location_heavy_rain"
+        private const val KEY_PERSONALIZED_RAIN_NOTIFICATIONS = "notification_personalized_rain"
 
         private fun preferences(context: Context): SharedPreferences =
             context.getSharedPreferences(PREFERENCES_NAME, Context.MODE_PRIVATE)
@@ -146,6 +157,9 @@ class SettingsRepository(context: Context) {
 
         fun locationHeavyRainNotificationsEnabled(context: Context): Boolean =
             preferences(context).getBoolean(KEY_LOCATION_HEAVY_RAIN_NOTIFICATIONS, true)
+
+        fun personalizedRainNotificationsEnabled(context: Context): Boolean =
+            preferences(context).getBoolean(KEY_PERSONALIZED_RAIN_NOTIFICATIONS, false)
 
         fun preciseLocationEnabled(context: Context): Boolean =
             preferences(context).getBoolean(KEY_PRECISE_LOCATION, true)
