@@ -32,6 +32,8 @@ import androidx.compose.ui.unit.sp
 import com.weather.metro.BuildConfig
 import com.weather.metro.data.settings.PageColourSlot
 import com.weather.metro.data.settings.UiSettings
+import com.weather.metro.notification.PersonalizedNotificationDiagnosticVerdict
+import com.weather.metro.notification.PersonalizedNotificationDiagnostics
 import com.weather.metro.ui.components.MetroTile
 import com.weather.metro.ui.theme.LocalMetroSubText
 import com.weather.metro.ui.theme.argbColor
@@ -47,6 +49,7 @@ import kotlin.math.roundToInt
 @Composable
 fun SettingsScreen(
     settings: UiSettings,
+    notificationDiagnostics: PersonalizedNotificationDiagnostics,
     pageColour: Color,
     onPageColourChange: (PageColourSlot, Long) -> Unit,
     onTextScaleChange: (Float) -> Unit,
@@ -55,6 +58,8 @@ fun SettingsScreen(
     onPreciseLocationChange: (Boolean) -> Unit,
     onNotificationsChange: (Boolean) -> Unit,
     onLocationHeavyRainNotificationsChange: (Boolean) -> Unit,
+    onPersonalizedRainNotificationsChange: (Boolean) -> Unit,
+    onRefreshNotificationDiagnostics: () -> Unit,
     onOpenNotificationSettings: () -> Unit,
     onClearCache: () -> Unit,
 ) {
@@ -188,6 +193,74 @@ fun SettingsScreen(
             )
         }
         item {
+            PersonalizedSettingToggle(
+                seed = "notification-personalized-rain",
+                title = "rain approaching",
+                description = "使用天文台 SWIRLS 預報本機判斷未來降雨及雨勢變化；位置只在裝置取樣，不會上傳",
+                pageColour = pageColour,
+                checked = settings.personalizedRainNotificationsEnabled,
+                onChange = onPersonalizedRainNotificationsChange,
+            )
+        }
+        item {
+            MetroTile(
+                "notification-diagnostics",
+                pageColour,
+                Modifier.fillMaxWidth(),
+                onClick = onRefreshNotificationDiagnostics,
+            ) {
+                Column {
+                    PersonalizedSettingTitle(
+                        "notification diagnostics",
+                        notificationDiagnostics.verdict.displayLabel(),
+                    )
+                    DiagnosticLine(
+                        "periodic ${notificationDiagnostics.periodicActiveCount} active · " +
+                            "dispatch 2D1 ${notificationDiagnostics.periodicDispatchHeavyRain.onOff()} / " +
+                            "SWIRLS ${notificationDiagnostics.periodicDispatchPersonalizedRain.onOff()}",
+                    )
+                    DiagnosticLine(
+                        "immediate ${notificationDiagnostics.immediateActiveCount} active · " +
+                            "2D1 ${notificationDiagnostics.immediateDispatchHeavyRain.onOff()} / " +
+                            "SWIRLS ${notificationDiagnostics.immediateDispatchPersonalizedRain.onOff()}",
+                    )
+                    DiagnosticLine(
+                        "location ${notificationDiagnostics.locationDistrict.ifBlank { "unavailable" }} · " +
+                            ageText(notificationDiagnostics.locationAgeMs),
+                    )
+                    DiagnosticLine(
+                        "2D1 ${notificationDiagnostics.heavyRainStatus} · checked " +
+                            eventAgeText(
+                                notificationDiagnostics.checkedAtEpochMs,
+                                notificationDiagnostics.heavyRainLastCheckedEpochMs,
+                            ),
+                    )
+                    DiagnosticLine(
+                        "SWIRLS ${notificationDiagnostics.personalizedRainStatus} · checked " +
+                            eventAgeText(
+                                notificationDiagnostics.checkedAtEpochMs,
+                                notificationDiagnostics.personalizedRainLastCheckedEpochMs,
+                            ),
+                    )
+                    DiagnosticLine(
+                        "SWIRLS source " + eventAgeText(
+                            notificationDiagnostics.checkedAtEpochMs,
+                            notificationDiagnostics.personalizedRainLastSourceRunEpochMs,
+                        ) + " · pending " + notificationDiagnostics.personalizedRainPendingKind.ifBlank { "none" },
+                    )
+                    if (notificationDiagnostics.error.isNotBlank()) {
+                        DiagnosticLine("error ${notificationDiagnostics.error}")
+                    }
+                    Text(
+                        "tap to refresh · diagnostics never exposes exact coordinates",
+                        color = Color.White.copy(alpha = 0.72f),
+                        fontSize = 11.sp,
+                        modifier = Modifier.padding(top = 8.dp),
+                    )
+                }
+            }
+        }
+        item {
             MetroTile("notification-settings", pageColour, Modifier.fillMaxWidth(), onClick = onOpenNotificationSettings) {
                 Column {
                     PersonalizedSettingTitle(
@@ -245,6 +318,44 @@ private fun PersonalizedSettingTitle(title: String, description: String) {
         fontSize = 11.sp,
         modifier = Modifier.padding(bottom = 10.dp),
     )
+}
+
+@Composable
+private fun DiagnosticLine(text: String) {
+    Text(
+        text = text,
+        color = LocalMetroSubText.current,
+        fontSize = 11.sp,
+        modifier = Modifier.padding(bottom = 3.dp),
+    )
+}
+
+private fun PersonalizedNotificationDiagnosticVerdict.displayLabel(): String = when (this) {
+    PersonalizedNotificationDiagnosticVerdict.READY -> "ready · single shared cadence verified"
+    PersonalizedNotificationDiagnosticVerdict.DISABLED -> "disabled · no active local cadence"
+    PersonalizedNotificationDiagnosticVerdict.LOCATION_UNAVAILABLE -> "location unavailable"
+    PersonalizedNotificationDiagnosticVerdict.LOCATION_STALE -> "location stale"
+    PersonalizedNotificationDiagnosticVerdict.PERIODIC_MISSING -> "periodic work missing"
+    PersonalizedNotificationDiagnosticVerdict.PERIODIC_DUPLICATE -> "duplicate periodic work detected"
+    PersonalizedNotificationDiagnosticVerdict.PERIODIC_DISPATCH_INVALID -> "periodic dispatch flags invalid"
+    PersonalizedNotificationDiagnosticVerdict.STOPPING_OR_STALE_WORK -> "disabled but work still active"
+    PersonalizedNotificationDiagnosticVerdict.READ_ERROR -> "diagnostics read error"
+}
+
+private fun Boolean.onOff(): String = if (this) "on" else "off"
+
+private fun ageText(ageMs: Long?): String {
+    if (ageMs == null) return "age unknown"
+    if (ageMs < 60_000L) return "<1m old"
+    if (ageMs < 60 * 60_000L) return "${ageMs / 60_000L}m old"
+    return "${ageMs / (60 * 60_000L)}h old"
+}
+
+private fun eventAgeText(checkedAtEpochMs: Long, eventEpochMs: Long): String {
+    if (eventEpochMs <= 0L || checkedAtEpochMs <= 0L) return "never"
+    val age = checkedAtEpochMs - eventEpochMs
+    if (age < 0L) return "clock mismatch"
+    return ageText(age).removeSuffix(" old") + " ago"
 }
 
 @Composable

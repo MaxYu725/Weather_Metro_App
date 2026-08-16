@@ -17,13 +17,17 @@ import com.weather.metro.R
 import com.weather.metro.data.settings.SettingsRepository
 
 internal const val SOURCE_TYPE_LOCATION_DERIVED = "HKO_LOCATION_DERIVED"
+internal const val SOURCE_TYPE_PERSONALIZED_RAIN = "HKO_SWIRLS_LOCATION_DERIVED"
 private const val LOCATION_DERIVED_POST_TTL_MS = 90 * 60 * 1000L
+
+internal fun isLocationDerivedSourceType(sourceType: String): Boolean =
+    sourceType == SOURCE_TYPE_LOCATION_DERIVED || sourceType == SOURCE_TYPE_PERSONALIZED_RAIN
 
 internal fun shouldExpireBeforePosting(
     event: WeatherNotificationEvent,
     nowEpochMs: Long,
 ): Boolean {
-    if (event.sourceType != SOURCE_TYPE_LOCATION_DERIVED) return false
+    if (!isLocationDerivedSourceType(event.sourceType)) return false
     if (event.sentAtEpochMillis <= 0L || nowEpochMs <= 0L) return true
     return nowEpochMs - event.sentAtEpochMillis > LOCATION_DERIVED_POST_TTL_MS
 }
@@ -125,7 +129,7 @@ class WeatherNotificationPublisher(
     }
 
     private fun summaryText(event: WeatherNotificationEvent): String =
-        if (event.sourceType == SOURCE_TYPE_LOCATION_DERIVED) {
+        if (isLocationDerivedSourceType(event.sourceType)) {
             "根據香港天文台公開數據"
         } else {
             "香港天文台官方內容"

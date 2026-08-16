@@ -19,7 +19,11 @@ import com.weather.metro.notification.LocationHeavyRainScheduler
 import com.weather.metro.notification.NotificationChannels
 import com.weather.metro.notification.NotificationJournalState
 import com.weather.metro.notification.NotificationReconcileScheduler
+import com.weather.metro.notification.PersonalizedNotificationDiagnostics
+import com.weather.metro.notification.PersonalizedNotificationDiagnosticsReader
 import com.weather.metro.notification.PersonalizedNotificationLocationStore
+import com.weather.metro.notification.shouldSchedulePersonalizedLocationNotifications
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -38,6 +42,7 @@ class WeatherViewModel(application: Application) : AndroidViewModel(application)
     private val settingsRepository = SettingsRepository(application)
     private val locationRepository = LocationRepository(application)
     private val personalizedLocationStore = PersonalizedNotificationLocationStore(application)
+    private val notificationDiagnosticsReader = PersonalizedNotificationDiagnosticsReader(application)
     private val weatherRepository = WeatherRepository(
         hkoClient = HkoClient(),
         locationRepository = locationRepository,
@@ -51,8 +56,12 @@ class WeatherViewModel(application: Application) : AndroidViewModel(application)
     val settings: StateFlow<UiSettings> = settingsRepository.settings
     private val _navigationRequest = MutableStateFlow<AppNavigationRequest?>(null)
     val navigationRequest: StateFlow<AppNavigationRequest?> = _navigationRequest.asStateFlow()
+    private val _notificationDiagnostics = MutableStateFlow(PersonalizedNotificationDiagnostics())
+    val notificationDiagnostics: StateFlow<PersonalizedNotificationDiagnostics> =
+        _notificationDiagnostics.asStateFlow()
 
     init {
+        refreshNotificationDiagnostics()
         viewModelScope.launch {
             val cached = weatherRepository.cached()
             if (cached != null) {
@@ -83,6 +92,12 @@ class WeatherViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
+    fun refreshNotificationDiagnostics() {
+        viewModelScope.launch(Dispatchers.IO) {
+            _notificationDiagnostics.value = notificationDiagnosticsReader.read()
+        }
+    }
+
     fun hasLocationPermission(): Boolean = weatherRepository.hasLocationPermission()
 
     fun setPageColour(slot: PageColourSlot, value: Long) = settingsRepository.setPageColour(slot, value)
@@ -95,7 +110,7 @@ class WeatherViewModel(application: Application) : AndroidViewModel(application)
         val application = getApplication<Application>()
         if (!value) {
             personalizedLocationStore.clear()
-            LocationHeavyRainScheduler.reset(application)
+            LocationHeavyRainScheduler.resetAll(application)
         }
         refresh()
     }
@@ -108,28 +123,36 @@ class WeatherViewModel(application: Application) : AndroidViewModel(application)
             messaging.subscribeToTopic(NotificationChannels.TOPIC_PRODUCTION)
             NotificationReconcileScheduler.ensurePeriodic(application)
             NotificationReconcileScheduler.enqueueNow(application)
-            scheduleLocationHeavyRainIfEnabled()
+            reconcilePersonalizedLocationNotificationSchedule(
+                dispatchHeavyRainNow = true,
+                dispatchPersonalizedRainNow = true,
+            )
         } else {
             messaging.unsubscribeFromTopic(NotificationChannels.TOPIC_PRODUCTION)
             NotificationReconcileScheduler.disable(application)
             NotificationJournalState(application).resetSubscriptionBaseline()
-            LocationHeavyRainScheduler.reset(application)
+            LocationHeavyRainScheduler.resetAll(application)
         }
     }
 
     fun setLocationHeavyRainNotificationsEnabled(value: Boolean) {
         settingsRepository.setLocationHeavyRainNotificationsEnabled(value)
         val application = getApplication<Application>()
-        if (
-            value &&
-            settings.value.notificationsEnabled &&
-            settings.value.preciseLocation
-        ) {
-            LocationHeavyRainScheduler.ensurePeriodic(application)
-            LocationHeavyRainScheduler.enqueueNow(application)
-        } else {
-            LocationHeavyRainScheduler.reset(application)
-        }
+        if (!value) LocationHeavyRainScheduler.resetHeavyRain(application)
+        reconcilePersonalizedLocationNotificationSchedule(
+            dispatchHeavyRainNow = value,
+            dispatchPersonalizedRainNow = false,
+        )
+    }
+
+    fun setPersonalizedRainNotificationsEnabled(value: Boolean) {
+        settingsRepository.setPersonalizedRainNotificationsEnabled(value)
+        val application = getApplication<Application>()
+        if (!value) LocationHeavyRainScheduler.resetPersonalizedRain(application)
+        reconcilePersonalizedLocationNotificationSchedule(
+            dispatchHeavyRainNow = false,
+            dispatchPersonalizedRainNow = value,
+        )
     }
 
     fun subscribeIfEnabled() {
@@ -138,7 +161,10 @@ class WeatherViewModel(application: Application) : AndroidViewModel(application)
             FirebaseMessaging.getInstance().subscribeToTopic(NotificationChannels.TOPIC_PRODUCTION)
             NotificationReconcileScheduler.ensurePeriodic(application)
             NotificationReconcileScheduler.enqueueNow(application)
-            scheduleLocationHeavyRainIfEnabled()
+            reconcilePersonalizedLocationNotificationSchedule(
+                dispatchHeavyRainNow = true,
+                dispatchPersonalizedRainNow = true,
+            )
         }
     }
 
@@ -170,21 +196,40 @@ class WeatherViewModel(application: Application) : AndroidViewModel(application)
     private fun bindPersonalizedNotificationLocation(location: LocationInfo) {
         if (!settings.value.preciseLocation || location.accuracyMetres == null) return
         personalizedLocationStore.record(location)
-        scheduleLocationHeavyRainIfEnabled()
+        reconcilePersonalizedLocationNotificationSchedule(
+            dispatchHeavyRainNow = true,
+            dispatchPersonalizedRainNow = true,
+        )
     }
 
-    private fun scheduleLocationHeavyRainIfEnabled() {
+    private fun reconcilePersonalizedLocationNotificationSchedule(
+        dispatchHeavyRainNow: Boolean,
+        dispatchPersonalizedRainNow: Boolean,
+    ) {
         val current = settings.value
-        if (
-            !current.notificationsEnabled ||
-            !current.locationHeavyRainNotificationsEnabled ||
-            !current.preciseLocation
-        ) {
-            return
-        }
         val application = getApplication<Application>()
-        LocationHeavyRainScheduler.ensurePeriodic(application)
-        LocationHeavyRainScheduler.enqueueNow(application)
+        if (
+            shouldSchedulePersonalizedLocationNotifications(
+                notificationsEnabled = current.notificationsEnabled,
+                preciseLocationEnabled = current.preciseLocation,
+                locationHeavyRainEnabled = current.locationHeavyRainNotificationsEnabled,
+                personalizedRainEnabled = current.personalizedRainNotificationsEnabled,
+            )
+        ) {
+            LocationHeavyRainScheduler.ensurePeriodic(application)
+            val runHeavyRain = dispatchHeavyRainNow && current.locationHeavyRainNotificationsEnabled
+            val runPersonalizedRain =
+                dispatchPersonalizedRainNow && current.personalizedRainNotificationsEnabled
+            if (runHeavyRain || runPersonalizedRain) {
+                LocationHeavyRainScheduler.enqueueNow(
+                    context = application,
+                    dispatchHeavyRain = runHeavyRain,
+                    dispatchPersonalizedRain = runPersonalizedRain,
+                )
+            }
+        } else {
+            LocationHeavyRainScheduler.disable(application)
+        }
     }
 
     private fun showResult(result: RefreshResult) {
