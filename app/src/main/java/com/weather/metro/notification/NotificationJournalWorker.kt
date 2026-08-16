@@ -26,14 +26,15 @@ class NotificationJournalWorker(
             // A fresh installation should not replay months of historical alerts.
             // Ask for a cursor beyond the journal tail; the API returns an empty
             // page whose latestCursor is an atomic server-side baseline. Anything
-            // appended after this response remains greater than the saved cursor
-            // and will be recovered normally. An FCM wake-up can initialize one
-            // cursor earlier before this worker starts so that wake-up event is
-            // never accidentally classified as historical.
+            // appended after this response remains greater than the saved cursor.
+            //
+            // Do not return after initialization. If the first FCM wake-up races
+            // this request, initializeForWakeup() may already have seeded one
+            // cursor earlier. Continuing immediately from the persisted cursor
+            // closes that race without waiting for the periodic safety net.
             if (!state.isInitialized()) {
                 val baseline = client.fetch(endpoint, BOOTSTRAP_AFTER_CURSOR, 1)
                 state.initializeAt(baseline.latestCursor)
-                return@withContext Result.success()
             }
 
             var cursor = state.cursor()
