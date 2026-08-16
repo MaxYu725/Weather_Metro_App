@@ -103,4 +103,22 @@ Before PR #66 leaves Draft, verify on the target Android device:
 9. confirm the SWIRLS status/source-run fields advance when the opt-in worker executes;
 10. independently inspect network traffic if required and confirm there is no request to the Rain-Track point endpoint carrying precise lat/lon.
 
-Keep PR #66 Draft until these real-device checks are complete.
+## 2026-08-16 first real-device matrix
+
+User-provided Settings diagnostics screenshots verify the following installed-device behaviour:
+
+- **2D1 ON / SWIRLS OFF — PASS.** `rain approaching` remained off, one shared periodic work was active, and the visible immediate request was selective to 2D1 (`2D1 on / SWIRLS off`).
+- **2D1 OFF / SWIRLS ON — cadence PASS, SWIRLS execution pending.** One shared periodic work remained active after disabling 2D1, proving the cadence is not owned by the 2D1 feature toggle. The captured immediate work still showed an in-flight request and SWIRLS durable state was still `IDLE / checked never / source never`, so a later refresh is still required to prove completion of the first SWIRLS evaluation.
+- **global weather notifications OFF — PASS.** Diagnostics settled to `DISABLED` with periodic 0 active and immediate 0 active while the cached local location remained available.
+- **precise location OFF with global notifications ON — PASS.** Diagnostics settled to `DISABLED` with periodic 0 active and immediate 0 active; the personalised location store was cleared and displayed as unavailable.
+
+The periodic diagnostic tags describe what the WorkRequest requested; the worker still re-checks the live per-stream setting and does not trust diagnostic tags for execution authorization. A transient immediate request may therefore still display a previously requested stream while that stream has just been disabled. The durable state / notification result after the request settles is the acceptance signal.
+
+Remaining real-device closure:
+
+- leave 2D1 off and `rain approaching` on;
+- allow the immediate work to finish, then refresh diagnostics;
+- confirm SWIRLS is no longer `checked never` and the source-run field is no longer `never` (or shows an explicit fail-closed source status/error rather than silently remaining IDLE);
+- confirm no 2D1 notification/state is produced while its setting is off.
+
+Keep PR #66 Draft until these remaining real-device checks are complete.
