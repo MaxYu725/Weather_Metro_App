@@ -88,10 +88,15 @@ object NotificationInboxCodec {
 
         val existing = events[existingIndex]
         if (!shouldUpgrade(existing.event, event)) return events
+        val visibleContentChanged = hasVisibleContentChanged(existing.event, event)
         val updated = events.toMutableList().apply {
-            // An authoritative journal event replaces an earlier FCM preview.
-            // Reset posted so the system notification is updated with full text.
-            this[existingIndex] = existing.copy(event = event, posted = false)
+            // Journal metadata/cursor upgrades must not make an already-posted
+            // complete notification appear twice. Repost only when the journal
+            // actually replaces user-visible preview/routing content.
+            this[existingIndex] = existing.copy(
+                event = event,
+                posted = existing.posted && !visibleContentChanged,
+            )
         }
         return trim(updated)
     }
@@ -109,6 +114,15 @@ object NotificationInboxCodec {
         if (existing.journalCursor > incoming.journalCursor) return false
         return existing != incoming
     }
+
+    private fun hasVisibleContentChanged(
+        existing: WeatherNotificationEvent,
+        incoming: WeatherNotificationEvent,
+    ): Boolean =
+        existing.title != incoming.title ||
+            existing.body != incoming.body ||
+            existing.channel != incoming.channel ||
+            existing.target != incoming.target
 
     private fun trim(events: List<StoredNotificationEvent>): List<StoredNotificationEvent> {
         val pending = events.filterNot(StoredNotificationEvent::posted)
