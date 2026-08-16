@@ -60,4 +60,26 @@ class PersonalizedNotificationActivationTest {
             ),
         )
     }
+
+    @Test
+    fun `dispatch marker cannot bypass an individual stream setting`() {
+        assertFalse(
+            shouldRunPersonalizedNotificationStream(
+                dispatchRequested = false,
+                settingEnabled = true,
+            ),
+        )
+        assertFalse(
+            shouldRunPersonalizedNotificationStream(
+                dispatchRequested = true,
+                settingEnabled = false,
+            ),
+        )
+        assertTrue(
+            shouldRunPersonalizedNotificationStream(
+                dispatchRequested = true,
+                settingEnabled = true,
+            ),
+        )
+    }
 }
