@@ -43,6 +43,15 @@ class NotificationEventStore(context: Context) {
         }
     }
 
+    fun discardPendingBySourceType(sourceType: String) {
+        if (sourceType.isBlank()) return
+        synchronized(LOCK) {
+            val current = read()
+            val updated = NotificationInboxCodec.discardPendingBySourceType(current, sourceType)
+            if (updated != current) persist(updated)
+        }
+    }
+
     fun markFullSyncRequired() {
         requireCommit(
             preferences.edit().putBoolean(KEY_FULL_SYNC_REQUIRED, true).commit(),
