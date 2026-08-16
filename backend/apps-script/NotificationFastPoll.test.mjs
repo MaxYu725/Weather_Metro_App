@@ -3,9 +3,10 @@ import fs from 'node:fs';
 import test from 'node:test';
 import vm from 'node:vm';
 
-function loadScript() {
+function loadScript({ optimizedHydration = true } = {}) {
   const properties = new Map();
   let fullCalls = 0;
+  let optimizedCalls = 0;
   let fetchCalls = 0;
   let sourceRetryCalls = 0;
   const summary = {
@@ -65,12 +66,21 @@ function loadScript() {
     },
     recordWarningSourceCrossCheck_(_properties, value) { return value; },
   };
+  if (optimizedHydration) {
+    context.checkWeatherUpdatesJournalledFromSummary_ = (received) => {
+      optimizedCalls += 1;
+      assert.equal(received, summary);
+    };
+  }
   const propertyStore = {
     getProperty(key) {
       return properties.has(key) ? properties.get(key) : null;
     },
     setProperty(key, value) {
       properties.set(key, String(value));
+    },
+    deleteProperty(key) {
+      properties.delete(key);
     },
   };
   vm.createContext(context);
@@ -84,12 +94,14 @@ function loadScript() {
     properties,
     summary,
     counts() {
-      return { fullCalls, fetchCalls, sourceRetryCalls };
+      return { fullCalls, optimizedCalls, fetchCalls, sourceRetryCalls };
     },
   };
 }
 
-test('bootstrap performs a full journal hydration before committing summary digest', () => {
+const V2 = 'HKO_NOTIFICATION_FAST_POLL_V2';
+
+test('bootstrap uses prefetched warnsum hydration before committing digest', () => {
   const script = loadScript();
   const result = script.context.runNotificationFastPoll_(
     script.context.PropertiesService.getScriptProperties(),
@@ -97,17 +109,35 @@ test('bootstrap performs a full journal hydration before committing summary dige
   );
   assert.equal(result.mode, 'FULL');
   assert.equal(result.reason, 'BOOTSTRAP');
-  assert.equal(script.counts().fullCalls, 1);
-  const stored = JSON.parse(script.properties.get('HKO_NOTIFICATION_FAST_POLL_V1'));
+  assert.equal(script.counts().optimizedCalls, 1);
+  assert.equal(script.counts().fullCalls, 0);
+  const stored = JSON.parse(script.properties.get(V2));
   assert.ok(stored.committedSummaryDigest);
   assert.ok(stored.lastFullRefreshEpochMs > 0);
+});
+
+test('legacy V1 migration resets only soak telemetry, never journal state', () => {
+  const script = loadScript();
+  script.properties.set('HKO_NOTIFICATION_FAST_POLL_V1', JSON.stringify({
+    schemaVersion: 1,
+    committedSummaryDigest: 'legacy',
+    lastFullRefreshEpochMs: 123,
+  }));
+  script.properties.set('HKO_NOTIFICATION_SUPERVISOR_RUNTIME_V2', '{"dayRunCount":18}');
+  script.properties.set('HKO_PUBLICATION_STATE_INDEX_V7', '["keep"]');
+  script.context.notificationFastPollMigrateV2_(
+    script.context.PropertiesService.getScriptProperties(),
+  );
+  assert.equal(script.properties.has('HKO_NOTIFICATION_FAST_POLL_V1'), false);
+  assert.equal(script.properties.has('HKO_NOTIFICATION_SUPERVISOR_RUNTIME_V2'), false);
+  assert.equal(script.properties.get('HKO_PUBLICATION_STATE_INDEX_V7'), '["keep"]');
 });
 
 test('unchanged warnsum inside auxiliary interval uses one-request fast path', () => {
   const script = loadScript();
   const digest = script.context.notificationWarnsumDigest_(script.summary);
-  script.properties.set('HKO_NOTIFICATION_FAST_POLL_V1', JSON.stringify({
-    schemaVersion: 1,
+  script.properties.set(V2, JSON.stringify({
+    schemaVersion: 2,
     committedSummaryDigest: digest,
     lastFullRefreshEpochMs: 900_000,
   }));
@@ -117,14 +147,15 @@ test('unchanged warnsum inside auxiliary interval uses one-request fast path', (
   );
   assert.equal(result.mode, 'FAST');
   assert.equal(result.reason, 'WARNSUM_UNCHANGED');
+  assert.equal(script.counts().optimizedCalls, 0);
   assert.equal(script.counts().fullCalls, 0);
   assert.equal(script.counts().fetchCalls, 1);
 });
 
-test('changed warnsum forces immediate full hydration', () => {
+test('changed warnsum forces immediate optimized full hydration', () => {
   const script = loadScript();
-  script.properties.set('HKO_NOTIFICATION_FAST_POLL_V1', JSON.stringify({
-    schemaVersion: 1,
+  script.properties.set(V2, JSON.stringify({
+    schemaVersion: 2,
     committedSummaryDigest: 'different',
     lastFullRefreshEpochMs: 990_000,
   }));
@@ -134,14 +165,14 @@ test('changed warnsum forces immediate full hydration', () => {
   );
   assert.equal(result.mode, 'FULL');
   assert.equal(result.reason, 'WARNSUM_CHANGED');
-  assert.equal(script.counts().fullCalls, 1);
+  assert.equal(script.counts().optimizedCalls, 1);
 });
 
 test('standalone warningInfo and SWT remain bounded by periodic full hydration', () => {
   const script = loadScript();
   const digest = script.context.notificationWarnsumDigest_(script.summary);
-  script.properties.set('HKO_NOTIFICATION_FAST_POLL_V1', JSON.stringify({
-    schemaVersion: 1,
+  script.properties.set(V2, JSON.stringify({
+    schemaVersion: 2,
     committedSummaryDigest: digest,
     lastFullRefreshEpochMs: 800_000,
   }));
@@ -151,6 +182,16 @@ test('standalone warningInfo and SWT remain bounded by periodic full hydration',
   );
   assert.equal(result.mode, 'FULL');
   assert.equal(result.reason, 'AUX_REFRESH_DUE');
+  assert.equal(script.counts().optimizedCalls, 1);
+});
+
+test('legacy journal owner remains a safe fallback', () => {
+  const script = loadScript({ optimizedHydration: false });
+  const result = script.context.runNotificationFastPoll_(
+    script.context.PropertiesService.getScriptProperties(),
+    1_000_000,
+  );
+  assert.equal(result.mode, 'FULL');
   assert.equal(script.counts().fullCalls, 1);
 });
 
