@@ -104,7 +104,7 @@ test('prefetched hydration fetches only warningInfo and SWT', () => {
   const result = script.context.checkWeatherUpdatesJournalledFromSummary_({ WHOT: {} });
   assert.equal(result.skipped, false);
   assert.deepEqual(
-    script.counts().fetchAllRequests.map((request) => request.type),
+    [...script.counts().fetchAllRequests].map((request) => request.type),
     ['warningInfo', 'swt'],
   );
 });
