@@ -73,6 +73,10 @@ internal fun assessPersonalizedNotificationDiagnostics(
  *
  * Exact latitude/longitude never leaves the location store and is intentionally not returned by
  * this diagnostics model. The UI receives only district and age/freshness information.
+ *
+ * WorkManager does not expose WorkRequest input Data through WorkInfo. The scheduler therefore
+ * mirrors each dispatch input as a diagnostic-only WorkRequest tag. Worker execution continues to
+ * use the original fail-closed input Data; tags are never used to authorize a notification stream.
  */
 internal class PersonalizedNotificationDiagnosticsReader(context: Context) {
     private val appContext = context.applicationContext
@@ -104,16 +108,16 @@ internal class PersonalizedNotificationDiagnosticsReader(context: Context) {
                 .filter { it.isActiveForPersonalizedDiagnostics() }
 
             val periodicHeavy = periodic.any {
-                it.inputData.getBoolean(LocationHeavyRainScheduler.INPUT_DISPATCH_LOCATION_HEAVY_RAIN, false)
+                LocationHeavyRainScheduler.TAG_DISPATCH_LOCATION_HEAVY_RAIN in it.tags
             }
             val periodicPersonalized = periodic.any {
-                it.inputData.getBoolean(LocationHeavyRainScheduler.INPUT_DISPATCH_PERSONALIZED_RAIN, false)
+                LocationHeavyRainScheduler.TAG_DISPATCH_PERSONALIZED_RAIN in it.tags
             }
             val immediateHeavy = immediate.any {
-                it.inputData.getBoolean(LocationHeavyRainScheduler.INPUT_DISPATCH_LOCATION_HEAVY_RAIN, false)
+                LocationHeavyRainScheduler.TAG_DISPATCH_LOCATION_HEAVY_RAIN in it.tags
             }
             val immediatePersonalized = immediate.any {
-                it.inputData.getBoolean(LocationHeavyRainScheduler.INPUT_DISPATCH_PERSONALIZED_RAIN, false)
+                LocationHeavyRainScheduler.TAG_DISPATCH_PERSONALIZED_RAIN in it.tags
             }
 
             val location = locationStore.read()
