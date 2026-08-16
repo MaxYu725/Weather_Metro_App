@@ -1,7 +1,9 @@
 package com.weather.metro.notification
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class LocationHeavyRainEvaluatorTest {
@@ -63,5 +65,16 @@ class LocationHeavyRainEvaluatorTest {
 
         assertEquals(LocationHeavyRainLevel.NONE, reset.nextActiveLevel)
         assertEquals(LocationHeavyRainLevel.HEAVY_50, next.notificationLevel)
+    }
+
+    @Test
+    fun `freshness gate accepts current data and rejects stale or invalid time`() {
+        val now = 10_000_000L
+
+        assertTrue(isLocationHeavyRainSourceFresh(now - 30 * 60 * 1000L, now))
+        assertTrue(isLocationHeavyRainSourceFresh(now + 4 * 60 * 1000L, now))
+        assertFalse(isLocationHeavyRainSourceFresh(now - 46 * 60 * 1000L, now))
+        assertFalse(isLocationHeavyRainSourceFresh(now + 6 * 60 * 1000L, now))
+        assertFalse(isLocationHeavyRainSourceFresh(null, now))
     }
 }
