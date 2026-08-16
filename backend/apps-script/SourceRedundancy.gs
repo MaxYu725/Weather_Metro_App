@@ -219,31 +219,41 @@ function retryPrimarySourceGap_(result) {
   });
 
   for (let attempt = 1; attempt <= SOURCE_REDUNDANCY_CONFIG.primaryRetryCount; attempt += 1) {
-    if (SOURCE_REDUNDANCY_CONFIG.primaryRetryDelayMs > 0 && typeof Utilities.sleep === 'function') {
-      Utilities.sleep(SOURCE_REDUNDANCY_CONFIG.primaryRetryDelayMs);
-    }
-    const request = hkoRequest_('warnsum');
-    const options = {
-      method: request.method || 'get',
-      headers: request.headers || {},
-      muteHttpExceptions: request.muteHttpExceptions !== false,
-    };
-    const response = UrlFetchApp.fetch(
-      request.url + '&weatherMetroRetry=' + encodeURIComponent(String(Date.now()) + '-' + attempt),
-      options,
-    );
-    const summary = parseCrossCheckJsonResponse_(response);
-    latest.primaryTokens = warningTokensFromSummary_(summary);
-    latest.primaryRetryAttempts = attempt;
-    latest.primaryError = '';
-    latest = applyWarningTokenComparison_(latest);
-    latest.initialStatus = initialStatus;
-    latest.primaryRetryAttempts = attempt;
+    try {
+      if (
+        SOURCE_REDUNDANCY_CONFIG.primaryRetryDelayMs > 0 &&
+        typeof Utilities !== 'undefined' &&
+        typeof Utilities.sleep === 'function'
+      ) {
+        Utilities.sleep(SOURCE_REDUNDANCY_CONFIG.primaryRetryDelayMs);
+      }
+      const request = hkoRequest_('warnsum');
+      const options = {
+        method: request.method || 'get',
+        headers: request.headers || {},
+        muteHttpExceptions: request.muteHttpExceptions !== false,
+      };
+      const response = UrlFetchApp.fetch(
+        request.url + '&weatherMetroRetry=' + encodeURIComponent(String(Date.now()) + '-' + attempt),
+        options,
+      );
+      const summary = parseCrossCheckJsonResponse_(response);
+      latest.primaryTokens = warningTokensFromSummary_(summary);
+      latest.primaryRetryAttempts = attempt;
+      latest.primaryError = '';
+      latest = applyWarningTokenComparison_(latest);
+      latest.initialStatus = initialStatus;
+      latest.primaryRetryAttempts = attempt;
 
-    if (latest.secondaryOnly.length === 0) {
-      latest.recoveredAfterPrimaryRetry = true;
-      if (latest.status === 'MATCH') latest.status = 'MATCH_AFTER_RETRY';
-      break;
+      if (latest.secondaryOnly.length === 0) {
+        latest.recoveredAfterPrimaryRetry = true;
+        if (latest.status === 'MATCH') latest.status = 'MATCH_AFTER_RETRY';
+        break;
+      }
+    } catch (error) {
+      latest.primaryRetryAttempts = attempt;
+      latest.primaryError = 'Retry ' + attempt + ': ' +
+        String(error && error.message ? error.message : error).slice(0, 240);
     }
   }
   return latest;
