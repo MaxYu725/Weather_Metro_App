@@ -104,6 +104,27 @@ class WeatherNotificationEventTest {
     }
 
     @Test
+    fun `journal metadata upgrade does not repost an already complete notification`() {
+        val legacy = event("same").copy(
+            eventKind = "UPDATE",
+            journalCursor = 0,
+        )
+        val journal = legacy.copy(
+            sourceType = "WARNING",
+            sourceTime = "2026-08-16T10:00:00+08:00",
+            journalCursor = 7,
+        )
+        val inbox = listOf(StoredNotificationEvent(legacy, receivedAtEpochMillis = 1, posted = true))
+
+        val upgraded = NotificationInboxCodec.addOrUpgrade(inbox, journal, 2)
+
+        assertEquals(1, upgraded.size)
+        assertEquals(7L, upgraded.single().event.journalCursor)
+        assertEquals("WARNING", upgraded.single().event.sourceType)
+        assertTrue(upgraded.single().posted)
+    }
+
+    @Test
     fun `posted history is bounded without deleting pending events`() {
         var inbox = (0 until 300).map { index ->
             StoredNotificationEvent(event("posted-$index"), index.toLong(), posted = true)
