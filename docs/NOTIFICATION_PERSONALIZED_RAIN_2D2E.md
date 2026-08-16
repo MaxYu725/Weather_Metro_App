@@ -28,6 +28,8 @@ The 15-minute periodic request dispatches both streams, after which each stream'
 
 The single immediate work request can selectively dispatch only the stream that needs an immediate refresh. This avoids an extra SWIRLS download when only 2D1 is toggled and avoids an unnecessary district-rain request when only the SWIRLS setting is toggled.
 
+The worker combines each dispatch flag with its corresponding current setting through the same pure stream-gate predicate. A dispatch request therefore cannot bypass a feature toggle. The activation and per-stream dispatch predicates are covered by `PersonalizedNotificationActivationTest`.
+
 ## Independent streams inside one worker run
 
 The shared worker can execute two independent local notification streams:
@@ -55,8 +57,6 @@ The shared cadence is scheduled only when all of the following are true:
 - precise location is enabled; and
 - at least one local rain stream is enabled.
 
-The pure activation predicate is covered by `PersonalizedNotificationActivationTest`.
-
 ## Dedicated SWIRLS setting
 
 `UiSettings.personalizedRainNotificationsEnabled` and preference key `notification_personalized_rain` are introduced in 2D2E.
@@ -74,6 +74,14 @@ The setting copy states that:
 When an enabled precise host location is freshly resolved by `WeatherViewModel`, the scheduler updates the shared periodic request and replaces the one existing unique immediate request with dispatch flags for all currently enabled local rain streams. This preserves a single immediate-work owner while allowing a newly refreshed location to be evaluated promptly.
 
 Enabling one local rain setting enqueues a selective immediate evaluation for only that stream. Disabling a setting does not unnecessarily run the remaining stream immediately.
+
+## Concurrency and disable safety
+
+WorkManager can start the periodic request close to a location-refresh or setting-triggered immediate request. The SWIRLS durable state machine therefore uses a process-local `PersonalizedRainExecutionLock` mutex so two worker instances cannot concurrently perform `read -> stage -> publish -> commit` against the same personalised-rain episode state.
+
+The production SWIRLS event sink re-reads the master notification, precise-location and personalised-rain settings immediately before durable inbox publication. A setting disabled while SWIRLS requests are already in flight therefore cannot produce a late notification.
+
+The shared worker also re-checks each stream after its runtime returns. If a stream was disabled during that run, its local state and pending inbox entries are cleared again before the worker completes. The 2D1 publisher performs the same late setting gate. This closes the reset race where a running worker could otherwise repopulate state after the UI had disabled and cleared that stream.
 
 ## Targeted reset semantics
 
@@ -112,4 +120,6 @@ Keep PR #66 Draft after CI. Before merge, production verification should confirm
 4. disabling 2D1 while 2D2 remains enabled does not stop the shared schedule;
 5. disabling 2D2 while 2D1 remains enabled does not stop the shared schedule;
 6. disabling precise location or global notifications cancels both local streams;
-7. no request path sends precise lat/lon to the Rain-Track point endpoint.
+7. a periodic/immediate overlap does not duplicate or corrupt a SWIRLS episode;
+8. disabling either stream while a request is in flight does not publish a late notification;
+9. no request path sends precise lat/lon to the Rain-Track point endpoint.
