@@ -17,8 +17,17 @@ class NotificationJournalWorker(
             return@withContext Result.success()
         }
 
+        val diagnostics = NotificationJournalDiagnosticsStore(applicationContext)
+        diagnostics.markAttempt(System.currentTimeMillis())
         val state = NotificationJournalState(applicationContext)
-        val endpoint = state.endpoint() ?: return@withContext Result.success()
+        val endpoint = state.endpoint()
+        if (endpoint == null) {
+            diagnostics.markFailure(
+                System.currentTimeMillis(),
+                IllegalStateException("Notification journal endpoint is unavailable"),
+            )
+            return@withContext Result.success()
+        }
         val client = NotificationJournalClient()
         val publisher = WeatherNotificationPublisher(applicationContext)
 
@@ -38,6 +47,7 @@ class NotificationJournalWorker(
             }
 
             var cursor = state.cursor()
+            var deliveredEvents = 0
             repeat(MAX_PAGES_PER_RUN) {
                 val page = client.fetch(endpoint, cursor, PAGE_SIZE)
                 check(page.latestCursor >= cursor) {
@@ -55,9 +65,18 @@ class NotificationJournalWorker(
                     // server cursor only after that durable write has succeeded.
                     state.advanceCursor(event.journalCursor)
                     cursor = event.journalCursor
+                    deliveredEvents += 1
                 }
 
-                if (!page.hasMore) return@withContext Result.success()
+                if (!page.hasMore) {
+                    diagnostics.markSuccess(
+                        nowEpochMs = System.currentTimeMillis(),
+                        latestServerCursor = page.latestCursor,
+                        localCursor = state.cursor(),
+                        deliveredEvents = deliveredEvents,
+                    )
+                    return@withContext Result.success()
+                }
                 check(page.events.isNotEmpty()) {
                     "Notification journal reported more data without returning an event"
                 }
@@ -65,7 +84,8 @@ class NotificationJournalWorker(
             error("Notification journal exceeded $MAX_PAGES_PER_RUN pages in one reconciliation")
         } catch (cancelled: CancellationException) {
             throw cancelled
-        } catch (_: Exception) {
+        } catch (error: Exception) {
+            diagnostics.markFailure(System.currentTimeMillis(), error)
             Result.retry()
         }
     }
