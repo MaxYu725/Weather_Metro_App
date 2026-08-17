@@ -27,6 +27,15 @@ data class PersonalizedNotificationDiagnostics(
     val immediateActiveCount: Int = 0,
     val immediateDispatchHeavyRain: Boolean = false,
     val immediateDispatchPersonalizedRain: Boolean = false,
+    val officialPeriodicActiveCount: Int = 0,
+    val officialImmediateActiveCount: Int = 0,
+    val officialJournalInitialized: Boolean = false,
+    val officialJournalCursor: Long = 0L,
+    val officialLatestServerCursor: Long = 0L,
+    val officialLastAttemptEpochMs: Long = 0L,
+    val officialLastSuccessEpochMs: Long = 0L,
+    val officialDeliveredEventsLastRun: Int = 0,
+    val officialError: String = "",
     val locationDistrict: String = "",
     val locationAgeMs: Long? = null,
     val locationFresh: Boolean = false,
@@ -89,6 +98,7 @@ internal class PersonalizedNotificationDiagnosticsReader(context: Context) {
     private val locationStore = PersonalizedNotificationLocationStore(appContext)
     private val heavyRainStateStore = LocationHeavyRainStateStore(appContext)
     private val personalizedRainStateStore = PersonalizedRainEpisodeStateStore(appContext)
+    private val journalDiagnosticsStore = NotificationJournalDiagnosticsStore(appContext)
 
     fun read(nowEpochMs: Long = System.currentTimeMillis()): PersonalizedNotificationDiagnostics {
         return runCatching {
@@ -111,6 +121,14 @@ internal class PersonalizedNotificationDiagnosticsReader(context: Context) {
                 .getWorkInfosForUniqueWork(LocationHeavyRainScheduler.IMMEDIATE_WORK_NAME)
                 .get()
                 .filter { it.isActiveForPersonalizedDiagnostics() }
+            val officialPeriodic = workManager
+                .getWorkInfosForUniqueWork(NotificationReconcileScheduler.PERIODIC_WORK_NAME)
+                .get()
+                .filter { it.isActiveForPersonalizedDiagnostics() }
+            val officialImmediate = workManager
+                .getWorkInfosForUniqueWork(NotificationReconcileScheduler.IMMEDIATE_WORK_NAME)
+                .get()
+                .filter { it.isActiveForPersonalizedDiagnostics() }
 
             val periodicHeavy = periodic.any {
                 LocationHeavyRainScheduler.TAG_DISPATCH_LOCATION_HEAVY_RAIN in it.tags
@@ -125,6 +143,8 @@ internal class PersonalizedNotificationDiagnosticsReader(context: Context) {
                 LocationHeavyRainScheduler.TAG_DISPATCH_PERSONALIZED_RAIN in it.tags
             }
 
+            val journalState = NotificationJournalState(appContext)
+            val journalRuntime = journalDiagnosticsStore.read()
             val location = locationStore.read()
             val locationAgeMs = location?.updatedAtEpochMs?.let { updatedAt ->
                 (nowEpochMs - updatedAt).takeIf { it >= 0L }
@@ -155,6 +175,15 @@ internal class PersonalizedNotificationDiagnosticsReader(context: Context) {
                 immediateActiveCount = immediate.size,
                 immediateDispatchHeavyRain = immediateHeavy,
                 immediateDispatchPersonalizedRain = immediatePersonalized,
+                officialPeriodicActiveCount = officialPeriodic.size,
+                officialImmediateActiveCount = officialImmediate.size,
+                officialJournalInitialized = journalState.isInitialized(),
+                officialJournalCursor = journalState.cursor(),
+                officialLatestServerCursor = journalRuntime.latestServerCursor,
+                officialLastAttemptEpochMs = journalRuntime.lastAttemptEpochMs,
+                officialLastSuccessEpochMs = journalRuntime.lastSuccessEpochMs,
+                officialDeliveredEventsLastRun = journalRuntime.deliveredEventsLastRun,
+                officialError = journalRuntime.lastError,
                 locationDistrict = location?.district.orEmpty(),
                 locationAgeMs = locationAgeMs,
                 locationFresh = locationFresh,
