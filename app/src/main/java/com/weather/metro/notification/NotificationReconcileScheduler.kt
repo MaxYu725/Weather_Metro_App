@@ -14,8 +14,8 @@ import com.weather.metro.data.settings.SettingsRepository
 import java.util.concurrent.TimeUnit
 
 object NotificationReconcileScheduler {
-    private const val IMMEDIATE_WORK = "notification-journal-reconcile"
-    private const val PERIODIC_WORK = "notification-journal-safety-net"
+    internal const val IMMEDIATE_WORK_NAME = "notification-journal-reconcile"
+    internal const val PERIODIC_WORK_NAME = "notification-journal-safety-net"
 
     private val networkConstraints = Constraints.Builder()
         .setRequiredNetworkType(NetworkType.CONNECTED)
@@ -30,8 +30,13 @@ object NotificationReconcileScheduler {
             .setExpedited(OutOfQuotaPolicy.RUN_AS_NON_EXPEDITED_WORK_REQUEST)
             .build()
         WorkManager.getInstance(applicationContext).enqueueUniqueWork(
-            IMMEDIATE_WORK,
-            ExistingWorkPolicy.KEEP,
+            IMMEDIATE_WORK_NAME,
+            // A foreground/app/FCM wake-up means "reconcile now". KEEP can leave a
+            // previous failed request parked in exponential backoff, so a fresh
+            // wake-up would not actually perform a fresh journal read. Replacing
+            // the one-shot request resets that stale backoff while the periodic
+            // safety net remains independently owned below.
+            ExistingWorkPolicy.REPLACE,
             request,
         )
     }
@@ -47,7 +52,7 @@ object NotificationReconcileScheduler {
             .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 30, TimeUnit.SECONDS)
             .build()
         WorkManager.getInstance(applicationContext).enqueueUniquePeriodicWork(
-            PERIODIC_WORK,
+            PERIODIC_WORK_NAME,
             ExistingPeriodicWorkPolicy.KEEP,
             request,
         )
@@ -55,7 +60,7 @@ object NotificationReconcileScheduler {
 
     fun disable(context: Context) {
         val workManager = WorkManager.getInstance(context.applicationContext)
-        workManager.cancelUniqueWork(IMMEDIATE_WORK)
-        workManager.cancelUniqueWork(PERIODIC_WORK)
+        workManager.cancelUniqueWork(IMMEDIATE_WORK_NAME)
+        workManager.cancelUniqueWork(PERIODIC_WORK_NAME)
     }
 }
