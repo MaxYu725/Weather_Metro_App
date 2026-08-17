@@ -215,6 +215,27 @@ fun SettingsScreen(
                         notificationDiagnostics.verdict.displayLabel(),
                     )
                     DiagnosticLine(
+                        "HKO journal work periodic ${notificationDiagnostics.officialPeriodicActiveCount} / " +
+                            "immediate ${notificationDiagnostics.officialImmediateActiveCount}",
+                    )
+                    DiagnosticLine(
+                        "HKO journal ${officialJournalCursorText(notificationDiagnostics)} · synced " +
+                            eventAgeText(
+                                notificationDiagnostics.checkedAtEpochMs,
+                                notificationDiagnostics.officialLastSuccessEpochMs,
+                            ) + " · delivered ${notificationDiagnostics.officialDeliveredEventsLastRun}",
+                    )
+                    if (notificationDiagnostics.officialError.isNotBlank()) {
+                        DiagnosticLine("HKO journal error ${notificationDiagnostics.officialError}")
+                    } else {
+                        DiagnosticLine(
+                            "HKO journal last attempt " + eventAgeText(
+                                notificationDiagnostics.checkedAtEpochMs,
+                                notificationDiagnostics.officialLastAttemptEpochMs,
+                            ),
+                        )
+                    }
+                    DiagnosticLine(
                         "periodic ${notificationDiagnostics.periodicActiveCount} active · " +
                             "dispatch 2D1 ${notificationDiagnostics.periodicDispatchHeavyRain.onOff()} / " +
                             "SWIRLS ${notificationDiagnostics.periodicDispatchPersonalizedRain.onOff()}",
@@ -342,6 +363,13 @@ private fun PersonalizedNotificationDiagnosticVerdict.displayLabel(): String = w
     PersonalizedNotificationDiagnosticVerdict.READ_ERROR -> "diagnostics read error"
 }
 
+private fun officialJournalCursorText(diagnostics: PersonalizedNotificationDiagnostics): String {
+    if (!diagnostics.officialJournalInitialized) return "not initialized"
+    val local = diagnostics.officialJournalCursor
+    val server = diagnostics.officialLatestServerCursor
+    return if (server > 0L) "cursor $local / $server" else "cursor $local / server unknown"
+}
+
 private fun Boolean.onOff(): String = if (this) "on" else "off"
 
 private fun ageText(ageMs: Long?): String {
@@ -357,12 +385,3 @@ private fun eventAgeText(checkedAtEpochMs: Long, eventEpochMs: Long): String {
     if (age < 0L) return "clock mismatch"
     return ageText(age).removeSuffix(" old") + " ago"
 }
-
-@Composable
-private fun personalizedSliderColors() = SliderDefaults.colors(
-    thumbColor = Color.White,
-    activeTrackColor = Color.White,
-    inactiveTrackColor = Color.Black.copy(alpha = 0.55f),
-    activeTickColor = Color.Black.copy(alpha = 0.4f),
-    inactiveTickColor = Color.White.copy(alpha = 0.5f),
-)
