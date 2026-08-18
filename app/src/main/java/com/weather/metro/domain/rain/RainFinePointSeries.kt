@@ -149,7 +149,11 @@ private fun reconstructSixMinuteBuckets(
 
     if (amounts.any { !it.isFinite() || it < -consistencyToleranceMm }) return null
     val normalized = amounts.map { value ->
-        if (value <= consistencyToleranceMm) 0.0 else value
+        when {
+            value < 0.0 -> 0.0
+            abs(value) <= dryEpsilonMm -> 0.0
+            else -> value
+        }
     }
 
     // Guard against source rounding or an invalid dry anchor. The reconstructed
