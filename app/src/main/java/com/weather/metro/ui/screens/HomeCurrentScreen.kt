@@ -8,7 +8,6 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -61,9 +60,9 @@ import kotlin.math.abs
 import kotlin.math.roundToInt
 
 /**
- * Phase 3 home surface: normal weather remains useful without turning the app into a dense dashboard.
- * Rain-Track is reduced to a location-aware two-hour nowcast tile, while the heavyweight native
- * radar / forecast / storm surfaces are exposed as direct actions from Current.
+ * Phase 3B home surface: keep the useful Phase 3 integrations while tightening the vertical rhythm
+ * for real phone screens. Active warnings become compact rows, the two-hour rain card uses a true
+ * mini timeline, and conditions use stable at-a-glance stats instead of a mostly empty text strip.
  */
 @Composable
 fun HomeCurrentScreen(
@@ -317,6 +316,12 @@ fun HomeCurrentScreen(
     }
 }
 
+private data class HomeRainSample(
+    val leadMinutes: Int,
+    val time: String,
+    val amountMm: Double,
+)
+
 @Composable
 private fun HomeRainNowcastTile(
     rainState: RainHostState,
@@ -363,26 +368,43 @@ private fun HomeRainNowcastTile(
 
             val samples = homeRainSamples(rainState)
             if (samples.isNotEmpty()) {
-                Spacer(Modifier.height(14.dp))
+                Spacer(Modifier.height(12.dp))
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(4.dp),
                 ) {
-                    samples.forEach { (lead, amount) ->
+                    samples.forEach { sample ->
                         Column(
                             modifier = Modifier.weight(1f),
                             horizontalAlignment = Alignment.CenterHorizontally,
                         ) {
+                            Box(
+                                modifier = Modifier.height(31.dp).fillMaxWidth(),
+                                contentAlignment = Alignment.BottomCenter,
+                            ) {
+                                Box(
+                                    Modifier
+                                        .width(19.dp)
+                                        .height(homeRainBarHeight(sample.amountMm))
+                                        .background(
+                                            Color.White.copy(
+                                                alpha = if (sample.amountMm < 0.1) 0.30f else 0.92f,
+                                            ),
+                                        ),
+                                )
+                            }
+                            Spacer(Modifier.height(4.dp))
                             Text(
-                                homeRainMarker(amount),
-                                color = Color.White,
-                                fontSize = 21.sp,
-                                lineHeight = 22.sp,
+                                homeRainClock(sample.time),
+                                color = Color.White.copy(alpha = 0.88f),
+                                fontSize = 10.sp,
+                                maxLines = 1,
                             )
                             Text(
-                                if (lead == 0) "現在" else "+$lead",
-                                color = Color.White.copy(alpha = 0.62f),
-                                fontSize = 9.sp,
+                                if (sample.leadMinutes == 0) "現在" else "+${sample.leadMinutes}m",
+                                color = Color.White.copy(alpha = 0.55f),
+                                fontSize = 8.sp,
+                                maxLines = 1,
                             )
                         }
                     }
@@ -399,17 +421,17 @@ private fun homeRainSummary(state: RainHostState): String {
     val forecast = resource.value
     if (forecast != null) {
         val summary = forecast.summary
-        summary?.text?.trim()?.takeIf { it.isNotBlank() }?.let { return it }
-        summary?.rainStartLeadMinutes?.takeIf { it > 0 }?.let { lead ->
-            return "約 $lead 分鐘後可能有雨"
-        }
         val wetPeriods = summary?.wetPeriodCount ?: forecast.periods.count { it.amountMm >= 0.1 }
         val totalMm = summary?.totalMm ?: forecast.periods.sumOf { it.amountMm }
-        return if (wetPeriods == 0 || totalMm < 0.1) {
-            "未來 2 小時暫無明顯降雨"
-        } else {
-            "未來 2 小時預計有雨"
+        if (wetPeriods == 0 || totalMm < 0.1) return "未來 2 小時暫無明顯降雨"
+
+        summary?.rainStartLeadMinutes?.takeIf { it > 0 }?.let { lead ->
+            return "約 $lead 分鐘後可能開始有雨 · 2 小時約 ${totalMm.homeDisplay(" mm")}"
         }
+        if (totalMm >= 0.1) {
+            return "未來 2 小時預計有雨 · 累積約 ${totalMm.homeDisplay(" mm")}"
+        }
+        summary?.text?.trim()?.takeIf { it.isNotBlank() }?.let { return it }
     }
     return when (resource.status) {
         RainResourceStatus.IDLE -> "準備取得所在地降雨預測"
@@ -419,25 +441,43 @@ private fun homeRainSummary(state: RainHostState): String {
     }
 }
 
-private fun homeRainSamples(state: RainHostState): List<Pair<Int, Double>> {
+private fun homeRainSamples(state: RainHostState): List<HomeRainSample> {
     val periods = state.pointForecast.value?.periods.orEmpty()
     if (periods.isEmpty()) return emptyList()
     val withLead = periods.filter { it.leadMinutes != null }
     if (withLead.isEmpty()) {
-        return periods.take(5).mapIndexed { index, period -> index * 30 to period.amountMm }
+        return periods.take(5).mapIndexed { index, period ->
+            HomeRainSample(
+                leadMinutes = index * 30,
+                time = period.time,
+                amountMm = period.amountMm,
+            )
+        }
     }
     return listOf(0, 30, 60, 90, 120).mapNotNull { target ->
         withLead.minByOrNull { period -> abs((period.leadMinutes ?: target) - target) }
-            ?.let { target to it.amountMm }
+            ?.let { period ->
+                HomeRainSample(
+                    leadMinutes = target,
+                    time = period.time,
+                    amountMm = period.amountMm,
+                )
+            }
     }
 }
 
-private fun homeRainMarker(amountMm: Double): String = when {
-    amountMm < 0.1 -> "·"
-    amountMm < 0.5 -> "▂"
-    amountMm < 2.0 -> "▄"
-    amountMm < 5.0 -> "▆"
-    else -> "█"
+private fun homeRainBarHeight(amountMm: Double) = when {
+    amountMm < 0.1 -> 2.dp
+    amountMm < 0.5 -> 8.dp
+    amountMm < 2.0 -> 14.dp
+    amountMm < 5.0 -> 22.dp
+    else -> 30.dp
+}
+
+private fun homeRainClock(value: String): String {
+    if (value.isBlank()) return "--:--"
+    return runCatching { HOME_RAIN_TIME.format(Instant.parse(value)) }
+        .getOrElse { value.replace("T", " ").takeLast(5) }
 }
 
 @Composable
@@ -509,38 +549,107 @@ private fun HomeToolAction(
     }
 }
 
+private data class HomeConditionItem(val label: String, val value: String)
+
 @Composable
 private fun HomeConditionsTile(snapshot: WeatherSnapshot, pageColour: Color) {
-    val current = snapshot.current
-    val conditions = buildList {
-        current.uvIndex?.let { add("UV $it") }
-        if (!current.windDirection.isNullOrBlank() || current.windSpeedKmh != null) {
-            add(
-                listOfNotNull(
-                    current.windDirection?.takeIf { it.isNotBlank() },
-                    current.windSpeedKmh?.let { "${it.homeDisplay("")} km/h" },
-                ).joinToString(" "),
-            )
-        }
-        current.visibilityKm?.let { add("能見度 ${it.homeDisplay(" km")}") }
-        current.feelsLikeC?.let { add("體感 ${it.homeDisplay("°")}") }
-    }
+    val items = homeConditionItems(snapshot)
     MetroTile(
         seed = "home-conditions",
         background = pageColour,
-        modifier = Modifier.fillMaxWidth().height(58.dp),
+        modifier = Modifier.fillMaxWidth().height(72.dp),
         contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp),
     ) {
-        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.CenterStart) {
-            Text(
-                conditions.joinToString("  ·  ").ifBlank { "展開上方天氣卡查看詳細觀測" },
-                color = Color.White.copy(alpha = 0.86f),
-                fontSize = 12.sp,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
+        if (items.isEmpty()) {
+            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.CenterStart) {
+                Text(
+                    "展開上方天氣卡查看詳細觀測",
+                    color = Color.White.copy(alpha = 0.78f),
+                    fontSize = 12.sp,
+                )
+            }
+        } else {
+            Row(
+                modifier = Modifier.fillMaxSize(),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                items.forEachIndexed { index, item ->
+                    Column(Modifier.weight(1f)) {
+                        Text(
+                            item.label,
+                            color = Color.White.copy(alpha = 0.58f),
+                            fontSize = 9.sp,
+                            maxLines = 1,
+                        )
+                        Text(
+                            item.value,
+                            color = Color.White.copy(alpha = 0.92f),
+                            fontSize = 12.sp,
+                            lineHeight = 14.sp,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                    if (index < items.lastIndex) {
+                        Box(
+                            Modifier
+                                .padding(horizontal = 9.dp)
+                                .width(1.dp)
+                                .height(32.dp)
+                                .background(Color.White.copy(alpha = 0.16f)),
+                        )
+                    }
+                }
+            }
         }
     }
+}
+
+private fun homeConditionItems(snapshot: WeatherSnapshot): List<HomeConditionItem> {
+    val current = snapshot.current
+    return buildList {
+        if (current.uvIndex != null) {
+            add(
+                HomeConditionItem(
+                    label = "UV",
+                    value = listOfNotNull(
+                        current.uvIndex.toString(),
+                        current.uvDescription?.takeIf { it.isNotBlank() },
+                    ).joinToString(" "),
+                ),
+            )
+        } else {
+            current.humidityPercent?.let { add(HomeConditionItem("濕度", it.homeDisplay("%"))) }
+        }
+
+        if (!current.windDirection.isNullOrBlank() || current.windSpeedKmh != null) {
+            add(
+                HomeConditionItem(
+                    label = "風",
+                    value = listOfNotNull(
+                        current.windDirection?.takeIf { it.isNotBlank() },
+                        current.windSpeedKmh?.let { it.homeDisplay(" km/h") },
+                    ).joinToString(" "),
+                ),
+            )
+        }
+
+        if (current.feelsLikeC != null) {
+            add(HomeConditionItem("體感", current.feelsLikeC.homeDisplay("°")))
+        } else if (current.visibilityKm != null) {
+            add(HomeConditionItem("能見度", current.visibilityKm.homeDisplay(" km")))
+        }
+
+        if (size < 3 && current.visibilityKm != null && none { it.label == "能見度" }) {
+            add(HomeConditionItem("能見度", current.visibilityKm.homeDisplay(" km")))
+        }
+        if (size < 3 && current.rainfallMm != null) {
+            add(HomeConditionItem("雨量", current.rainfallMm.homeDisplay(" mm")))
+        }
+        if (size < 3 && current.pressureHpa != null) {
+            add(HomeConditionItem("氣壓", current.pressureHpa.homeDisplay(" hPa")))
+        }
+    }.distinctBy { it.label }.take(3)
 }
 
 @Composable
@@ -638,14 +747,14 @@ private fun HomeAlertsSection(
         return
     }
 
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        alerts.chunked(4).forEach { group ->
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+    Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
+        alerts.chunked(2).forEach { group ->
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(7.dp)) {
                 group.forEach { alert ->
                     HomeAlertSmallTile(
                         alert = alert,
                         selected = alert.id == selectedId,
-                        modifier = Modifier.weight(1f),
+                        modifier = if (group.size == 1) Modifier.fillMaxWidth() else Modifier.weight(1f),
                         onClick = {
                             val next = if (selectedId == alert.id) null else alert.id
                             selectedId = next
@@ -653,7 +762,6 @@ private fun HomeAlertsSection(
                         },
                     )
                 }
-                repeat(4 - group.size) { Spacer(Modifier.weight(1f)) }
             }
             val selected = group.firstOrNull { it.id == selectedId }
             if (selected != null) HomeAlertDetailTile(selected)
@@ -671,32 +779,39 @@ private fun HomeAlertSmallTile(
     MetroTile(
         seed = alert.id,
         background = homeAlertColor(alert.severity),
-        modifier = modifier.aspectRatio(0.70f),
+        modifier = modifier.height(74.dp),
         onClick = onClick,
         selected = selected,
-        contentPadding = PaddingValues(8.dp),
+        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 9.dp),
     ) {
-        Column(Modifier.fillMaxSize()) {
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
-                HkoRemoteImage(
-                    url = alert.iconUrl,
-                    contentDescription = alert.title,
-                    modifier = Modifier.size(30.dp),
-                    fallback = homeAlertFallback(alert),
-                )
-                Spacer(Modifier.weight(1f))
-                Text(if (selected) "−" else "+", color = Color.White, fontSize = 17.sp)
-            }
-            Spacer(Modifier.weight(1f))
-            Text(
-                alert.title,
-                color = Color.White,
-                fontSize = 12.sp,
-                lineHeight = 15.sp,
-                maxLines = 4,
-                overflow = TextOverflow.Ellipsis,
+        Row(
+            modifier = Modifier.fillMaxSize(),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            HkoRemoteImage(
+                url = alert.iconUrl,
+                contentDescription = alert.title,
+                modifier = Modifier.size(34.dp),
+                fallback = homeAlertFallback(alert),
             )
-            Text(homeFormatHkoTime(alert.updatedAt), color = Color.White.copy(alpha = 0.72f), fontSize = 9.sp)
+            Spacer(Modifier.width(10.dp))
+            Column(Modifier.weight(1f)) {
+                Text(
+                    alert.title,
+                    color = Color.White,
+                    fontSize = 12.sp,
+                    lineHeight = 15.sp,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    homeFormatHkoTime(alert.updatedAt),
+                    color = Color.White.copy(alpha = 0.68f),
+                    fontSize = 9.sp,
+                )
+            }
+            Spacer(Modifier.width(6.dp))
+            Text(if (selected) "−" else "+", color = Color.White, fontSize = 18.sp)
         }
     }
 }
@@ -790,3 +905,7 @@ private fun Number?.homeDisplay(suffix: String): String = when (this) {
     is Double -> if (this % 1.0 == 0.0) "${roundToInt()}$suffix" else "${"%.1f".format(Locale.US, this)}$suffix"
     else -> "$this$suffix"
 }
+
+private val HOME_RAIN_TIME: DateTimeFormatter = DateTimeFormatter
+    .ofPattern("HH:mm")
+    .withZone(ZoneId.of("Asia/Hong_Kong"))
