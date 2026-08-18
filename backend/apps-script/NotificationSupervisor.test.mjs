@@ -135,11 +135,29 @@ test('recovery runs only for a persistent RSS-only source gap', () => {
   }), true);
 });
 
-test('legacy trigger pruning is sampled rather than performed every minute', () => {
+test('legacy trigger pruning is hourly rather than performed every ten minutes', () => {
   const { context } = loadScript();
   assert.equal(context.shouldPruneLegacyNotificationTriggers_({ dayRunCount: 0 }), true);
   assert.equal(context.shouldPruneLegacyNotificationTriggers_({ dayRunCount: 1 }), false);
-  assert.equal(context.shouldPruneLegacyNotificationTriggers_({ dayRunCount: 10 }), true);
+  assert.equal(context.shouldPruneLegacyNotificationTriggers_({ dayRunCount: 10 }), false);
+  assert.equal(context.shouldPruneLegacyNotificationTriggers_({ dayRunCount: 60 }), true);
+});
+
+test('mirrored source schedule avoids rereading source-health property', () => {
+  let reads = 0;
+  const { context } = loadScript({
+    readWarningSourceCrossCheck_() {
+      reads += 1;
+      return { status: 'MATCH', checkedAtEpochMs: 123 };
+    },
+  });
+  const schedule = context.readSupervisorSourceSchedule_({
+    lastSourceCheckEpochMs: 456,
+    lastSourceStatus: 'MATCH',
+  }, {});
+  assert.equal(schedule.checkedAtEpochMs, 456);
+  assert.equal(schedule.status, 'MATCH');
+  assert.equal(reads, 0);
 });
 
 test('consumer quota projection uses measured supervisor average runtime', () => {
@@ -149,11 +167,15 @@ test('consumer quota projection uses measured supervisor average runtime', () =>
     dayRunCount: 20,
     dayRuntimeMs: 60_000,
     fastJournalChecksToday: 13,
+    fastJournalRuntimeMsToday: 13_000,
     fullJournalChecksToday: 7,
+    fullJournalRuntimeMsToday: 28_000,
     journalFailuresToday: 0,
     sourceChecksToday: 7,
+    sourceRuntimeMsToday: 7_000,
     recoveryChecksToday: 0,
     pruneChecksToday: 2,
+    pruneRuntimeMsToday: 2_000,
     busySkipsToday: 0,
     componentFailuresToday: 0,
     legacyTriggersRemovedToday: 0,
@@ -167,6 +189,30 @@ test('consumer quota projection uses measured supervisor average runtime', () =>
   assert.equal(telemetry.consumerQuotaRisk, false);
   assert.equal(telemetry.fastJournalChecksToday, 13);
   assert.equal(telemetry.fullJournalChecksToday, 7);
+  assert.equal(telemetry.averageFastJournalMs, 1_000);
+  assert.equal(telemetry.averageFullJournalMs, 4_000);
+  assert.equal(telemetry.averageSourceCheckMs, 1_000);
+  assert.equal(telemetry.averagePruneMs, 1_000);
+  assert.equal(telemetry.measuredComponentRuntimeMs, 50_000);
+  assert.equal(telemetry.unclassifiedRuntimeMs, 10_000);
+});
+
+test('plain fast cycle does not need routine success logging', () => {
+  const { context } = loadScript();
+  assert.equal(context.shouldLogNotificationSupervisorSuccess_({
+    journal: 'FAST',
+    source: 'NOT_DUE',
+    recovery: 'IDLE',
+    pruneChecked: false,
+    legacyTriggersRemoved: 0,
+  }), false);
+  assert.equal(context.shouldLogNotificationSupervisorSuccess_({
+    journal: 'FULL',
+    source: 'NOT_DUE',
+    recovery: 'IDLE',
+    pruneChecked: false,
+    legacyTriggersRemoved: 0,
+  }), true);
 });
 
 test('steady-state supervisor uses fast-poll owner and optimized RSS cross-check', () => {
