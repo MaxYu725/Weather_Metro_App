@@ -82,6 +82,13 @@ private const val DESTINATION_STORM = "storm"
 private const val TOOLS_DESTINATION_TRANSITION_MS = 460
 private const val TOOLS_REDUCED_TRANSITION_MS = 140
 
+enum class NativeToolDestination(val route: String) {
+    POINT(DESTINATION_POINT),
+    RADAR(DESTINATION_RADAR),
+    FORECAST(DESTINATION_FORECAST),
+    STORM(DESTINATION_STORM),
+}
+
 internal fun toolsFullscreenReleaseDelayMs(reduceMotion: Boolean): Long =
     if (reduceMotion) TOOLS_REDUCED_TRANSITION_MS.toLong() else TOOLS_DESTINATION_TRANSITION_MS.toLong()
 
@@ -112,12 +119,14 @@ fun NativeToolsScreen(
     onRefreshStorm: () -> Unit,
     onEnsureStormFresh: () -> Unit,
     onCancelStormRequests: () -> Unit,
+    entryDestination: NativeToolDestination? = null,
+    onExitRequested: (() -> Unit)? = null,
 ) {
     val lifecycleOwner = LocalLifecycleOwner.current
     var lifecycleResumed by remember(lifecycleOwner) {
         mutableStateOf(lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED))
     }
-    var destination by rememberSaveable { mutableStateOf(DESTINATION_HOME) }
+    var destination by rememberSaveable { mutableStateOf(entryDestination?.route ?: DESTINATION_HOME) }
     var selectedRadiusKm by rememberSaveable {
         mutableIntStateOf(rainState.pointRequest?.radiusKm ?: RainHostViewModel.DEFAULT_POINT_RADIUS_KM)
     }
@@ -136,6 +145,12 @@ fun NativeToolsScreen(
         onDispose { lifecycle.removeObserver(observer) }
     }
 
+    LaunchedEffect(entryDestination) {
+        entryDestination?.let { requested ->
+            if (destination != requested.route) destination = requested.route
+        }
+    }
+
     fun cancelDestinationRequests() {
         when (destination) {
             DESTINATION_POINT -> onCancelPointRefresh()
@@ -145,9 +160,17 @@ fun NativeToolsScreen(
         }
     }
 
-    BackHandler(enabled = destination != DESTINATION_HOME) {
+    fun closeDestination() {
         cancelDestinationRequests()
-        destination = DESTINATION_HOME
+        if (entryDestination != null && onExitRequested != null) {
+            onExitRequested()
+        } else {
+            destination = DESTINATION_HOME
+        }
+    }
+
+    BackHandler(enabled = destination != DESTINATION_HOME) {
+        closeDestination()
     }
 
     LaunchedEffect(isActive, destination, reduceMotion) {
@@ -242,10 +265,7 @@ fun NativeToolsScreen(
                     onRefreshPoint(radiusKm)
                 },
                 onRefresh = { onRefreshPoint(selectedRadiusKm) },
-                onBack = {
-                    onCancelPointRefresh()
-                    destination = DESTINATION_HOME
-                },
+                onBack = ::closeDestination,
             )
             DESTINATION_RADAR -> RadarMapLibreToolScreen(
                 pageColour = pageColour,
@@ -259,10 +279,7 @@ fun NativeToolsScreen(
                 onOpacityChange = onRadarOpacityChange,
                 onPlaybackSpeedChange = onRadarPlaybackSpeedChange,
                 onJumpToLatest = onJumpRadarToLatest,
-                onBack = {
-                    onCancelRadarRequests()
-                    destination = DESTINATION_HOME
-                },
+                onBack = ::closeDestination,
             )
             DESTINATION_FORECAST -> ForecastToolScreen(
                 pageColour = pageColour,
@@ -270,10 +287,7 @@ fun NativeToolsScreen(
                 isActive = effectiveActive && destination == targetDestination,
                 onRefresh = onRefreshForecast,
                 onSelectFrame = onLoadForecastFrame,
-                onBack = {
-                    onCancelForecastRequests()
-                    destination = DESTINATION_HOME
-                },
+                onBack = ::closeDestination,
             )
             DESTINATION_STORM -> StormLiveToolScreen(
                 pageColour = pageColour,
@@ -282,10 +296,7 @@ fun NativeToolsScreen(
                 onRefresh = onRefreshStorm,
                 onEnsureFresh = onEnsureStormFresh,
                 onCancelRequests = onCancelStormRequests,
-                onBack = {
-                    onCancelStormRequests()
-                    destination = DESTINATION_HOME
-                },
+                onBack = ::closeDestination,
             )
             else -> ToolsHome(
                 pageColour = pageColour,
@@ -536,7 +547,7 @@ private fun StormLiveToolScreen(
 @Composable
 private fun ToolBackButton(pageColour: Color, onBack: () -> Unit) {
     Text(
-        "‹ tools",
+        "‹ back",
         color = pageColour,
         fontSize = 16.sp,
         modifier = Modifier
