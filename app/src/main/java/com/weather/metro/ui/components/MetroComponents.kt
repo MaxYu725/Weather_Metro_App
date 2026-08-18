@@ -58,11 +58,17 @@ import java.net.URI
 
 @Composable
 fun MetroSectionLabel(text: String, modifier: Modifier = Modifier) {
+    val compactHomeLabel = text == "alerts & tips" ||
+        text == "next 2 hours" ||
+        text == "live weather"
     Text(
         text = text,
-        modifier = modifier.padding(top = 22.dp, bottom = 10.dp),
+        modifier = modifier.padding(
+            top = if (compactHomeLabel) 12.dp else 22.dp,
+            bottom = if (compactHomeLabel) 4.dp else 10.dp,
+        ),
         color = LocalMetroSubText.current,
-        fontSize = 18.sp,
+        fontSize = if (compactHomeLabel) 15.sp else 18.sp,
         fontWeight = FontWeight.Light,
     )
 }
@@ -172,7 +178,7 @@ fun MetroStat(
         Text(text = value, color = Color.White, fontSize = 15.sp, lineHeight = 18.sp, fontWeight = FontWeight.Light)
         if (secondary) {
             Text(
-                text = "secondary estimate",
+                text = "輔助估算",
                 color = Color.White.copy(alpha = 0.62f),
                 fontSize = 7.sp,
                 lineHeight = 9.sp,
