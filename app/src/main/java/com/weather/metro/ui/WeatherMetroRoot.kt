@@ -135,13 +135,13 @@ fun WeatherMetroRoot(
         LaunchedEffect(
             activePage,
             activeTool,
-            toolLocation?.latitude,
-            toolLocation?.longitude,
+            rainState.location?.latitude,
+            rainState.location?.longitude,
         ) {
             if (
                 activePage == PageColourSlot.CURRENT &&
                 activeTool == null &&
-                toolLocation != null
+                rainState.location != null
             ) {
                 rainViewModel.refreshPointForecastIfStale()
             }
