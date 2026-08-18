@@ -1,5 +1,6 @@
 package com.weather.metro.ui.theme
 
+import androidx.compose.foundation.LocalOverscrollFactory
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.Typography
@@ -51,6 +52,7 @@ fun WeatherMetroTheme(settings: UiSettings, content: @Composable () -> Unit) {
         LocalMetroOutline provides metroOutline,
         LocalReduceMotion provides settings.reduceMotion,
         LocalDensity provides scaledDensity,
+        LocalOverscrollFactory provides null,
     ) {
         MaterialTheme(
             colorScheme = scheme,
