@@ -116,6 +116,7 @@ test('bootstrap uses prefetched warnsum hydration before committing digest', () 
   assert.ok(stored.lastFullRefreshEpochMs > 0);
   const verification = script.context.notificationFastPollVerification_();
   assert.equal(verification.schemaVersion, 2);
+  assert.equal(verification.fullRefreshIntervalMs, 300_000);
   assert.equal(verification.optimizedHydrationAvailable, true);
 });
 
@@ -142,7 +143,7 @@ test('unchanged warnsum inside auxiliary interval uses one-request fast path', (
   script.properties.set(V2, JSON.stringify({
     schemaVersion: 2,
     committedSummaryDigest: digest,
-    lastFullRefreshEpochMs: 900_000,
+    lastFullRefreshEpochMs: 700_001,
   }));
   const result = script.context.runNotificationFastPoll_(
     script.context.PropertiesService.getScriptProperties(),
@@ -171,13 +172,13 @@ test('changed warnsum forces immediate optimized full hydration', () => {
   assert.equal(script.counts().optimizedCalls, 1);
 });
 
-test('standalone warningInfo and SWT remain bounded by periodic full hydration', () => {
+test('standalone warningInfo and SWT remain bounded by five-minute full hydration', () => {
   const script = loadScript();
   const digest = script.context.notificationWarnsumDigest_(script.summary);
   script.properties.set(V2, JSON.stringify({
     schemaVersion: 2,
     committedSummaryDigest: digest,
-    lastFullRefreshEpochMs: 800_000,
+    lastFullRefreshEpochMs: 700_000,
   }));
   const result = script.context.runNotificationFastPoll_(
     script.context.PropertiesService.getScriptProperties(),
