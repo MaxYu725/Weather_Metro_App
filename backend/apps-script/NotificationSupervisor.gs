@@ -15,7 +15,7 @@ const NOTIFICATION_SUPERVISOR_CONFIG = Object.freeze({
   intervalMinutes: 1,
   sourceMinIntervalMs: 170 * 1000,
   sourceDegradedMinIntervalMs: 55 * 1000,
-  pruneEveryRuns: 10,
+  pruneEveryRuns: 60,
   consumerDailyTriggerRuntimeBudgetMs: 90 * 60 * 1000,
   projectedRiskFraction: 0.85,
   actualRiskFraction: 0.80,
@@ -95,6 +95,10 @@ function runNotificationSupervisor() {
       failures: [],
       legacyTriggersRemoved: 0,
       pruneChecked: false,
+      pruneDurationMs: 0,
+      journalDurationMs: 0,
+      sourceDurationMs: 0,
+      sourceCheckedAtEpochMs: 0,
     };
     updateNotificationSupervisorRuntime_(properties, skipped, runtimeBefore);
     console.warn('Notification supervisor skipped because a previous cycle is still running.');
@@ -113,15 +117,22 @@ function runNotificationSupervisor() {
     failures: [],
     legacyTriggersRemoved: 0,
     pruneChecked: false,
+    pruneDurationMs: 0,
+    journalDurationMs: 0,
+    sourceDurationMs: 0,
+    sourceCheckedAtEpochMs: 0,
   };
   let primarySummary = null;
 
   try {
     if (shouldPruneLegacyNotificationTriggers_(runtimeBefore)) {
+      const pruneStartedAt = Date.now();
       result.pruneChecked = true;
       result.legacyTriggersRemoved = pruneLegacyNotificationTriggers_();
+      result.pruneDurationMs = Math.max(0, Date.now() - pruneStartedAt);
     }
 
+    const journalStartedAt = Date.now();
     try {
       const journalCycle = runNotificationFastPoll_(properties, Date.now());
       result.journal = String(journalCycle && journalCycle.mode || 'UNKNOWN');
@@ -132,16 +143,23 @@ function runNotificationSupervisor() {
     } catch (error) {
       result.journal = 'ERROR';
       result.failures.push(supervisorFailure_('journal', error));
+    } finally {
+      result.journalDurationMs = Math.max(0, Date.now() - journalStartedAt);
     }
 
-    const sourceBefore = readSupervisorSourceHealth_(properties);
+    // Once a source check has completed, its scheduling facts are mirrored into
+    // the supervisor runtime that is already read at the start of every cycle.
+    // This avoids a second Script Properties read on every healthy minute.
+    const sourceBefore = readSupervisorSourceSchedule_(runtimeBefore, properties);
     const forceSourceCheck = result.journal === 'ERROR';
     if (shouldRunSourceCrossCheck_(sourceBefore, Date.now(), forceSourceCheck)) {
+      const sourceStartedAt = Date.now();
       try {
         const source = primarySummary && typeof checkWarningSourceRedundancyFromSummary_ === 'function'
           ? checkWarningSourceRedundancyFromSummary_(primarySummary, Date.now())
           : checkWarningSourceRedundancy();
         result.source = String(source && source.status || 'UNKNOWN');
+        result.sourceCheckedAtEpochMs = Number(source && source.checkedAtEpochMs || Date.now());
         if (shouldRunSourceGapRecovery_(source)) {
           const evidence = checkSourceGapRecoveryEvidence();
           result.recovery = String(evidence && evidence.status || 'UNKNOWN');
@@ -155,7 +173,10 @@ function runNotificationSupervisor() {
         }
       } catch (error) {
         result.source = 'ERROR';
+        result.sourceCheckedAtEpochMs = Date.now();
         result.failures.push(supervisorFailure_('source/recovery', error));
+      } finally {
+        result.sourceDurationMs = Math.max(0, Date.now() - sourceStartedAt);
       }
     }
 
@@ -177,10 +198,21 @@ function runNotificationSupervisor() {
 
   if (result.failures.length > 0) {
     console.error('Notification supervisor degraded: ' + JSON.stringify(result));
-  } else {
+  } else if (shouldLogNotificationSupervisorSuccess_(result)) {
     console.log('Notification supervisor completed: ' + JSON.stringify(result));
   }
   return result;
+}
+
+function shouldLogNotificationSupervisorSuccess_(result) {
+  if (!result) return false;
+  return Boolean(
+    result.journal !== 'FAST' ||
+    result.source !== 'NOT_DUE' ||
+    result.recovery !== 'IDLE' ||
+    result.pruneChecked ||
+    Number(result.legacyTriggersRemoved || 0) > 0
+  );
 }
 
 function shouldRunSourceCrossCheck_(sourceHealth, nowEpochMs, force) {
@@ -210,6 +242,18 @@ function shouldRunSourceGapRecovery_(sourceHealth) {
 function shouldPruneLegacyNotificationTriggers_(runtime) {
   const runCount = Math.max(0, Number(runtime && runtime.dayRunCount || 0));
   return runCount === 0 || runCount % NOTIFICATION_SUPERVISOR_CONFIG.pruneEveryRuns === 0;
+}
+
+function readSupervisorSourceSchedule_(runtime, properties) {
+  const checkedAt = Number(runtime && runtime.lastSourceCheckEpochMs || 0);
+  const status = String(runtime && runtime.lastSourceStatus || '');
+  if (checkedAt > 0 && status) {
+    return {
+      checkedAtEpochMs: checkedAt,
+      status: status,
+    };
+  }
+  return readSupervisorSourceHealth_(properties);
 }
 
 function readSupervisorSourceHealth_(properties) {
@@ -251,11 +295,25 @@ function updateNotificationSupervisorRuntime_(properties, result, existingRuntim
   runtime.lastCompletedAtEpochMs = completedAt;
   runtime.lastStatus = String(result.status || 'UNKNOWN');
   runtime.legacyTriggersRemovedToday += Math.max(0, Number(result.legacyTriggersRemoved || 0));
-  if (result.pruneChecked) runtime.pruneChecksToday += 1;
-  if (result.journal === 'FAST') runtime.fastJournalChecksToday += 1;
-  if (result.journal === 'FULL') runtime.fullJournalChecksToday += 1;
+  if (result.pruneChecked) {
+    runtime.pruneChecksToday += 1;
+    runtime.pruneRuntimeMsToday += Math.max(0, Number(result.pruneDurationMs || 0));
+  }
+  if (result.journal === 'FAST') {
+    runtime.fastJournalChecksToday += 1;
+    runtime.fastJournalRuntimeMsToday += Math.max(0, Number(result.journalDurationMs || 0));
+  }
+  if (result.journal === 'FULL') {
+    runtime.fullJournalChecksToday += 1;
+    runtime.fullJournalRuntimeMsToday += Math.max(0, Number(result.journalDurationMs || 0));
+  }
   if (result.journal === 'ERROR') runtime.journalFailuresToday += 1;
-  if (result.source !== 'NOT_DUE' && result.source !== 'SKIPPED') runtime.sourceChecksToday += 1;
+  if (result.source !== 'NOT_DUE' && result.source !== 'SKIPPED') {
+    runtime.sourceChecksToday += 1;
+    runtime.sourceRuntimeMsToday += Math.max(0, Number(result.sourceDurationMs || 0));
+    runtime.lastSourceCheckEpochMs = Math.max(0, Number(result.sourceCheckedAtEpochMs || completedAt));
+    runtime.lastSourceStatus = String(result.source || 'UNKNOWN');
+  }
   if (result.recovery !== 'IDLE' && result.recovery !== 'SKIPPED') runtime.recoveryChecksToday += 1;
   if (result.status === 'SKIPPED_BUSY') runtime.busySkipsToday += 1;
   runtime.componentFailuresToday += Array.isArray(result.failures) ? result.failures.length : 0;
@@ -276,11 +334,17 @@ function notificationSupervisorEmptyRuntime_(dayKey) {
     lastCompletedAtEpochMs: 0,
     lastStatus: '',
     fastJournalChecksToday: 0,
+    fastJournalRuntimeMsToday: 0,
     fullJournalChecksToday: 0,
+    fullJournalRuntimeMsToday: 0,
     journalFailuresToday: 0,
     sourceChecksToday: 0,
+    sourceRuntimeMsToday: 0,
+    lastSourceCheckEpochMs: 0,
+    lastSourceStatus: '',
     recoveryChecksToday: 0,
     pruneChecksToday: 0,
+    pruneRuntimeMsToday: 0,
     busySkipsToday: 0,
     componentFailuresToday: 0,
     legacyTriggersRemovedToday: 0,
@@ -311,6 +375,14 @@ function deriveNotificationSupervisorQuotaTelemetry_(runtime) {
   const value = runtime || notificationSupervisorEmptyRuntime_('');
   const runCount = Math.max(0, Number(value.dayRunCount || 0));
   const runtimeMs = Math.max(0, Number(value.dayRuntimeMs || 0));
+  const fastCount = Math.max(0, Number(value.fastJournalChecksToday || 0));
+  const fullCount = Math.max(0, Number(value.fullJournalChecksToday || 0));
+  const sourceCount = Math.max(0, Number(value.sourceChecksToday || 0));
+  const pruneCount = Math.max(0, Number(value.pruneChecksToday || 0));
+  const fastRuntimeMs = Math.max(0, Number(value.fastJournalRuntimeMsToday || 0));
+  const fullRuntimeMs = Math.max(0, Number(value.fullJournalRuntimeMsToday || 0));
+  const sourceRuntimeMs = Math.max(0, Number(value.sourceRuntimeMsToday || 0));
+  const pruneRuntimeMs = Math.max(0, Number(value.pruneRuntimeMsToday || 0));
   const averageRunMs = runCount > 0 ? runtimeMs / runCount : 0;
   const projectedDailyRuntimeMs = runCount >= NOTIFICATION_SUPERVISOR_CONFIG.minimumProjectionRuns
     ? averageRunMs * (24 * 60 / NOTIFICATION_SUPERVISOR_CONFIG.intervalMinutes)
@@ -328,15 +400,30 @@ function deriveNotificationSupervisorQuotaTelemetry_(runtime) {
     consumerQuotaRisk: actualRisk || projectedRisk,
     actualRuntimeRisk: actualRisk,
     projectedRuntimeRisk: projectedRisk,
-    fastJournalChecksToday: Math.max(0, Number(value.fastJournalChecksToday || 0)),
-    fullJournalChecksToday: Math.max(0, Number(value.fullJournalChecksToday || 0)),
+    fastJournalChecksToday: fastCount,
+    fastJournalRuntimeMsToday: fastRuntimeMs,
+    averageFastJournalMs: fastCount > 0 ? Math.round(fastRuntimeMs / fastCount) : 0,
+    fullJournalChecksToday: fullCount,
+    fullJournalRuntimeMsToday: fullRuntimeMs,
+    averageFullJournalMs: fullCount > 0 ? Math.round(fullRuntimeMs / fullCount) : 0,
     journalFailuresToday: Math.max(0, Number(value.journalFailuresToday || 0)),
-    sourceChecksToday: Math.max(0, Number(value.sourceChecksToday || 0)),
+    sourceChecksToday: sourceCount,
+    sourceRuntimeMsToday: sourceRuntimeMs,
+    averageSourceCheckMs: sourceCount > 0 ? Math.round(sourceRuntimeMs / sourceCount) : 0,
     recoveryChecksToday: Math.max(0, Number(value.recoveryChecksToday || 0)),
-    pruneChecksToday: Math.max(0, Number(value.pruneChecksToday || 0)),
+    pruneChecksToday: pruneCount,
+    pruneRuntimeMsToday: pruneRuntimeMs,
+    averagePruneMs: pruneCount > 0 ? Math.round(pruneRuntimeMs / pruneCount) : 0,
+    measuredComponentRuntimeMs: fastRuntimeMs + fullRuntimeMs + sourceRuntimeMs + pruneRuntimeMs,
+    unclassifiedRuntimeMs: Math.max(
+      0,
+      runtimeMs - fastRuntimeMs - fullRuntimeMs - sourceRuntimeMs - pruneRuntimeMs,
+    ),
     busySkipsToday: Math.max(0, Number(value.busySkipsToday || 0)),
     componentFailuresToday: Math.max(0, Number(value.componentFailuresToday || 0)),
     legacyTriggersRemovedToday: Math.max(0, Number(value.legacyTriggersRemovedToday || 0)),
+    lastSourceCheckEpochMs: Math.max(0, Number(value.lastSourceCheckEpochMs || 0)),
+    lastSourceStatus: String(value.lastSourceStatus || ''),
     lastDurationMs: Math.max(0, Number(value.lastDurationMs || 0)),
     maxDurationMs: Math.max(0, Number(value.maxDurationMs || 0)),
     lastStatus: String(value.lastStatus || ''),
