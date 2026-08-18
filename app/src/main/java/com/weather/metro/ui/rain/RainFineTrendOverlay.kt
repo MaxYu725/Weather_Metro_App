@@ -164,7 +164,7 @@ private fun FineTrendPanel(
                     accent = accent,
                 )
                 Text(
-                    "${state.loadedFrameCount}/${state.totalFrameCount} frames · 本次 JSON ${formatPayloadBytes(state.downloadedPayloadBytes)}",
+                    "${state.loadedFrameCount}/${state.totalFrameCount} frames · 額外 JSON ${formatPayloadBytes(state.downloadedPayloadBytes)}",
                     color = FINE_MUTED,
                     fontSize = 9.sp,
                 )
@@ -175,7 +175,7 @@ private fun FineTrendPanel(
                     FineSeriesContent(series, accent)
                 }
                 Text(
-                    "16/16 frames · 本次 JSON ${formatPayloadBytes(state.downloadedPayloadBytes)} · ${formatElapsed(state.elapsedMillis)}",
+                    "16/16 frames · 額外 JSON ${formatPayloadBytes(state.downloadedPayloadBytes)} · ${formatElapsed(state.elapsedMillis)}",
                     color = FINE_MUTED,
                     fontSize = 8.sp,
                     maxLines = 1,
@@ -192,7 +192,7 @@ private fun FineTrendPanel(
                     overflow = TextOverflow.Ellipsis,
                 )
                 Text(
-                    "已載入 ${state.loadedFrameCount}/${state.totalFrameCount} · JSON ${formatPayloadBytes(state.downloadedPayloadBytes)} · retry",
+                    "已載入 ${state.loadedFrameCount}/${state.totalFrameCount} · 額外 JSON ${formatPayloadBytes(state.downloadedPayloadBytes)} · retry",
                     color = accent,
                     fontSize = 9.sp,
                     modifier = Modifier
