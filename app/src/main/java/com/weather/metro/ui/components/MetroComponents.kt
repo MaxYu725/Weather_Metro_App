@@ -60,8 +60,7 @@ import java.net.URI
 fun MetroSectionLabel(text: String, modifier: Modifier = Modifier) {
     val compactHomeLabel = text == "alerts & tips" ||
         text == "next 2 hours" ||
-        text == "live weather" ||
-        text == "conditions"
+        text == "live weather"
     Text(
         text = text,
         modifier = modifier.padding(
@@ -113,23 +112,12 @@ fun MetroTile(
                 size = Size(3.dp.toPx(), size.height),
             )
         }
-    val isHomeConditions = seed == "home-conditions"
-    val resolvedModifier = if (isHomeConditions) {
-        Modifier.fillMaxWidth().height(48.dp)
-    } else {
-        modifier
-    }
-    val resolvedPadding = if (isHomeConditions) {
-        androidx.compose.foundation.layout.PaddingValues(horizontal = 14.dp, vertical = 5.dp)
-    } else {
-        contentPadding
-    }
     Box(
-        modifier = resolvedModifier
+        modifier = modifier
             .clip(androidx.compose.ui.graphics.RectangleShape)
             .then(chromeModifier)
             .then(clickableModifier)
-            .padding(resolvedPadding),
+            .padding(contentPadding),
         content = content,
     )
 }
@@ -190,7 +178,7 @@ fun MetroStat(
         Text(text = value, color = Color.White, fontSize = 15.sp, lineHeight = 18.sp, fontWeight = FontWeight.Light)
         if (secondary) {
             Text(
-                text = "secondary estimate",
+                text = "輔助估算",
                 color = Color.White.copy(alpha = 0.62f),
                 fontSize = 7.sp,
                 lineHeight = 9.sp,
