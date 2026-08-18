@@ -15,7 +15,7 @@
 const NOTIFICATION_FAST_POLL_CONFIG = Object.freeze({
   statePropertyKey: 'HKO_NOTIFICATION_FAST_POLL_V2',
   legacyStatePropertyKey: 'HKO_NOTIFICATION_FAST_POLL_V1',
-  fullRefreshIntervalMs: 170 * 1000,
+  fullRefreshIntervalMs: 5 * 60 * 1000,
   primarySuccessTelemetryMinIntervalMs: 90 * 1000,
   schemaVersion: 2,
 });
