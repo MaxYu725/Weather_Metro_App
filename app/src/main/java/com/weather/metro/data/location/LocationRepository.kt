@@ -183,6 +183,4 @@ private val LEGACY_TRADITIONAL_ADDRESS_MAP = mapOf(
     '务' to '務',
     '树' to '樹',
     '边' to '邊',
-    '环' to '環',
-    '岗' to '崗',
 )
