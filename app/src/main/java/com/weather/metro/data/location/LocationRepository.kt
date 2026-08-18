@@ -4,6 +4,7 @@ import android.Manifest
 import android.annotation.SuppressLint
 import android.content.Context
 import android.content.pm.PackageManager
+import android.icu.text.Transliterator
 import android.location.Address
 import android.location.Geocoder
 import android.location.Location
@@ -43,24 +44,27 @@ class LocationRepository(private val context: Context) {
         } ?: return defaultLocation()
 
         val address = reverseGeocode(location.latitude, location.longitude)
-        val street = listOfNotNull(address?.subThoroughfare, address?.thoroughfare)
+        val street = listOfNotNull(
+            traditionalAddressText(address?.subThoroughfare),
+            traditionalAddressText(address?.thoroughfare),
+        )
             .filter { it.isNotBlank() }
             .joinToString(" ")
             .takeIf { it.isNotBlank() }
         val districtHints = listOfNotNull(
-            address?.subAdminArea,
-            address?.adminArea,
-            address?.subLocality,
-            address?.locality,
+            traditionalAddressText(address?.subAdminArea),
+            traditionalAddressText(address?.adminArea),
+            traditionalAddressText(address?.subLocality),
+            traditionalAddressText(address?.locality),
         ).joinToString(" ")
         val label = preferredLocationLabel(
             candidates = listOf(
-                address?.premises,
+                traditionalAddressText(address?.premises),
                 street,
-                address?.thoroughfare,
-                address?.featureName,
-                address?.subLocality,
-                address?.locality,
+                traditionalAddressText(address?.thoroughfare),
+                traditionalAddressText(address?.featureName),
+                traditionalAddressText(address?.subLocality),
+                traditionalAddressText(address?.locality),
             ),
             geocodedDistrict = districtHints,
         )
@@ -96,5 +100,16 @@ class LocationRepository(private val context: Context) {
                 runCatching { geocoder.getFromLocation(latitude, longitude, 1)?.firstOrNull() }.getOrNull()
             }
         }
+    }
+}
+
+private val simplifiedToTraditional by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
+    Transliterator.getInstance("Simplified-Traditional")
+}
+
+private fun traditionalAddressText(value: String?): String? {
+    val text = value?.trim()?.takeIf { it.isNotEmpty() } ?: return null
+    return synchronized(simplifiedToTraditional) {
+        simplifiedToTraditional.transliterate(text)
     }
 }
