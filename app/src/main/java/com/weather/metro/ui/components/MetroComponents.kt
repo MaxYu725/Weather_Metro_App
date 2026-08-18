@@ -58,11 +58,18 @@ import java.net.URI
 
 @Composable
 fun MetroSectionLabel(text: String, modifier: Modifier = Modifier) {
+    val compactHomeLabel = text == "alerts & tips" ||
+        text == "next 2 hours" ||
+        text == "live weather" ||
+        text == "conditions"
     Text(
         text = text,
-        modifier = modifier.padding(top = 22.dp, bottom = 10.dp),
+        modifier = modifier.padding(
+            top = if (compactHomeLabel) 12.dp else 22.dp,
+            bottom = if (compactHomeLabel) 4.dp else 10.dp,
+        ),
         color = LocalMetroSubText.current,
-        fontSize = 18.sp,
+        fontSize = if (compactHomeLabel) 15.sp else 18.sp,
         fontWeight = FontWeight.Light,
     )
 }
@@ -106,12 +113,23 @@ fun MetroTile(
                 size = Size(3.dp.toPx(), size.height),
             )
         }
+    val isHomeConditions = seed == "home-conditions"
+    val resolvedModifier = if (isHomeConditions) {
+        Modifier.fillMaxWidth().height(48.dp)
+    } else {
+        modifier
+    }
+    val resolvedPadding = if (isHomeConditions) {
+        androidx.compose.foundation.layout.PaddingValues(horizontal = 14.dp, vertical = 5.dp)
+    } else {
+        contentPadding
+    }
     Box(
-        modifier = modifier
+        modifier = resolvedModifier
             .clip(androidx.compose.ui.graphics.RectangleShape)
             .then(chromeModifier)
             .then(clickableModifier)
-            .padding(contentPadding),
+            .padding(resolvedPadding),
         content = content,
     )
 }
