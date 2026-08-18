@@ -77,11 +77,7 @@ class RainSwirlsPointSeriesClientTest {
 
     @Test
     fun rejectsIncompleteSeries() {
-        val fixture = validFixture()
-        val lastObjectStart = fixture.lastIndexOf("    {\"frameIndex\": 15")
-        val lastObjectEnd = fixture.indexOf("\n    }", lastObjectStart) + "\n    }".length
-        val broken = fixture.removeRange(lastObjectStart - 2, lastObjectEnd)
-            .replace("\"sampleCount\": 16", "\"sampleCount\": 15")
+        val broken = validFixture().replace("\"sampleCount\": 16", "\"sampleCount\": 15")
 
         assertTrue(runCatching { RainSwirlsPointSeriesClient().parse(broken) }.isFailure)
     }
