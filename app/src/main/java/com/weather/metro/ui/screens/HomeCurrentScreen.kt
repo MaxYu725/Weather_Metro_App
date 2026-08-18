@@ -61,8 +61,8 @@ import kotlin.math.roundToInt
 
 /**
  * Phase 3B home surface: keep the useful Phase 3 integrations while tightening the vertical rhythm
- * for real phone screens. Active warnings become compact rows, the two-hour rain card uses a true
- * mini timeline, and conditions use stable at-a-glance stats instead of a mostly empty text strip.
+ * for real phone screens. Active warnings remain compact, the two-hour rain card leads with its
+ * actionable summary, and detailed observations stay in the expandable current-weather card.
  */
 @Composable
 fun HomeCurrentScreen(
@@ -100,6 +100,7 @@ fun HomeCurrentScreen(
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(start = 22.dp, end = 16.dp, bottom = 48.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp),
+        overscrollEffect = null,
     ) {
         item {
             Row(
@@ -297,11 +298,6 @@ fun HomeCurrentScreen(
             )
         }
 
-        item { MetroSectionLabel("conditions") }
-        item {
-            HomeConditionsTile(snapshot = snapshot, pageColour = pageColour)
-        }
-
         if (!hasActiveAlerts) {
             item { MetroSectionLabel("alerts & tips") }
             item {
@@ -310,7 +306,7 @@ fun HomeCurrentScreen(
                     pageColour = pageColour,
                     navigationRequest = navigationRequest,
                     onNavigationHandled = onNavigationHandled,
-                ) { scrollToItem(10) }
+                ) { scrollToItem(8) }
             }
         }
     }
@@ -330,6 +326,7 @@ private fun HomeRainNowcastTile(
 ) {
     val resource = rainState.pointForecast
     val forecast = resource.value
+    val headline = homeRainSummary(rainState)
     MetroTile(
         seed = "home-rain-nowcast",
         background = pageColour,
@@ -338,22 +335,17 @@ private fun HomeRainNowcastTile(
     ) {
         Column {
             Row(verticalAlignment = Alignment.Top) {
-                Column(Modifier.weight(1f)) {
-                    Text(
-                        "未來 2 小時降雨",
-                        color = Color.White,
-                        fontSize = 24.sp,
-                        fontWeight = FontWeight.Light,
-                    )
-                    Text(
-                        homeRainSummary(rainState),
-                        color = Color.White.copy(alpha = 0.82f),
-                        fontSize = 13.sp,
-                        lineHeight = 18.sp,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                }
+                Text(
+                    headline,
+                    color = Color.White,
+                    fontSize = 22.sp,
+                    lineHeight = 28.sp,
+                    fontWeight = FontWeight.Light,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f),
+                )
+                Spacer(Modifier.width(8.dp))
                 Text(
                     when {
                         resource.status == RainResourceStatus.LOADING -> "更新中"
@@ -547,109 +539,6 @@ private fun HomeToolAction(
             Text("open ›", color = Color.White.copy(alpha = 0.62f), fontSize = 9.sp)
         }
     }
-}
-
-private data class HomeConditionItem(val label: String, val value: String)
-
-@Composable
-private fun HomeConditionsTile(snapshot: WeatherSnapshot, pageColour: Color) {
-    val items = homeConditionItems(snapshot)
-    MetroTile(
-        seed = "home-conditions",
-        background = pageColour,
-        modifier = Modifier.fillMaxWidth().height(72.dp),
-        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp),
-    ) {
-        if (items.isEmpty()) {
-            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.CenterStart) {
-                Text(
-                    "展開上方天氣卡查看詳細觀測",
-                    color = Color.White.copy(alpha = 0.78f),
-                    fontSize = 12.sp,
-                )
-            }
-        } else {
-            Row(
-                modifier = Modifier.fillMaxSize(),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                items.forEachIndexed { index, item ->
-                    Column(Modifier.weight(1f)) {
-                        Text(
-                            item.label,
-                            color = Color.White.copy(alpha = 0.58f),
-                            fontSize = 9.sp,
-                            maxLines = 1,
-                        )
-                        Text(
-                            item.value,
-                            color = Color.White.copy(alpha = 0.92f),
-                            fontSize = 12.sp,
-                            lineHeight = 14.sp,
-                            maxLines = 2,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                    }
-                    if (index < items.lastIndex) {
-                        Box(
-                            Modifier
-                                .padding(horizontal = 9.dp)
-                                .width(1.dp)
-                                .height(32.dp)
-                                .background(Color.White.copy(alpha = 0.16f)),
-                        )
-                    }
-                }
-            }
-        }
-    }
-}
-
-private fun homeConditionItems(snapshot: WeatherSnapshot): List<HomeConditionItem> {
-    val current = snapshot.current
-    return buildList {
-        if (current.uvIndex != null) {
-            add(
-                HomeConditionItem(
-                    label = "UV",
-                    value = listOfNotNull(
-                        current.uvIndex.toString(),
-                        current.uvDescription?.takeIf { it.isNotBlank() },
-                    ).joinToString(" "),
-                ),
-            )
-        } else {
-            current.humidityPercent?.let { add(HomeConditionItem("濕度", it.homeDisplay("%"))) }
-        }
-
-        if (!current.windDirection.isNullOrBlank() || current.windSpeedKmh != null) {
-            add(
-                HomeConditionItem(
-                    label = "風",
-                    value = listOfNotNull(
-                        current.windDirection?.takeIf { it.isNotBlank() },
-                        current.windSpeedKmh?.let { it.homeDisplay(" km/h") },
-                    ).joinToString(" "),
-                ),
-            )
-        }
-
-        if (current.feelsLikeC != null) {
-            add(HomeConditionItem("體感", current.feelsLikeC.homeDisplay("°")))
-        } else if (current.visibilityKm != null) {
-            add(HomeConditionItem("能見度", current.visibilityKm.homeDisplay(" km")))
-        }
-
-        if (size < 3 && current.visibilityKm != null && none { it.label == "能見度" }) {
-            add(HomeConditionItem("能見度", current.visibilityKm.homeDisplay(" km")))
-        }
-        if (size < 3 && current.rainfallMm != null) {
-            add(HomeConditionItem("雨量", current.rainfallMm.homeDisplay(" mm")))
-        }
-        if (size < 3 && current.pressureHpa != null) {
-            add(HomeConditionItem("氣壓", current.pressureHpa.homeDisplay(" hPa")))
-        }
-    }.distinctBy { it.label }.take(3)
 }
 
 @Composable
