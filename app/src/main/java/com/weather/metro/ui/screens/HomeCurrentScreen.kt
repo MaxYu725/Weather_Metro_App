@@ -19,6 +19,8 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -32,12 +34,14 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.viewmodel.compose.viewModel
 import com.weather.metro.domain.AlertSeverity
 import com.weather.metro.domain.AstronomyInfo
 import com.weather.metro.domain.LocalForecast
 import com.weather.metro.domain.LocationInfo
 import com.weather.metro.domain.WeatherAlert
 import com.weather.metro.domain.WeatherSnapshot
+import com.weather.metro.domain.rain.RainSwirlsPointSeries
 import com.weather.metro.ui.AppNavigationRequest
 import com.weather.metro.ui.components.ExpandableMetroTile
 import com.weather.metro.ui.components.HkoRemoteImage
@@ -47,6 +51,7 @@ import com.weather.metro.ui.components.MetroStat
 import com.weather.metro.ui.components.MetroTile
 import com.weather.metro.ui.rain.RainHostState
 import com.weather.metro.ui.rain.RainResourceStatus
+import com.weather.metro.ui.rain.RainSwirlsPointSeriesViewModel
 import com.weather.metro.ui.storm.StormHostState
 import com.weather.metro.ui.theme.LocalMetroSubText
 import com.weather.metro.ui.theme.LocalReduceMotion
@@ -60,9 +65,8 @@ import kotlin.math.abs
 import kotlin.math.roundToInt
 
 /**
- * Phase 3B home surface: keep the useful Phase 3 integrations while tightening the vertical rhythm
- * for real phone screens. Active warnings remain compact, the two-hour rain card leads with its
- * actionable summary, and detailed observations stay in the expandable current-weather card.
+ * Phase 3C home surface: keep the compact Phase 3B hierarchy while replacing the old five-point
+ * rainfall approximation with the compact 16-sample SWIRLS point series when available.
  */
 @Composable
 fun HomeCurrentScreen(
@@ -324,9 +328,25 @@ private fun HomeRainNowcastTile(
     pageColour: Color,
     onClick: () -> Unit,
 ) {
+    val pointSeriesViewModel: RainSwirlsPointSeriesViewModel = viewModel()
+    val pointSeriesState by pointSeriesViewModel.state.collectAsState()
+    val location = rainState.location
+    LaunchedEffect(
+        location?.latitude,
+        location?.longitude,
+        rainState.pointForecast.value?.issueTime,
+    ) {
+        if (location != null) {
+            pointSeriesViewModel.bindLocation(location)
+            pointSeriesViewModel.refreshIfStale()
+        }
+    }
+
     val resource = rainState.pointForecast
     val forecast = resource.value
-    val headline = homeRainSummary(rainState)
+    val fineResource = pointSeriesState.resource
+    val fineSeries = fineResource.value
+    val headline = fineSeries?.let(::homeFineRainSummary) ?: homeRainSummary(rainState)
     MetroTile(
         seed = "home-rain-nowcast",
         background = pageColour,
@@ -348,6 +368,9 @@ private fun HomeRainNowcastTile(
                 Spacer(Modifier.width(8.dp))
                 Text(
                     when {
+                        fineResource.status == RainResourceStatus.LOADING -> "精細載入"
+                        fineSeries != null && fineResource.isStale -> "6分鐘快取"
+                        fineSeries != null -> "6分鐘"
                         resource.status == RainResourceStatus.LOADING -> "更新中"
                         resource.isStale -> "快取"
                         forecast != null -> "所在地"
@@ -358,46 +381,50 @@ private fun HomeRainNowcastTile(
                 )
             }
 
-            val samples = homeRainSamples(rainState)
-            if (samples.isNotEmpty()) {
-                Spacer(Modifier.height(12.dp))
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(4.dp),
-                ) {
-                    samples.forEach { sample ->
-                        Column(
-                            modifier = Modifier.weight(1f),
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                        ) {
-                            Box(
-                                modifier = Modifier.height(31.dp).fillMaxWidth(),
-                                contentAlignment = Alignment.BottomCenter,
+            if (fineSeries != null) {
+                HomeFineRainTimeline(fineSeries)
+            } else {
+                val samples = homeRainSamples(rainState)
+                if (samples.isNotEmpty()) {
+                    Spacer(Modifier.height(12.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    ) {
+                        samples.forEach { sample ->
+                            Column(
+                                modifier = Modifier.weight(1f),
+                                horizontalAlignment = Alignment.CenterHorizontally,
                             ) {
                                 Box(
-                                    Modifier
-                                        .width(19.dp)
-                                        .height(homeRainBarHeight(sample.amountMm))
-                                        .background(
-                                            Color.White.copy(
-                                                alpha = if (sample.amountMm < 0.1) 0.30f else 0.92f,
+                                    modifier = Modifier.height(31.dp).fillMaxWidth(),
+                                    contentAlignment = Alignment.BottomCenter,
+                                ) {
+                                    Box(
+                                        Modifier
+                                            .width(19.dp)
+                                            .height(homeRainBarHeight(sample.amountMm))
+                                            .background(
+                                                Color.White.copy(
+                                                    alpha = if (sample.amountMm < 0.1) 0.30f else 0.92f,
+                                                ),
                                             ),
-                                        ),
+                                    )
+                                }
+                                Spacer(Modifier.height(4.dp))
+                                Text(
+                                    homeRainClock(sample.time),
+                                    color = Color.White.copy(alpha = 0.88f),
+                                    fontSize = 10.sp,
+                                    maxLines = 1,
+                                )
+                                Text(
+                                    if (sample.leadMinutes == 0) "現在" else "+${sample.leadMinutes}m",
+                                    color = Color.White.copy(alpha = 0.55f),
+                                    fontSize = 8.sp,
+                                    maxLines = 1,
                                 )
                             }
-                            Spacer(Modifier.height(4.dp))
-                            Text(
-                                homeRainClock(sample.time),
-                                color = Color.White.copy(alpha = 0.88f),
-                                fontSize = 10.sp,
-                                maxLines = 1,
-                            )
-                            Text(
-                                if (sample.leadMinutes == 0) "現在" else "+${sample.leadMinutes}m",
-                                color = Color.White.copy(alpha = 0.55f),
-                                fontSize = 8.sp,
-                                maxLines = 1,
-                            )
                         }
                     }
                 }
@@ -405,6 +432,61 @@ private fun HomeRainNowcastTile(
             Spacer(Modifier.height(8.dp))
             Text("詳細降雨 ›", color = Color.White.copy(alpha = 0.7f), fontSize = 11.sp)
         }
+    }
+}
+
+@Composable
+private fun HomeFineRainTimeline(series: RainSwirlsPointSeries) {
+    Spacer(Modifier.height(12.dp))
+    Row(
+        modifier = Modifier.fillMaxWidth().height(34.dp),
+        horizontalArrangement = Arrangement.spacedBy(3.dp),
+        verticalAlignment = Alignment.Bottom,
+    ) {
+        series.samples.forEach { sample ->
+            Box(
+                modifier = Modifier.weight(1f).fillMaxSize(),
+                contentAlignment = Alignment.BottomCenter,
+            ) {
+                Box(
+                    Modifier
+                        .fillMaxWidth()
+                        .height(homeRainBarHeight(sample.accumulationMm))
+                        .background(
+                            Color.White.copy(
+                                alpha = when {
+                                    sample.accumulationMm < 0.05 -> 0.24f
+                                    sample.accumulationMm < 0.2 -> 0.52f
+                                    else -> 0.94f
+                                },
+                            ),
+                        ),
+                )
+            }
+        }
+    }
+    Spacer(Modifier.height(5.dp))
+    Row(Modifier.fillMaxWidth()) {
+        Text("+30", color = Color.White.copy(alpha = 0.56f), fontSize = 8.sp)
+        Spacer(Modifier.weight(1f))
+        Text("+60", color = Color.White.copy(alpha = 0.56f), fontSize = 8.sp)
+        Spacer(Modifier.weight(1f))
+        Text("+90", color = Color.White.copy(alpha = 0.56f), fontSize = 8.sp)
+        Spacer(Modifier.weight(1f))
+        Text("+120 分", color = Color.White.copy(alpha = 0.56f), fontSize = 8.sp)
+    }
+}
+
+private fun homeFineRainSummary(series: RainSwirlsPointSeries): String {
+    val significant = series.samples.filter { it.accumulationMm >= HOME_SIGNIFICANT_RAIN_MM }
+    if (significant.isEmpty()) return "未來 2 小時暫無明顯降雨"
+    val peak = series.peakAccumulationMm
+    if (peak >= 2.0) return "未來 2 小時有較強降雨訊號"
+    val firstLead = significant.first().leadMinutes
+    return if (firstLead <= 60) {
+        "未來 1 小時內降雨訊號逐步增強"
+    } else {
+        "未來 2 小時後段降雨訊號較明顯"
     }
 }
 
@@ -459,11 +541,12 @@ private fun homeRainSamples(state: RainHostState): List<HomeRainSample> {
 }
 
 private fun homeRainBarHeight(amountMm: Double) = when {
-    amountMm < 0.1 -> 2.dp
-    amountMm < 0.5 -> 8.dp
-    amountMm < 2.0 -> 14.dp
-    amountMm < 5.0 -> 22.dp
-    else -> 30.dp
+    amountMm < 0.05 -> 2.dp
+    amountMm < 0.2 -> 5.dp
+    amountMm < 0.5 -> 9.dp
+    amountMm < 2.0 -> 15.dp
+    amountMm < 5.0 -> 23.dp
+    else -> 31.dp
 }
 
 private fun homeRainClock(value: String): String {
@@ -613,7 +696,7 @@ private fun HomeAlertsSection(
     onAlertExpanded: () -> Unit,
 ) {
     var selectedId by remember(alerts) { mutableStateOf<String?>(null) }
-    androidx.compose.runtime.LaunchedEffect(navigationRequest?.token, alerts) {
+    LaunchedEffect(navigationRequest?.token, alerts) {
         val request = navigationRequest ?: return@LaunchedEffect
         val selected = alerts.firstOrNull {
             it.id == request.alertId || (!request.alertCode.isNullOrBlank() && it.code == request.alertCode)
@@ -794,6 +877,8 @@ private fun Number?.homeDisplay(suffix: String): String = when (this) {
     is Double -> if (this % 1.0 == 0.0) "${roundToInt()}$suffix" else "${"%.1f".format(Locale.US, this)}$suffix"
     else -> "$this$suffix"
 }
+
+private const val HOME_SIGNIFICANT_RAIN_MM = 0.2
 
 private val HOME_RAIN_TIME: DateTimeFormatter = DateTimeFormatter
     .ofPattern("HH:mm")
