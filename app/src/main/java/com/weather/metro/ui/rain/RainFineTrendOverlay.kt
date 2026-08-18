@@ -313,5 +313,5 @@ internal fun formatElapsed(milliseconds: Long?): String = when {
 private fun formatMmCompact(value: Double): String = when {
     value <= 0.0 -> "0 mm"
     value >= 10.0 -> String.format(Locale.US, "%.1f mm", value)
-    else -> String.format(Locale.US, "%.2f mm", value).trimEnd('0').trimEnd('.') + " mm"
+    else -> String.format(Locale.US, "%.2f", value).trimEnd('0').trimEnd('.') + " mm"
 }
