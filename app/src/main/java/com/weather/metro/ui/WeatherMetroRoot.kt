@@ -46,6 +46,7 @@ import com.weather.metro.domain.WeatherLoadState
 import com.weather.metro.ui.components.MetroProgress
 import com.weather.metro.ui.map.HongKongBackdrop
 import com.weather.metro.ui.map.HongKongMapAttribution
+import com.weather.metro.ui.rain.RainFineTrendOverlay
 import com.weather.metro.ui.rain.RainHostViewModel
 import com.weather.metro.ui.rain.RainRadarHostViewModel
 import com.weather.metro.ui.screens.ForecastScreen
@@ -318,6 +319,16 @@ fun WeatherMetroRoot(
                             entryDestination = destination,
                             onExitRequested = { activeTool = null },
                         )
+                        if (destination == NativeToolDestination.FORECAST) {
+                            RainFineTrendOverlay(
+                                rainState = rainState,
+                                pageColour = toolsColour,
+                                isActive = true,
+                                modifier = Modifier
+                                    .align(Alignment.TopCenter)
+                                    .padding(start = 72.dp, end = 14.dp, top = 72.dp),
+                            )
+                        }
                     }
                 }
             }
