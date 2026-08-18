@@ -43,11 +43,12 @@ private val FINE_MUTED = Color(0xFF9A9A9A)
 private val FINE_WARNING = Color(0xFFFFB300)
 
 /**
- * Temporary Phase 3C measurement surface.
+ * Phase 3C measurement surface for the detailed two-hour forecast tool.
  *
- * Nothing is downloaded until the user expands this panel. It is deliberately
- * kept outside the production forecast HUD so we can validate latency and
- * payload cost before deciding whether the 16-point series belongs in Current.
+ * Nothing is downloaded until the user expands this panel. The payload counter
+ * reports only the additional decoded JSON fetched by this explicit probe; it
+ * is not a claim about total on-wire transfer and excludes frames already held
+ * by the host timeline.
  */
 @Composable
 fun RainFineTrendOverlay(
