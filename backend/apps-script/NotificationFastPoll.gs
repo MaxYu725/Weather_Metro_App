@@ -16,6 +16,7 @@ const NOTIFICATION_FAST_POLL_CONFIG = Object.freeze({
   statePropertyKey: 'HKO_NOTIFICATION_FAST_POLL_V2',
   legacyStatePropertyKey: 'HKO_NOTIFICATION_FAST_POLL_V1',
   fullRefreshIntervalMs: 170 * 1000,
+  primarySuccessTelemetryMinIntervalMs: 90 * 1000,
   schemaVersion: 2,
 });
 
@@ -70,8 +71,9 @@ function runNotificationFastPoll_(properties, nowEpochMs) {
     };
   }
 
-  // Fast-only success updates attempt + primary-source freshness in one compact
-  // runtime-state write rather than two read/modify/write cycles.
+  // The HKO request still runs every supervisor minute. Persist compact success
+  // telemetry only often enough to stay safely inside the 3-minute health gate;
+  // this avoids a redundant Script Properties write on alternating healthy runs.
   notificationFastPollMarkPrimarySuccess_(properties, now);
 
   // FCM delivery retries must not wait for the next full source hydration.
@@ -123,6 +125,16 @@ function notificationFastPollMigrateV2_(properties) {
   }
 }
 
+function notificationFastPollShouldPersistPrimarySuccess_(lastSuccessEpochMs, nowEpochMs) {
+  const previous = Number(lastSuccessEpochMs || 0);
+  const now = Number(nowEpochMs || Date.now());
+  if (!Number.isFinite(previous) || previous <= 0) return true;
+  if (!Number.isFinite(now) || now <= 0) return true;
+  const ageMs = now - previous;
+  if (ageMs < 0) return true;
+  return ageMs >= NOTIFICATION_FAST_POLL_CONFIG.primarySuccessTelemetryMinIntervalMs;
+}
+
 function notificationFastPollMarkPrimarySuccess_(properties, nowEpochMs) {
   const now = Number(nowEpochMs || Date.now());
   if (
@@ -130,6 +142,9 @@ function notificationFastPollMarkPrimarySuccess_(properties, nowEpochMs) {
     typeof writeNotificationPipelineRuntime_ === 'function'
   ) {
     const runtime = readNotificationPipelineRuntime_(properties);
+    if (!notificationFastPollShouldPersistPrimarySuccess_(runtime.lastHkoPollSuccessEpochMs, now)) {
+      return;
+    }
     runtime.lastAttemptEpochMs = now;
     runtime.lastHkoPollSuccessEpochMs = now;
     writeNotificationPipelineRuntime_(properties, runtime);
@@ -286,6 +301,7 @@ function notificationFastPollVerification_() {
   return {
     schemaVersion: NOTIFICATION_FAST_POLL_CONFIG.schemaVersion,
     fullRefreshIntervalMs: NOTIFICATION_FAST_POLL_CONFIG.fullRefreshIntervalMs,
+    primarySuccessTelemetryMinIntervalMs: NOTIFICATION_FAST_POLL_CONFIG.primarySuccessTelemetryMinIntervalMs,
     optimizedHydrationAvailable: typeof checkWeatherUpdatesJournalledFromSummary_ === 'function',
     committedSummaryDigestPresent: Boolean(state.committedSummaryDigest),
     lastFullRefreshEpochMs: lastFull,
