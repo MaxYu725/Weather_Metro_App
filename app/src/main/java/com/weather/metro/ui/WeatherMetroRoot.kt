@@ -100,6 +100,7 @@ fun WeatherMetroRoot(
     val toolLocation by viewModel.toolLocation.collectAsStateWithLifecycle()
     val navigationRequest by viewModel.navigationRequest.collectAsStateWithLifecycle()
     val rainState by rainViewModel.state.collectAsStateWithLifecycle()
+    val locationTrendState by locationTrendViewModel.state.collectAsStateWithLifecycle()
     val radarState by radarViewModel.state.collectAsStateWithLifecycle()
     val stormState by stormViewModel.state.collectAsStateWithLifecycle()
     val productionRadarState = radarState.copy(
@@ -292,6 +293,7 @@ fun WeatherMetroRoot(
                                     HomeCurrentScreen(
                                         snapshot = state.snapshot,
                                         rainState = rainState,
+                                        locationTrendState = locationTrendState,
                                         stormState = stormState,
                                         pageColour = pageColour,
                                         refreshing = state.refreshing,
