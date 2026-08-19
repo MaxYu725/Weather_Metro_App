@@ -38,6 +38,9 @@ android {
 
     buildTypes {
         debug {
+            // CI intentionally keeps the normal package id so a stable debug
+            // signing key can update the same test installation across builds.
+            // The workflow persists ~/.android/debug.keystore between runs.
             versionNameSuffix = "-debug"
         }
         release {
