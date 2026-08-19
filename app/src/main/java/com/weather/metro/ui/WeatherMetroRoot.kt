@@ -301,7 +301,10 @@ fun WeatherMetroRoot(
                                         onRequestLocation = requestLocationPermission,
                                         onOpenPointRain = { activeTool = NativeToolDestination.POINT },
                                         onOpenRadar = { activeTool = NativeToolDestination.RADAR },
-                                        onOpenForecastMap = { activeTool = NativeToolDestination.FORECAST },
+                                        onOpenForecastMap = {
+                                            locationTrendViewModel.cancelRefresh()
+                                            activeTool = NativeToolDestination.FORECAST
+                                        },
                                         onOpenStorm = { activeTool = NativeToolDestination.STORM },
                                         navigationRequest = navigationRequest?.takeIf {
                                             it.page == PageColourSlot.CURRENT && it.showAlerts
