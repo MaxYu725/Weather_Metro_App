@@ -36,19 +36,16 @@ data class RainSwirlsPointSeriesState(
 )
 
 /**
- * Current-page 6-minute-cadence rainfall trend.
+ * Optional Current-page 6-minute-cadence rainfall trend.
  *
- * Phase 3C originally asked the Rain Worker to synchronously aggregate all 16
- * SWIRLS grids into one compact response. Production testing showed that a
- * single slow HKO MDL could make that all-or-nothing Worker request fail even
- * though the normal per-frame endpoints remained usable.
+ * Production testing showed that making Current wait for all 16 live SWIRLS
+ * frames is not reliable enough for a startup-critical surface. Current now
+ * keeps the established fast point forecast as its only automatic path.
  *
- * This owner therefore uses the same proven per-frame API as the detailed
- * forecast. Successful frames are retained in memory across retries; one slow
- * frame no longer discards the other 15. Nothing is persisted to disk, so a
- * failed state cannot survive an app reinstall/restart as stale application
- * state. The published values remain 30-minute rolling accumulations sampled
- * at six-minute cadence.
+ * This loader is retained as Phase 3C groundwork for a future prebuilt backend
+ * snapshot, but [refreshIfStale] deliberately does not start live 16-frame
+ * downloads. The detailed two-hour forecast uses its own explicit loader and is
+ * unaffected.
  */
 class RainSwirlsPointSeriesViewModel : ViewModel() {
     private val transport: RainHttpTransport = UrlConnectionRainTransport()
@@ -89,28 +86,21 @@ class RainSwirlsPointSeriesViewModel : ViewModel() {
             }
         }
 
-        // A materially different point must not show a series calculated for
-        // the old point. The already downloaded grids remain reusable.
         if (previousLocation != null) {
             _state.value = _state.value.copy(resource = RainResourceState())
             acceptedAtEpochMs = null
         }
     }
 
+    /**
+     * Current must remain instant and deterministic. Do not turn a normal home
+     * refresh into sixteen HKO MDL requests. A future backend snapshot can
+     * replace this no-op without changing the Current UI contract.
+     */
     fun refreshIfStale(nowEpochMs: Long = System.currentTimeMillis()) {
-        val current = _state.value
-        if (current.location == null || current.resource.status == RainResourceStatus.LOADING) return
-        val acceptedAt = acceptedAtEpochMs
-        val staleByAge = acceptedAt == null || nowEpochMs - acceptedAt >= REFRESH_INTERVAL_MS
-        val retryAllowed = lastAttemptEpochMs?.let { nowEpochMs - it >= RETRY_COOLDOWN_MS } ?: true
-        if (
-            current.resource.status == RainResourceStatus.IDLE ||
-            current.resource.status == RainResourceStatus.ERROR ||
-            current.resource.isStale ||
-            staleByAge
-        ) {
-            if (retryAllowed) refresh()
-        }
+        @Suppress("UNUSED_VARIABLE")
+        val ignoredNow = nowEpochMs
+        return
     }
 
     fun refresh() {
@@ -337,8 +327,6 @@ class RainSwirlsPointSeriesViewModel : ViewModel() {
         IllegalStateException("精細降雨已載入 $loaded/$total，稍後自動補回缺少時段")
 
     private companion object {
-        const val REFRESH_INTERVAL_MS = 5 * 60 * 1000L
-        const val RETRY_COOLDOWN_MS = 15 * 1000L
         const val FRAME_CONNECT_TIMEOUT_MS = 8_000
         const val FRAME_READ_TIMEOUT_MS = 15_000
         const val MAX_CONCURRENT_FRAME_LOADS = 3
@@ -358,8 +346,6 @@ internal fun buildLocalSwirlsPointSeries(
             windowStart = sample.windowStart,
             windowEnd = sample.windowEnd,
             accumulationMm = sample.accumulationMm,
-            // The Current tile does not surface spatial spread. The rainfall
-            // value itself still comes from the same four-grid bilinear sample.
             spatialSpreadMm = 0.0,
         )
     }
