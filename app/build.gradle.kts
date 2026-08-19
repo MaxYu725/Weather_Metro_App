@@ -15,6 +15,8 @@ val escapedNotificationJournalUrl = notificationJournalUrl
     .replace("\\", "\\\\")
     .replace("\"", "\\\"")
 val slimReleaseApks = providers.gradleProperty("WEATHER_SLIM_RELEASE_APKS").orNull == "true"
+val signDebugWithSuppliedKey =
+    providers.gradleProperty("WEATHER_SIGN_DEBUG_WITH_SUPPLIED_KEY").orNull == "true"
 
 android {
     namespace = "com.weather.metro"
@@ -36,25 +38,32 @@ android {
         )
     }
 
+    val suppliedSigningConfig = System.getenv("ANDROID_KEYSTORE_PATH")
+        ?.takeIf { it.isNotBlank() }
+        ?.let { storePath ->
+            signingConfigs.create("supplied") {
+                storeFile = file(storePath)
+                storePassword = System.getenv("ANDROID_KEYSTORE_PASSWORD")
+                keyAlias = System.getenv("ANDROID_KEY_ALIAS")
+                keyPassword = System.getenv("ANDROID_KEY_PASSWORD")
+            }
+        }
+
     buildTypes {
         debug {
-            // CI intentionally keeps the normal package id so a stable debug
-            // signing key can update the same test installation across builds.
-            // The workflow persists ~/.android/debug.keystore between runs.
+            // CI test APKs keep the production package id but use the repository's
+            // persistent supplied signing identity. This makes sideload updates
+            // independent of ephemeral GitHub runner debug.keystore files.
             versionNameSuffix = "-debug"
+            if (signDebugWithSuppliedKey && suppliedSigningConfig != null) {
+                signingConfig = suppliedSigningConfig
+            }
         }
         release {
             isMinifyEnabled = true
             isShrinkResources = true
-
-            val storePath = System.getenv("ANDROID_KEYSTORE_PATH")
-            if (!storePath.isNullOrBlank()) {
-                signingConfig = signingConfigs.create("release") {
-                    storeFile = file(storePath)
-                    storePassword = System.getenv("ANDROID_KEYSTORE_PASSWORD")
-                    keyAlias = System.getenv("ANDROID_KEY_ALIAS")
-                    keyPassword = System.getenv("ANDROID_KEY_PASSWORD")
-                }
+            if (suppliedSigningConfig != null) {
+                signingConfig = suppliedSigningConfig
             }
         }
     }
