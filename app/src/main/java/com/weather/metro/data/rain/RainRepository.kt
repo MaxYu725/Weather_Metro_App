@@ -11,6 +11,7 @@ import com.weather.metro.domain.rain.RainPointForecast
 import com.weather.metro.domain.rain.RainRadarContract
 import com.weather.metro.domain.rain.RainRadarTimeline
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.delay
 
 class RainRepository(
     private val client: RainTrackClient,
@@ -93,7 +94,9 @@ class RainRepository(
 
     suspend fun loadForecastTimeline(): RainLoadResult<RainForecastTimeline> {
         try {
-            val network = forecastClient.loadSwirlsFrame(0)
+            val network = loadInitialSwirlsWithRetry {
+                forecastClient.loadSwirlsFrame(0)
+            }
             val timeline = forecastClient.buildSwirlsTimeline(network.value)
             synchronized(forecastLock) {
                 if (activeSwirlsRun != timeline.issueTime) activeSwirlsFrames.clear()
@@ -184,6 +187,28 @@ class RainRepository(
             throw userFacingRainException(nowcastError)
         }
     }
+}
+
+internal suspend fun <T> loadInitialSwirlsWithRetry(
+    maxAttempts: Int = 2,
+    retryDelayMs: Long = 750L,
+    load: suspend () -> T,
+): T {
+    require(maxAttempts > 0) { "SWIRLS initial load attempts must be positive" }
+    require(retryDelayMs >= 0L) { "SWIRLS initial retry delay must be non-negative" }
+
+    var lastError: Throwable? = null
+    repeat(maxAttempts) { attempt ->
+        try {
+            return load()
+        } catch (error: CancellationException) {
+            throw error
+        } catch (error: Throwable) {
+            lastError = error
+            if (attempt < maxAttempts - 1 && retryDelayMs > 0L) delay(retryDelayMs)
+        }
+    }
+    throw lastError ?: IllegalStateException("SWIRLS initial frame unavailable")
 }
 
 private fun userFacingRainException(error: Throwable): IllegalStateException =
