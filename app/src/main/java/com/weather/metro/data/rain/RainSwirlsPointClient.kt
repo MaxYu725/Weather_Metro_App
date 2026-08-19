@@ -110,11 +110,8 @@ class RainSwirlsPointClient internal constructor(
     }
 
     companion object {
-        // The Worker may spend up to 12 s on an upstream SWIRLS fetch. This client is a
-        // background enhancement, so its read bound must outlive the Worker deadline without
-        // affecting the independent Current fast path.
-        private const val CONNECT_TIMEOUT_MS = 5_000
-        private const val READ_TIMEOUT_MS = 18_000
+        private const val CONNECT_TIMEOUT_MS = 3_000
+        private const val READ_TIMEOUT_MS = 6_000
         private const val RAIN_UNIT = "mm / 30 min"
     }
 }
