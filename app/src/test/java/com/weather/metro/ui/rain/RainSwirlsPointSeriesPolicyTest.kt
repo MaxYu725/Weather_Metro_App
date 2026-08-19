@@ -24,10 +24,9 @@ class RainSwirlsPointSeriesPolicyTest {
     }
 
     @Test
-    fun retryBackoffRecoversQuicklyThenStopsHammeringWorker() {
-        assertEquals(15_000L, pointSeriesRetryDelayMs(1))
-        assertEquals(30_000L, pointSeriesRetryDelayMs(2))
-        assertEquals(60_000L, pointSeriesRetryDelayMs(3))
+    fun snapshotMissRetriesQuietlyAtWorkerGuidanceCadence() {
+        assertEquals(60_000L, pointSeriesRetryDelayMs(1))
+        assertEquals(60_000L, pointSeriesRetryDelayMs(2))
         assertEquals(60_000L, pointSeriesRetryDelayMs(8))
     }
 }
