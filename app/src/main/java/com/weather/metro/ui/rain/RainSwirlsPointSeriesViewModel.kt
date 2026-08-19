@@ -12,6 +12,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import java.time.Instant
 import kotlin.math.abs
 
 data class RainSwirlsPointSeriesState(
@@ -58,6 +59,7 @@ class RainSwirlsPointSeriesViewModel : ViewModel() {
 
     fun refreshIfStale(nowEpochMs: Long = System.currentTimeMillis()) {
         if (_state.value.location == null || job?.isActive == true) return
+        expireFineSeriesIfTooOld(nowEpochMs)
         val acceptedAt = acceptedAtEpochMs
         if (acceptedAt != null && nowEpochMs - acceptedAt < REFRESH_INTERVAL_MS) return
         val lastAttempt = lastAttemptEpochMs
@@ -112,8 +114,8 @@ class RainSwirlsPointSeriesViewModel : ViewModel() {
     }
 
     private fun expireFineSeriesIfTooOld(nowEpochMs: Long = System.currentTimeMillis()) {
-        val acceptedAt = acceptedAtEpochMs ?: return
-        if (nowEpochMs - acceptedAt <= MAX_RETAINED_SERIES_AGE_MS) return
+        val series = _state.value.resource.value ?: return
+        if (!fineSeriesSourceExpired(series.runTime, nowEpochMs)) return
         acceptedAtEpochMs = null
         _state.value = _state.value.copy(resource = RainResourceState())
     }
@@ -131,7 +133,6 @@ class RainSwirlsPointSeriesViewModel : ViewModel() {
     private companion object {
         const val REFRESH_INTERVAL_MS = 5 * 60 * 1000L
         const val RETRY_INTERVAL_MS = 60 * 1000L
-        const val MAX_RETAINED_SERIES_AGE_MS = 18 * 60 * 1000L
     }
 }
 
@@ -142,6 +143,15 @@ internal fun samePointSeriesLocation(
 ): Boolean =
     abs(first.latitude - second.latitude) <= epsilon &&
         abs(first.longitude - second.longitude) <= epsilon
+
+internal fun fineSeriesSourceExpired(
+    runTime: String,
+    nowEpochMs: Long,
+    maxAgeMs: Long = 18 * 60 * 1000L,
+): Boolean {
+    val sourceEpochMs = runCatching { Instant.parse(runTime).toEpochMilli() }.getOrNull() ?: return true
+    return nowEpochMs - sourceEpochMs > maxAgeMs
+}
 
 internal fun pointSeriesRetryDelayMs(consecutiveFailures: Int): Long {
     @Suppress("UNUSED_VARIABLE")
