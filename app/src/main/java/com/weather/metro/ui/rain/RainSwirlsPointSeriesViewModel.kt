@@ -93,7 +93,14 @@ class RainSwirlsPointSeriesViewModel : ViewModel() {
                 val latestLocation = _state.value.location ?: return@launch
                 if (!samePointSeriesLocation(latestLocation, location)) return@launch
 
-                acceptedAtEpochMs = System.currentTimeMillis()
+                val acceptedNow = System.currentTimeMillis()
+                if (fineSeriesSourceExpired(result.runTime, acceptedNow)) {
+                    expireFineSeriesIfTooOld(acceptedNow)
+                    scheduleSilentRetry(requestGeneration)
+                    return@launch
+                }
+
+                acceptedAtEpochMs = acceptedNow
                 _state.value = _state.value.copy(
                     resource = RainResourceState(
                         status = RainResourceStatus.READY,
