@@ -38,6 +38,7 @@ import com.weather.metro.domain.LocalForecast
 import com.weather.metro.domain.LocationInfo
 import com.weather.metro.domain.WeatherAlert
 import com.weather.metro.domain.WeatherSnapshot
+import com.weather.metro.domain.rain.RainLocationTrendSample
 import com.weather.metro.ui.AppNavigationRequest
 import com.weather.metro.ui.components.ExpandableMetroTile
 import com.weather.metro.ui.components.HkoRemoteImage
@@ -46,7 +47,10 @@ import com.weather.metro.ui.components.MetroSectionLabel
 import com.weather.metro.ui.components.MetroStat
 import com.weather.metro.ui.components.MetroTile
 import com.weather.metro.ui.rain.RainHostState
+import com.weather.metro.ui.rain.RainLocationTrendState
 import com.weather.metro.ui.rain.RainResourceStatus
+import com.weather.metro.ui.rain.locationTrendDisplaySamples
+import com.weather.metro.ui.rain.locationTrendHeadline
 import com.weather.metro.ui.storm.StormHostState
 import com.weather.metro.ui.theme.LocalMetroSubText
 import com.weather.metro.ui.theme.LocalReduceMotion
@@ -68,6 +72,7 @@ import kotlin.math.roundToInt
 fun HomeCurrentScreen(
     snapshot: WeatherSnapshot,
     rainState: RainHostState,
+    locationTrendState: RainLocationTrendState,
     stormState: StormHostState,
     pageColour: Color,
     refreshing: Boolean,
@@ -282,6 +287,7 @@ fun HomeCurrentScreen(
         item {
             HomeRainNowcastTile(
                 rainState = rainState,
+                locationTrendState = locationTrendState,
                 pageColour = pageColour,
                 onClick = onOpenPointRain,
             )
@@ -321,12 +327,12 @@ private data class HomeRainSample(
 @Composable
 private fun HomeRainNowcastTile(
     rainState: RainHostState,
+    locationTrendState: RainLocationTrendState,
     pageColour: Color,
     onClick: () -> Unit,
 ) {
-    val resource = rainState.pointForecast
-    val forecast = resource.value
-    val headline = homeRainSummary(rainState)
+    val trendSamples = locationTrendDisplaySamples(locationTrendState.samples)
+    val headline = locationTrendHeadline(trendSamples) ?: homeRainSummary(rainState)
     MetroTile(
         seed = "home-rain-nowcast",
         background = pageColour,
@@ -334,76 +340,117 @@ private fun HomeRainNowcastTile(
         onClick = onClick,
     ) {
         Column {
-            Row(verticalAlignment = Alignment.Top) {
-                Text(
-                    headline,
-                    color = Color.White,
-                    fontSize = 22.sp,
-                    lineHeight = 28.sp,
-                    fontWeight = FontWeight.Light,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f),
-                )
-                Spacer(Modifier.width(8.dp))
-                Text(
-                    when {
-                        resource.status == RainResourceStatus.LOADING -> "更新中"
-                        resource.isStale -> "快取"
-                        forecast != null -> "所在地"
-                        else -> "降雨"
-                    },
-                    color = Color.White.copy(alpha = 0.68f),
-                    fontSize = 10.sp,
-                )
-            }
+            Text(
+                headline,
+                color = Color.White,
+                fontSize = 22.sp,
+                lineHeight = 28.sp,
+                fontWeight = FontWeight.Light,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
 
-            val samples = homeRainSamples(rainState)
-            if (samples.isNotEmpty()) {
-                Spacer(Modifier.height(12.dp))
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(4.dp),
-                ) {
-                    samples.forEach { sample ->
-                        Column(
-                            modifier = Modifier.weight(1f),
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                        ) {
-                            Box(
-                                modifier = Modifier.height(31.dp).fillMaxWidth(),
-                                contentAlignment = Alignment.BottomCenter,
+            if (trendSamples.isNotEmpty()) {
+                HomeLocationRainTrend(trendSamples)
+            } else {
+                val samples = homeRainSamples(rainState)
+                if (samples.isNotEmpty()) {
+                    Spacer(Modifier.height(12.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    ) {
+                        samples.forEach { sample ->
+                            Column(
+                                modifier = Modifier.weight(1f),
+                                horizontalAlignment = Alignment.CenterHorizontally,
                             ) {
                                 Box(
-                                    Modifier
-                                        .width(19.dp)
-                                        .height(homeRainBarHeight(sample.amountMm))
-                                        .background(
-                                            Color.White.copy(
-                                                alpha = if (sample.amountMm < 0.1) 0.30f else 0.92f,
+                                    modifier = Modifier.height(31.dp).fillMaxWidth(),
+                                    contentAlignment = Alignment.BottomCenter,
+                                ) {
+                                    Box(
+                                        Modifier
+                                            .width(19.dp)
+                                            .height(homeRainBarHeight(sample.amountMm))
+                                            .background(
+                                                Color.White.copy(
+                                                    alpha = if (sample.amountMm < 0.1) 0.30f else 0.92f,
+                                                ),
                                             ),
-                                        ),
+                                    )
+                                }
+                                Spacer(Modifier.height(4.dp))
+                                Text(
+                                    homeRainClock(sample.time),
+                                    color = Color.White.copy(alpha = 0.88f),
+                                    fontSize = 10.sp,
+                                    maxLines = 1,
+                                )
+                                Text(
+                                    if (sample.leadMinutes == 0) "現在" else "+${sample.leadMinutes}m",
+                                    color = Color.White.copy(alpha = 0.55f),
+                                    fontSize = 8.sp,
+                                    maxLines = 1,
                                 )
                             }
-                            Spacer(Modifier.height(4.dp))
-                            Text(
-                                homeRainClock(sample.time),
-                                color = Color.White.copy(alpha = 0.88f),
-                                fontSize = 10.sp,
-                                maxLines = 1,
-                            )
-                            Text(
-                                if (sample.leadMinutes == 0) "現在" else "+${sample.leadMinutes}m",
-                                color = Color.White.copy(alpha = 0.55f),
-                                fontSize = 8.sp,
-                                maxLines = 1,
-                            )
                         }
                     }
                 }
             }
             Spacer(Modifier.height(8.dp))
             Text("詳細降雨 ›", color = Color.White.copy(alpha = 0.7f), fontSize = 11.sp)
+        }
+    }
+}
+
+@Composable
+private fun HomeLocationRainTrend(samples: List<RainLocationTrendSample>) {
+    val byFrame = samples.associateBy { it.frameIndex }
+    Spacer(Modifier.height(10.dp))
+    Text(
+        "降雨訊號趨勢",
+        color = Color.White.copy(alpha = 0.72f),
+        fontSize = 10.sp,
+    )
+    Spacer(Modifier.height(5.dp))
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(2.dp),
+    ) {
+        repeat(16) { frameIndex ->
+            val sample = byFrame[frameIndex]
+            Box(
+                modifier = Modifier.weight(1f).height(31.dp),
+                contentAlignment = Alignment.BottomCenter,
+            ) {
+                if (sample != null) {
+                    Box(
+                        Modifier
+                            .width(6.dp)
+                            .height(homeRainBarHeight(sample.amountMm))
+                            .background(
+                                Color.White.copy(
+                                    alpha = if (sample.amountMm < 0.1) 0.30f else 0.92f,
+                                ),
+                            ),
+                    )
+                }
+            }
+        }
+    }
+    Spacer(Modifier.height(4.dp))
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+    ) {
+        listOf("+30", "+60", "+90", "+120").forEach { anchor ->
+            Text(
+                anchor,
+                color = Color.White.copy(alpha = 0.56f),
+                fontSize = 9.sp,
+                maxLines = 1,
+            )
         }
     }
 }
