@@ -135,8 +135,10 @@ class RainSwirlsPointSeriesClient internal constructor(
     }
 
     companion object {
-        private const val CONNECT_TIMEOUT_MS = 10_000
-        private const val READ_TIMEOUT_MS = 25_000
+        // Snapshot-backed point-series is intentionally a fast enhancement.
+        // Current must fall back to /api/rain/point instead of waiting on it.
+        private const val CONNECT_TIMEOUT_MS = 5_000
+        private const val READ_TIMEOUT_MS = 5_000
         private const val EXPECTED_SAMPLE_COUNT = 16
         private const val EXPECTED_CADENCE_MINUTES = 6
         private const val EXPECTED_ACCUMULATION_MINUTES = 30
