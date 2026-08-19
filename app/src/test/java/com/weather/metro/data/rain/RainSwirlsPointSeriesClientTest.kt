@@ -102,8 +102,8 @@ class RainSwirlsPointSeriesClientTest {
 
         override suspend fun get(url: String, connectTimeoutMs: Int, readTimeoutMs: Int): String {
             lastUrl = url
-            assertEquals(10_000, connectTimeoutMs)
-            assertEquals(25_000, readTimeoutMs)
+            assertEquals(5_000, connectTimeoutMs)
+            assertEquals(5_000, readTimeoutMs)
             return response
         }
     }
