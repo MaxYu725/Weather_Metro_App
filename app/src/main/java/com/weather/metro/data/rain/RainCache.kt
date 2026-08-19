@@ -11,7 +11,6 @@ import kotlin.math.abs
 class RainCache(context: Context) {
     private val capabilitiesFile = AtomicFile(File(context.filesDir, "rain_capabilities_v1.json"))
     private val pointFile = AtomicFile(File(context.filesDir, "rain_point_v1.json"))
-    private val swirlsPointFile = AtomicFile(File(context.filesDir, "rain_swirls_point_v1.json"))
     private val nowcastFile = AtomicFile(File(context.filesDir, "rain_nowcast_v1.json"))
 
     suspend fun writeCapabilities(payload: String) = writeAtomic(capabilitiesFile, payload)
@@ -49,35 +48,6 @@ class RainCache(context: Context) {
         return record.optString("payload").takeIf { it.isNotBlank() }
     }
 
-    suspend fun writeSwirlsPoint(
-        latitude: Double,
-        longitude: Double,
-        payload: String,
-    ) {
-        val record = JSONObject()
-            .put("latitude", latitude)
-            .put("longitude", longitude)
-            .put("payload", payload)
-            .put("cachedAt", System.currentTimeMillis())
-        writeAtomic(swirlsPointFile, record.toString())
-    }
-
-    suspend fun readSwirlsPoint(
-        latitude: Double,
-        longitude: Double,
-        nowEpochMs: Long = System.currentTimeMillis(),
-    ): String? {
-        val record = readAtomic(swirlsPointFile)?.let { runCatching { JSONObject(it) }.getOrNull() } ?: return null
-        val cachedLat = record.optDouble("latitude", Double.NaN)
-        val cachedLon = record.optDouble("longitude", Double.NaN)
-        val cachedAt = record.optLong("cachedAt", -1L)
-        if (!cachedLat.isFinite() || !cachedLon.isFinite() || cachedAt <= 0L) return null
-        if (abs(cachedLat - latitude) > SWIRLS_POINT_LOCATION_EPSILON) return null
-        if (abs(cachedLon - longitude) > SWIRLS_POINT_LOCATION_EPSILON) return null
-        if (nowEpochMs < cachedAt || nowEpochMs - cachedAt > SWIRLS_POINT_MAX_AGE_MS) return null
-        return record.optString("payload").takeIf { it.isNotBlank() }
-    }
-
     suspend fun writeNowcast(payload: String) = writeAtomic(nowcastFile, payload)
 
     suspend fun readNowcast(): String? = readAtomic(nowcastFile)
@@ -86,7 +56,6 @@ class RainCache(context: Context) {
         withContext(Dispatchers.IO) {
             capabilitiesFile.delete()
             pointFile.delete()
-            swirlsPointFile.delete()
             nowcastFile.delete()
         }
     }
@@ -111,7 +80,5 @@ class RainCache(context: Context) {
 
     companion object {
         private const val LOCATION_EPSILON = 0.000001
-        private const val SWIRLS_POINT_LOCATION_EPSILON = 0.001
-        private const val SWIRLS_POINT_MAX_AGE_MS = 4 * 60 * 60 * 1000L
     }
 }
