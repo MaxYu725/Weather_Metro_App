@@ -25,6 +25,11 @@ jobs:
           java-version: "17"
       - uses: gradle/actions/wrapper-validation@v4
       - uses: gradle/actions/setup-gradle@v4
+      - name: Restore stable debug signing key
+        uses: actions/cache@v4
+        with:
+          path: ~/.android/debug.keystore
+          key: weather-metro-debug-keystore-v1
       - name: Test alert monitor
         run: node --test backend/apps-script/*.test.mjs
       - name: Test, lint, debug, and full bundle
