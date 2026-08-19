@@ -59,7 +59,7 @@ class RainSwirlsPointClientTest {
     }
 
     @Test
-    fun clientLoadsExactlyOneCompactFrameEndpointWithWorkerCompatibleTimeouts() = runBlocking {
+    fun clientLoadsExactlyOneCompactFrameEndpointWithShortEnhancementTimeouts() = runBlocking {
         val transport = RecordingTransport(SAMPLE_FIXTURE)
         val sample = RainSwirlsPointClient(transport).loadSample(3, 22.3023, 114.1746)
 
@@ -67,8 +67,8 @@ class RainSwirlsPointClientTest {
             "https://radar.max-yu.workers.dev/api/rain/swirls/point?frame=3&lat=22.3023&lon=114.1746",
             transport.lastUrl,
         )
-        assertEquals(5_000, transport.lastConnectTimeoutMs)
-        assertEquals(18_000, transport.lastReadTimeoutMs)
+        assertEquals(3_000, transport.lastConnectTimeoutMs)
+        assertEquals(6_000, transport.lastReadTimeoutMs)
         assertEquals(3, sample.value.frameIndex)
     }
 
