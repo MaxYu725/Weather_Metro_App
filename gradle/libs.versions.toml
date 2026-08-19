@@ -2,7 +2,7 @@
 agp = "9.3.0"
 kotlin = "2.3.21"
 googleServices = "4.4.4"
-composeBom = "2026.06.00"
+composeBom = "2026.06.01"
 activityCompose = "1.13.0"
 fragment = "1.8.9"
 lifecycle = "2.10.0"
