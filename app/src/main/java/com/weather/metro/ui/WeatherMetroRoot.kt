@@ -47,7 +47,9 @@ import com.weather.metro.ui.components.MetroProgress
 import com.weather.metro.ui.map.HongKongBackdrop
 import com.weather.metro.ui.map.HongKongMapAttribution
 import com.weather.metro.ui.rain.RainHostViewModel
+import com.weather.metro.ui.rain.RainLocationTrendViewModel
 import com.weather.metro.ui.rain.RainRadarHostViewModel
+import com.weather.metro.ui.rain.RainResourceStatus
 import com.weather.metro.ui.screens.ForecastScreen
 import com.weather.metro.ui.screens.HomeCurrentScreen
 import com.weather.metro.ui.screens.SettingsScreen
@@ -69,6 +71,17 @@ private val pages = listOf(
 internal fun pageRequiresWeatherData(page: PageColourSlot): Boolean =
     page == PageColourSlot.CURRENT || page == PageColourSlot.FORECAST
 
+internal fun locationTrendMayRun(
+    page: PageColourSlot,
+    hasActiveTool: Boolean,
+    hasLocation: Boolean,
+    pointStatus: RainResourceStatus,
+): Boolean =
+    page == PageColourSlot.CURRENT &&
+        !hasActiveTool &&
+        hasLocation &&
+        (pointStatus == RainResourceStatus.READY || pointStatus == RainResourceStatus.ERROR)
+
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun WeatherMetroRoot(
@@ -78,6 +91,7 @@ fun WeatherMetroRoot(
     requestNotificationPermission: () -> Unit,
     openNotificationSettings: () -> Unit,
 ) {
+    val locationTrendViewModel: RainLocationTrendViewModel = viewModel()
     val radarViewModel: RainRadarHostViewModel = viewModel()
     val stormViewModel: StormHostViewModel = viewModel()
     val settings by viewModel.settings.collectAsStateWithLifecycle()
@@ -101,6 +115,7 @@ fun WeatherMetroRoot(
     LaunchedEffect(toolLocation) {
         toolLocation?.let { location ->
             rainViewModel.bindHostLocation(location)
+            locationTrendViewModel.bindHostLocation(location)
             radarViewModel.bindHostLocation(location)
             stormViewModel.bindHostLocation(location)
         }
@@ -137,13 +152,30 @@ fun WeatherMetroRoot(
             activeTool,
             rainState.location?.latitude,
             rainState.location?.longitude,
+            rainState.pointForecast.status,
         ) {
+            val location = rainState.location
+            val currentIsActive =
+                activePage == PageColourSlot.CURRENT && activeTool == null && location != null
+            if (!currentIsActive) {
+                locationTrendViewModel.cancelRefresh()
+                return@LaunchedEffect
+            }
+
+            locationTrendViewModel.bindHostLocation(location)
+            rainViewModel.refreshPointForecastIfStale()
+            val fastPathStatus = rainViewModel.state.value.pointForecast.status
             if (
-                activePage == PageColourSlot.CURRENT &&
-                activeTool == null &&
-                rainState.location != null
+                locationTrendMayRun(
+                    page = activePage,
+                    hasActiveTool = activeTool != null,
+                    hasLocation = true,
+                    pointStatus = fastPathStatus,
+                )
             ) {
-                rainViewModel.refreshPointForecastIfStale()
+                locationTrendViewModel.refreshIfNeeded()
+            } else {
+                locationTrendViewModel.cancelRefresh()
             }
         }
 
@@ -242,6 +274,7 @@ fun WeatherMetroRoot(
                                 onClearCache = {
                                     viewModel.clearCache()
                                     rainViewModel.clearCache()
+                                    locationTrendViewModel.cancelRefresh()
                                     radarViewModel.clearTransientCache()
                                     stormViewModel.clearCache()
                                 },
