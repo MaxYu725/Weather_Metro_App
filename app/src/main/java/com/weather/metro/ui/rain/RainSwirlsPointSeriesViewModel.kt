@@ -36,16 +36,16 @@ data class RainSwirlsPointSeriesState(
 )
 
 /**
- * Optional Current-page 6-minute-cadence rainfall trend.
+ * Optional Current-page 6-minute-cadence rainfall trend groundwork.
  *
  * Production testing showed that making Current wait for all 16 live SWIRLS
  * frames is not reliable enough for a startup-critical surface. Current now
  * keeps the established fast point forecast as its only automatic path.
  *
- * This loader is retained as Phase 3C groundwork for a future prebuilt backend
- * snapshot, but [refreshIfStale] deliberately does not start live 16-frame
- * downloads. The detailed two-hour forecast uses its own explicit loader and is
- * unaffected.
+ * This loader remains available for experiments and for a future prebuilt
+ * backend snapshot integration, but [refreshIfStale] deliberately does not
+ * start live 16-frame downloads. The detailed two-hour forecast uses its own
+ * explicit loader and is unaffected.
  */
 class RainSwirlsPointSeriesViewModel : ViewModel() {
     private val transport: RainHttpTransport = UrlConnectionRainTransport()
@@ -92,11 +92,7 @@ class RainSwirlsPointSeriesViewModel : ViewModel() {
         }
     }
 
-    /**
-     * Current must remain instant and deterministic. Do not turn a normal home
-     * refresh into sixteen HKO MDL requests. A future backend snapshot can
-     * replace this no-op without changing the Current UI contract.
-     */
+    /** Current startup uses only the established compact point forecast. */
     fun refreshIfStale(nowEpochMs: Long = System.currentTimeMillis()) {
         @Suppress("UNUSED_VARIABLE")
         val ignoredNow = nowEpochMs
@@ -126,9 +122,7 @@ class RainSwirlsPointSeriesViewModel : ViewModel() {
                 val missingIndexes = workingTimeline.frames.indices.filter { workingTimeline.frame(it) == null }
                 for (chunk in missingIndexes.chunked(MAX_CONCURRENT_FRAME_LOADS)) {
                     val attempts = coroutineScope {
-                        chunk.map { frameIndex ->
-                            async { loadFrameAttempt(frameIndex) }
-                        }.awaitAll()
+                        chunk.map { frameIndex -> async { loadFrameAttempt(frameIndex) } }.awaitAll()
                     }
                     if (requestGeneration != generation) return@launch
 
@@ -145,9 +139,7 @@ class RainSwirlsPointSeriesViewModel : ViewModel() {
                                 }
                             }
                             is FrameAttempt.Failure -> {
-                                if (attempt.error is RainForecastRunChangedException) {
-                                    runChanged = attempt.error
-                                }
+                                if (attempt.error is RainForecastRunChangedException) runChanged = attempt.error
                             }
                         }
                     }
@@ -159,12 +151,10 @@ class RainSwirlsPointSeriesViewModel : ViewModel() {
                 if (requestGeneration != generation) return@launch
                 val latestLocation = _state.value.location ?: location
                 val series = buildLocalSwirlsPointSeries(workingTimeline, latestLocation)
-                if (series == null) {
-                    throw IncompleteFineSeriesException(
+                    ?: throw IncompleteFineSeriesException(
                         loaded = workingTimeline.loadedFrameCount,
                         total = workingTimeline.frames.size,
                     )
-                }
 
                 timeline = workingTimeline
                 acceptedAtEpochMs = System.currentTimeMillis()
@@ -243,23 +233,20 @@ class RainSwirlsPointSeriesViewModel : ViewModel() {
         }
     }
 
-    private suspend fun loadFrameAttempt(frameIndex: Int): FrameAttempt {
-        return try {
-            val payload = transport.get(
-                ToolEndpoints.rainSwirlsFrame(frameIndex),
-                connectTimeoutMs = FRAME_CONNECT_TIMEOUT_MS,
-                readTimeoutMs = FRAME_READ_TIMEOUT_MS,
-            )
-            val frame = forecastClient.parseSwirlsFrame(payload)
-            FrameAttempt.Success(
-                frame = frame,
-                payloadBytes = payload.toByteArray(StandardCharsets.UTF_8).size.toLong(),
-            )
-        } catch (error: CancellationException) {
-            throw error
-        } catch (error: Throwable) {
-            FrameAttempt.Failure(frameIndex, error)
-        }
+    private suspend fun loadFrameAttempt(frameIndex: Int): FrameAttempt = try {
+        val payload = transport.get(
+            ToolEndpoints.rainSwirlsFrame(frameIndex),
+            connectTimeoutMs = FRAME_CONNECT_TIMEOUT_MS,
+            readTimeoutMs = FRAME_READ_TIMEOUT_MS,
+        )
+        FrameAttempt.Success(
+            frame = forecastClient.parseSwirlsFrame(payload),
+            payloadBytes = payload.toByteArray(StandardCharsets.UTF_8).size.toLong(),
+        )
+    } catch (error: CancellationException) {
+        throw error
+    } catch (error: Throwable) {
+        FrameAttempt.Failure(frameIndex, error)
     }
 
     private fun publishProgress(activeTimeline: RainForecastTimeline, downloadedBytes: Long) {
@@ -270,12 +257,7 @@ class RainSwirlsPointSeriesViewModel : ViewModel() {
         )
     }
 
-    private fun settleFailure(
-        message: String,
-        loaded: Int,
-        total: Int,
-        downloadedBytes: Long,
-    ) {
+    private fun settleFailure(message: String, loaded: Int, total: Int, downloadedBytes: Long) {
         val retained = _state.value.resource.value
         _state.value = _state.value.copy(
             resource = if (retained != null) {
@@ -312,15 +294,8 @@ class RainSwirlsPointSeriesViewModel : ViewModel() {
     }
 
     private sealed interface FrameAttempt {
-        data class Success(
-            val frame: RainForecastFrame,
-            val payloadBytes: Long,
-        ) : FrameAttempt
-
-        data class Failure(
-            val frameIndex: Int,
-            val error: Throwable,
-        ) : FrameAttempt
+        data class Success(val frame: RainForecastFrame, val payloadBytes: Long) : FrameAttempt
+        data class Failure(val frameIndex: Int, val error: Throwable) : FrameAttempt
     }
 
     private class IncompleteFineSeriesException(loaded: Int, total: Int) :
