@@ -69,6 +69,27 @@ class NotificationJournalCodecTest {
     }
 
     @Test
+    fun `cached endpoint retains the configured production endpoint as recovery candidate`() {
+        assertEquals(
+            listOf(
+                "https://script.google.com/macros/s/cached/exec",
+                "https://script.google.com/macros/s/configured/exec",
+            ),
+            NotificationJournalState.endpointCandidates(
+                stored = "https://script.google.com/macros/s/cached/exec",
+                configured = "https://script.google.com/macros/s/configured/exec",
+            ),
+        )
+        assertEquals(
+            listOf("https://script.google.com/macros/s/same/exec"),
+            NotificationJournalState.endpointCandidates(
+                stored = "https://script.google.com/macros/s/same/exec",
+                configured = "https://script.google.com/macros/s/same/exec",
+            ),
+        )
+    }
+
+    @Test
     fun `empty current page does not fabricate events`() {
         val page = NotificationJournalCodec.decodePage(
             pageJson(emptyList(), nextCursor = 9, latestCursor = 9, hasMore = false),

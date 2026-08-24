@@ -21,7 +21,7 @@ recoverable instead of becoming a permanent notification gap.
 | High | SWT disappearance could create a fake cancellation | Tips were treated like active state | Fixed: SWT is a source publication; disappearance is not cancellation |
 | Medium | Source formatting/title was altered | Whitespace collapsed and local action prefixes were added | Fixed: retain source line breaks and HKO-derived title |
 | Critical | FCM was the only discovery path | A push lost by FCM/Android could never be recovered | Fixed in Phase 2B: authoritative cursor journal + WorkManager reconciliation |
-| High | FCM preview could truncate official body | Payload had a safe ~900-byte body limit | Fixed for journal-capable clients: preview wakes the client; complete journal event is displayed |
+| High | FCM preview could truncate official body | Payload had a safe ~900-byte body limit | Fixed for journal-capable clients: preview is displayed immediately; the same event ID is upgraded with complete journal content |
 | High | Local inbox writes were not verified | `SharedPreferences.commit()` result was ignored | Fixed: durable write failure throws and cursor cannot advance |
 | Medium | Journal migration could repost existing complete notifications | New metadata can differ even when visible content is identical | Fixed: metadata-only upgrade preserves posted state; changed visible content is reposted |
 
@@ -48,9 +48,10 @@ The authoritative flow is now:
 `HKO JSON -> publication ID -> Google Sheets journal -> FCM wake-up -> WorkManager -> local inbox -> system notification`
 
 The complete event is journalled before FCM is queued. FCM schema v4 carries the
-journal URL/cursor and a byte-bounded compatibility preview. A journal-capable
-Android client fetches the complete ordered journal instead of displaying the
-preview directly.
+journal URL/cursor and a byte-bounded preview. Android durably displays that
+preview immediately, then fetches the complete ordered journal and updates the
+same stable notification ID. Distinct cached/configured endpoints are compared
+by latest cursor so a dead or frozen deployment cannot pin the client forever.
 
 Android reconciles:
 

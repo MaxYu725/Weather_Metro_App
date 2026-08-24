@@ -20,8 +20,8 @@ class NotificationJournalWorker(
         val diagnostics = NotificationJournalDiagnosticsStore(applicationContext)
         diagnostics.markAttempt(System.currentTimeMillis())
         val state = NotificationJournalState(applicationContext)
-        val endpoint = state.endpoint()
-        if (endpoint == null) {
+        val endpoints = state.endpointCandidates()
+        if (endpoints.isEmpty()) {
             diagnostics.markFailure(
                 System.currentTimeMillis(),
                 IllegalStateException("Notification journal endpoint is unavailable"),
@@ -42,14 +42,17 @@ class NotificationJournalWorker(
             // cursor earlier. Continuing immediately from the persisted cursor
             // closes that race without waiting for the periodic safety net.
             if (!state.isInitialized()) {
-                val baseline = client.fetch(endpoint, BOOTSTRAP_AFTER_CURSOR, 1)
-                state.initializeAt(baseline.latestCursor)
+                val baseline = client.fetchBest(endpoints, BOOTSTRAP_AFTER_CURSOR, 1)
+                state.rememberEndpoint(baseline.endpoint)
+                state.initializeAt(baseline.page.latestCursor)
             }
 
             var cursor = state.cursor()
             var deliveredEvents = 0
             repeat(MAX_PAGES_PER_RUN) {
-                val page = client.fetch(endpoint, cursor, PAGE_SIZE)
+                val fetched = client.fetchBest(state.endpointCandidates(), cursor, PAGE_SIZE)
+                state.rememberEndpoint(fetched.endpoint)
+                val page = fetched.page
                 check(page.latestCursor >= cursor) {
                     "Notification journal cursor regressed from $cursor to ${page.latestCursor}"
                 }

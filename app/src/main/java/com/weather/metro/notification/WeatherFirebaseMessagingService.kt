@@ -18,7 +18,14 @@ class WeatherFirebaseMessagingService : FirebaseMessagingService() {
     }
 
     override fun onMessageReceived(message: RemoteMessage) {
+        val event = WeatherNotificationEventParser.parse(
+            data = message.data,
+            messageId = message.messageId,
+            notificationTitle = message.notification?.title,
+            notificationBody = message.notification?.body,
+        )
         val journalCursor = message.data["journalCursor"]?.toLongOrNull()?.coerceAtLeast(0L) ?: 0L
+        var endpointKnown = false
         if (journalCursor > 0L) {
             val state = NotificationJournalState(applicationContext)
             // If this is the first journal-aware event seen by a fresh client,
@@ -27,24 +34,24 @@ class WeatherFirebaseMessagingService : FirebaseMessagingService() {
             runCatching { state.initializeForWakeup(journalCursor) }
             val suppliedEndpoint = message.data["journalUrl"]
             runCatching { state.rememberEndpoint(suppliedEndpoint) }
-            val endpointKnown = runCatching { state.endpoint() != null }.getOrDefault(false)
-            if (endpointKnown) {
-                // Do not display the byte-bounded FCM preview. WorkManager fetches
-                // the complete authoritative event from the durable journal.
-                NotificationReconcileScheduler.enqueueNow(applicationContext)
-                return
-            }
+            endpointKnown = runCatching { state.endpoint() != null }.getOrDefault(false)
         }
 
-        // Compatibility fallback for V1-V3 messages or a deployment that has
-        // not yet published/configured its journal endpoint.
-        val event = WeatherNotificationEventParser.parse(
-            data = message.data,
-            messageId = message.messageId,
-            notificationTitle = message.notification?.title,
-            notificationBody = message.notification?.body,
-        ) ?: return
-        WeatherNotificationPublisher(this).accept(event)
+        val plan = notificationMessageDeliveryPlan(
+            previewAvailable = event != null,
+            journalCursor = journalCursor,
+            endpointKnown = endpointKnown,
+        )
+        if (plan.publishPreview) {
+            // Post the already-validated, byte-bounded FCM preview immediately.
+            // Journal reconciliation then upgrades the same stable event ID with
+            // the full authoritative body. A dead/stale journal URL can therefore
+            // delay full text, but can no longer suppress the notification itself.
+            WeatherNotificationPublisher(this).accept(requireNotNull(event))
+        }
+        if (plan.reconcileJournal) {
+            NotificationReconcileScheduler.enqueueNow(applicationContext)
+        }
     }
 
     override fun onDeletedMessages() {
@@ -52,3 +59,19 @@ class WeatherFirebaseMessagingService : FirebaseMessagingService() {
         NotificationReconcileScheduler.enqueueNow(applicationContext)
     }
 }
+
+internal data class NotificationMessageDeliveryPlan(
+    val publishPreview: Boolean,
+    val reconcileJournal: Boolean,
+)
+
+internal fun notificationMessageDeliveryPlan(
+    previewAvailable: Boolean,
+    journalCursor: Long,
+    endpointKnown: Boolean,
+): NotificationMessageDeliveryPlan = NotificationMessageDeliveryPlan(
+    // V1-V3 messages use this as the complete event. V4+ messages use it as
+    // immediate visible delivery while the journal upgrades/reconciles by ID.
+    publishPreview = previewAvailable,
+    reconcileJournal = journalCursor > 0L && endpointKnown,
+)

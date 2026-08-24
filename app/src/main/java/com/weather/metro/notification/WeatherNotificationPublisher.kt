@@ -106,6 +106,9 @@ class WeatherNotificationPublisher(
             )
             .setContentIntent(pendingIntent)
             .setAutoCancel(true)
+            // A complete journal row can replace an already-posted FCM preview
+            // under the same stable tag. Update its text without buzzing twice.
+            .setOnlyAlertOnce(true)
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
             .setCategory(
                 when (event.channel) {
