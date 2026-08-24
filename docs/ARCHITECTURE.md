@@ -38,13 +38,16 @@ delivery and failed sends remain queued with exponential backoff. Messages use
 high Android priority, a 24-hour TTL, no collapse key, deterministic event IDs,
 and byte-bounded text so topic payloads remain below the FCM limit.
 
-Android validates each data message, commits it to a local inbox, and only then
-posts the system notification. Permission- or channel-blocked events remain
+Android validates each data message, commits its byte-bounded preview to a local
+inbox, and posts it immediately. WorkManager then reconciles the complete Google
+Sheets journal row and updates the same stable notification ID without alerting
+twice. The client compares distinct FCM-cached and build-configured Apps Script
+URLs and selects the response with the newest server cursor, so a deleted or
+frozen deployment is self-healed. Permission- or channel-blocked events remain
 pending and are replayed when the app resumes after access is restored. Posted
 event IDs provide durable deduplication for server retries. If FCM reports that
-pending messages were deleted, the app marks a full weather refresh for its next
-resume. Users can open Android's app notification settings directly from the
-settings page.
+pending messages were deleted, the app schedules full journal reconciliation.
+Users can open Android's app notification settings directly from the settings page.
 
 This is an at-least-once, compensating design rather than an absolute delivery
 guarantee: FCM topics, Android user controls, device force-stop, and OEM power

@@ -1,6 +1,6 @@
 # Notification reliability review
 
-Reviewed: 2026-08-15
+Reviewed: 2026-08-24
 
 ## Outcome
 
@@ -20,6 +20,8 @@ for a stronger service are listed below.
 
 | Severity | Previous failure mode | Resolution |
 | --- | --- | --- |
+| Critical | Schema-v4 FCM was treated only as a wake-up. If the cached Apps Script deployment returned 404, Android discarded the usable FCM preview and displayed nothing. | Commit/post the preview immediately, then upgrade the same stable event ID from the journal. Full-text recovery can fail without suppressing visible delivery. |
+| Critical | Android trusted one cached journal URL indefinitely. A deleted or frozen deployment stopped every official warning/tip reconciliation. | Probe every distinct FCM-cached and build-configured endpoint, select the live page with the newest cursor, and persist the recovered endpoint. |
 | Critical | A transient FCM error followed by an HKO state change could lose the event forever. | Persist each deterministic event to an outbox before advancing alert state; retry with exponential backoff. |
 | Critical | Topic payloads may only be 2,048 bytes, but complete warning bodies were embedded. | Bound title/body by UTF-8 bytes and keep ample envelope headroom. |
 | Critical | A single outbox or state JSON value could exceed Apps Script's 9 KB property limit. | Store one alert/event per property with a separate bounded index. |
@@ -44,13 +46,31 @@ for a stronger service are listed below.
 3. New issue/update/cancel events enter per-event Script Properties before the
    new per-alert state is stored.
 4. FCM receives a non-collapsible, high-priority, 24-hour data message with a
-   deterministic event ID and byte-bounded content.
-5. Android validates the message and synchronously commits it to the local
-   inbox before attempting the system notification.
-6. A blocked event remains pending. App resume or permission approval rechecks
+   deterministic event ID, journal cursor/URL, and byte-bounded preview.
+5. Android validates and durably posts that preview immediately. It also asks
+   WorkManager to reconcile the complete journal event under the same stable ID.
+6. Reconciliation compares every distinct cached/configured journal endpoint,
+   selects the newest live cursor, and heals the cached URL after success.
+7. A blocked event remains pending. App resume or permission approval rechecks
    global permission and the individual channel, posts eligible events, then
    marks all successful IDs in one commit.
-7. A repeated server event is ignored after the same ID is found locally.
+8. A repeated server event is ignored after the same ID is found locally. A
+   full-text upgrade updates the existing notification without alerting twice.
+
+## 2026-08-24 real-device incident
+
+The device diagnostics stopped at journal cursor `46 / 46` and reported an HTML
+`HTTP 404`, while the production journal had already advanced to cursor `85`.
+Cursor `47` was the 2026-08-20 08:40 thunderstorm warning; subsequent rows
+included further thunderstorm warnings and storm-related Special Weather Tips.
+This proves the backend detector/journal was producing the missing events and
+local SWIRLS scheduling was unrelated to the loss.
+
+The regression was introduced when commit `2f624c6` changed schema-v4 FCM from a
+visible message into a journal-only wake-up. The Android worker then had a single
+cached-URL dependency, so a 404 made the entire official stream silent. The
+original app appeared more reliable because its notification payload could be
+displayed directly without an additional HTTP fetch.
 
 ## Verification
 

@@ -33,7 +33,7 @@ message twice to the user.
 
 The durable path is:
 
-`HKO JSON -> immutable publication ID -> Google Sheets journal -> FCM wake-up -> Android WorkManager -> local inbox -> system notification`
+`HKO JSON -> immutable publication ID -> Google Sheets journal -> FCM preview + wake-up -> local inbox -> Android WorkManager full-text reconciliation`
 
 Important ordering rules:
 
@@ -42,12 +42,16 @@ Important ordering rules:
 3. The Android cursor advances only after the complete event is durably committed
    to the local inbox.
 4. Invalid/corrupt journal rows fail closed: Android does not skip the cursor.
-5. An older FCM preview with the same event ID is upgraded by the complete journal
-   event and reposted with the authoritative content.
+5. Android durably posts the FCM preview immediately. The complete journal event
+   upgrades the same stable event ID, so endpoint failure cannot suppress the alert.
+6. The client probes distinct cached/configured journal URLs and keeps the live
+   page with the newest cursor, healing a deleted or frozen Apps Script deployment.
 
-The FCM body remains a byte-bounded preview for compatibility, but schema v4
-messages also carry `journalUrl` and `journalCursor`. A journal-capable Android
-build does not display that preview when it can fetch the authoritative event.
+The FCM body remains a byte-bounded preview, while schema v4 messages also carry
+`journalUrl` and `journalCursor`. A journal-capable Android build displays the
+preview immediately and then replaces its content from the authoritative journal
+under the same notification ID. The update uses `setOnlyAlertOnce`, so full-text
+reconciliation does not buzz a second time.
 
 The Google Sheet contains only already-public HKO publication content and event
 metadata. Firebase service-account credentials remain in Script Properties and
@@ -173,7 +177,9 @@ current production endpoint as its default build value.
 
 FCM schema v4 also sends the URL and Android caches it, but the build-time URL is
 important for a fresh installation: it lets the app reconcile the journal even
-if the **first** FCM message is the one that is missed.
+if the **first** FCM message is the one that is missed. Android retains both
+distinct candidates until a successful fetch identifies the newest live journal;
+a cached 404/frozen deployment therefore cannot permanently pin reconciliation.
 
 ### 7. Run health verification
 

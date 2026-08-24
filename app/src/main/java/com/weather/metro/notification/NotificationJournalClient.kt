@@ -12,6 +12,60 @@ internal data class NotificationJournalPage(
     val events: List<WeatherNotificationEvent>,
 )
 
+internal data class NotificationJournalEndpointPage(
+    val endpoint: String,
+    val page: NotificationJournalPage,
+)
+
+internal class NotificationJournalHttpException(
+    val statusCode: Int,
+    val contentType: String,
+) : IOException(
+    "Notification journal HTTP $statusCode" +
+        contentType.takeIf(String::isNotBlank)?.let { " ($it)" }.orEmpty(),
+)
+
+/**
+ * Reads every distinct known endpoint and keeps the page with the newest server
+ * cursor. This recovers both a deleted deployment (404) and an older deployment
+ * that still answers successfully but has stopped receiving new journal rows.
+ */
+internal fun fetchBestNotificationJournalPage(
+    endpoints: List<String>,
+    fetchPage: (String) -> NotificationJournalPage,
+): NotificationJournalEndpointPage {
+    require(endpoints.isNotEmpty()) { "Notification journal endpoint is unavailable" }
+    var best: NotificationJournalEndpointPage? = null
+    val failures = mutableListOf<Exception>()
+
+    endpoints.distinct().forEach { endpoint ->
+        try {
+            val candidate = NotificationJournalEndpointPage(endpoint, fetchPage(endpoint))
+            if (best == null || candidate.page.latestCursor > best!!.page.latestCursor) {
+                best = candidate
+            }
+        } catch (error: Exception) {
+            failures += error
+        }
+    }
+
+    best?.let { return it }
+    val detail = failures
+        .map { error ->
+            (error.message ?: error::class.java.simpleName)
+                .replace('\n', ' ')
+                .replace('\r', ' ')
+                .take(160)
+        }
+        .distinct()
+        .joinToString("; ")
+        .ifBlank { "unknown error" }
+    throw IOException(
+        "Notification journal endpoint recovery failed: $detail",
+        failures.firstOrNull(),
+    )
+}
+
 internal object NotificationJournalCodec {
     private const val SUPPORTED_SCHEMA_VERSION = 1
 
@@ -90,6 +144,14 @@ internal object NotificationJournalCodec {
 }
 
 internal class NotificationJournalClient {
+    fun fetchBest(
+        endpoints: List<String>,
+        after: Long,
+        limit: Int = 100,
+    ): NotificationJournalEndpointPage = fetchBestNotificationJournalPage(endpoints) { endpoint ->
+        fetch(endpoint, after, limit)
+    }
+
     fun fetch(endpoint: String, after: Long, limit: Int = 100): NotificationJournalPage {
         require(after >= 0L) { "Journal cursor must be non-negative" }
         require(limit in 1..200) { "Journal page size must be between 1 and 200" }
@@ -107,8 +169,10 @@ internal class NotificationJournalClient {
         return try {
             val code = connection.responseCode
             if (code !in 200..299) {
-                val error = connection.errorStream?.bufferedReader(Charsets.UTF_8)?.use { it.readText() }.orEmpty()
-                throw IOException("Notification journal HTTP $code: ${error.take(500)}")
+                throw NotificationJournalHttpException(
+                    statusCode = code,
+                    contentType = connection.contentType.orEmpty().substringBefore(';').trim(),
+                )
             }
             val body = connection.inputStream.bufferedReader(Charsets.UTF_8).use { it.readText() }
             NotificationJournalCodec.decodePage(body)

@@ -8,6 +8,30 @@ import org.junit.Test
 
 class WeatherNotificationEventTest {
     @Test
+    fun `journal wake-up publishes preview and reconciles full event`() {
+        val plan = notificationMessageDeliveryPlan(
+            previewAvailable = true,
+            journalCursor = 47,
+            endpointKnown = true,
+        )
+
+        assertTrue(plan.publishPreview)
+        assertTrue(plan.reconcileJournal)
+    }
+
+    @Test
+    fun `journal outage never suppresses an available FCM preview`() {
+        val plan = notificationMessageDeliveryPlan(
+            previewAvailable = true,
+            journalCursor = 47,
+            endpointKnown = false,
+        )
+
+        assertTrue(plan.publishPreview)
+        assertFalse(plan.reconcileJournal)
+    }
+
+    @Test
     fun `parser accepts a versioned backend event`() {
         val event = WeatherNotificationEventParser.parse(
             data = mapOf(

@@ -20,12 +20,18 @@ class NotificationJournalState(context: Context) {
     }
 
     fun endpoint(): String? {
-        val stored = normaliseEndpoint(preferences.getString(KEY_ENDPOINT, null))
-        if (stored != null) return stored
-        val configured = normaliseEndpoint(BuildConfig.NOTIFICATION_JOURNAL_URL) ?: return null
-        rememberEndpoint(configured)
-        return configured
+        return endpointCandidates().firstOrNull()
     }
+
+    /**
+     * A Web App redeployment can invalidate a previously cached Apps Script URL.
+     * Keep the newest FCM-supplied URL first, but retain the build-time production
+     * URL as an independent recovery candidate until one of them is proven live.
+     */
+    fun endpointCandidates(): List<String> = endpointCandidates(
+        stored = preferences.getString(KEY_ENDPOINT, null),
+        configured = BuildConfig.NOTIFICATION_JOURNAL_URL,
+    )
 
     fun isInitialized(): Boolean = preferences.getBoolean(KEY_INITIALIZED, false)
 
@@ -86,6 +92,12 @@ class NotificationJournalState(context: Context) {
         const val KEY_ENDPOINT = "endpoint_v1"
         const val KEY_CURSOR = "cursor_v1"
         const val KEY_INITIALIZED = "initialized_v1"
+
+        internal fun endpointCandidates(stored: String?, configured: String?): List<String> =
+            listOfNotNull(
+                normaliseEndpoint(stored),
+                normaliseEndpoint(configured),
+            ).distinct()
 
         fun normaliseEndpoint(value: String?): String? {
             val trimmed = value?.trim()?.takeIf(String::isNotEmpty) ?: return null
