@@ -602,33 +602,7 @@ function sendJournalFcm_(message) {
   const props = PropertiesService.getScriptProperties();
   const projectId = props.getProperty('FIREBASE_PROJECT_ID');
   const endpoint = 'https://fcm.googleapis.com/v1/projects/' + encodeURIComponent(projectId) + '/messages:send';
-  const payload = {
-    message: {
-      topic: CONFIG.topic,
-      data: {
-        title: message.title || '香港天文台',
-        body: message.body || '',
-        channel: message.channel || 'weather_alert_general',
-        eventId: message.eventId || '',
-        alertId: message.alertId || '',
-        alertCode: message.alertCode || '',
-        eventKind: message.eventKind || '',
-        sourceType: message.sourceType || '',
-        sourceTime: message.sourceTime || '',
-        target: message.target || 'weathermetro://current',
-        bodyTruncated: message.bodyTruncated || 'false',
-        sentAtEpochMs: message.sentAtEpochMs || String(Date.now()),
-        schemaVersion: message.schemaVersion || JOURNAL_CONFIG.fcmSchemaVersion,
-        journalUrl: message.journalUrl || journalServiceUrl_(),
-        journalCursor: message.journalCursor || '0',
-      },
-      android: {
-        priority: message.channel === 'weather_service_status' ? 'NORMAL' : 'HIGH',
-        ttl: '86400s',
-        restrictedPackageName: CONFIG.androidPackage,
-      },
-    },
-  };
+  const payload = buildJournalFcmPayload_(message);
   const response = UrlFetchApp.fetch(endpoint, {
     method: 'post',
     contentType: 'application/json',
@@ -639,6 +613,24 @@ function sendJournalFcm_(message) {
   if (response.getResponseCode() < 200 || response.getResponseCode() >= 300) {
     throw new Error('FCM HTTP ' + response.getResponseCode() + ': ' + response.getContentText());
   }
+}
+
+function buildJournalFcmPayload_(message) {
+  return buildFcmPayload_(message, {
+    channel: message.channel || 'weather_alert_general',
+    eventId: message.eventId || '',
+    alertId: message.alertId || '',
+    alertCode: message.alertCode || '',
+    eventKind: message.eventKind || '',
+    sourceType: message.sourceType || '',
+    sourceTime: message.sourceTime || '',
+    target: message.target || 'weathermetro://current',
+    bodyTruncated: message.bodyTruncated || 'false',
+    sentAtEpochMs: message.sentAtEpochMs || String(Date.now()),
+    schemaVersion: message.schemaVersion || JOURNAL_CONFIG.fcmSchemaVersion,
+    journalUrl: message.journalUrl || journalServiceUrl_(),
+    journalCursor: message.journalCursor || '0',
+  });
 }
 
 function journalServiceUrl_() {

@@ -1,6 +1,6 @@
 # Notification reliability review
 
-Reviewed: 2026-08-24
+Reviewed: 2026-08-25
 
 ## Outcome
 
@@ -25,9 +25,10 @@ for a stronger service are listed below.
 | Critical | A transient FCM error followed by an HKO state change could lose the event forever. | Persist each deterministic event to an outbox before advancing alert state; retry with exponential backoff. |
 | Critical | Topic payloads may only be 2,048 bytes, but complete warning bodies were embedded. | Bound title/body by UTF-8 bytes and keep ample envelope headroom. |
 | Critical | A single outbox or state JSON value could exceed Apps Script's 9 KB property limit. | Store one alert/event per property with a separate bounded index. |
-| High | `collapse_key` could replace an older undelivered issue/update/cancel event. | Make alert events non-collapsible. |
+| High | `collapse_key` could replace an older undelivered issue/update/cancel event. | Remove the custom collapse key and make the journal authoritative. The new system-display notification copy is collapsible by FCM design, but cursor reconciliation recovers every ordered event. |
 | High | A one-hour TTL discarded warnings after a moderately long offline period. | Extend TTL to 24 hours and reconcile current weather when FCM reports deleted pending messages. |
 | High | Normal-priority alerts could be delayed during Android Doze. | Use high priority for every user-visible warning/tip; keep only service-status tests normal. |
+| High | Data-only FCM still depended on Android starting the app's messaging service. On the affected device, no background callback ran even with unrestricted battery use; opening the app was what recovered cursors `86–101`. | Send a combined notification + data payload. Google Play services can put the preview in the system tray while the app is backgrounded; data metadata and the durable journal remain available for reconciliation. |
 | High | First deployment silently ignored warnings already in force. | Issue every active warning on a genuinely new baseline; migrate V3/V4 baselines without replay. |
 | High | Android dropped messages when permission or a channel was temporarily blocked. | Commit events to a local inbox first and replay pending items after access is restored. |
 | High | Server retries could create duplicate notifications. | Persist posted event IDs and notify with the event ID as the stable notification tag. |
@@ -45,16 +46,19 @@ for a stronger service are listed below.
 2. HKO state is normalised and compared using stable content fingerprints.
 3. New issue/update/cancel events enter per-event Script Properties before the
    new per-alert state is stored.
-4. FCM receives a non-collapsible, high-priority, 24-hour data message with a
-   deterministic event ID, journal cursor/URL, and byte-bounded preview.
-5. Android validates and durably posts that preview immediately. It also asks
-   WorkManager to reconcile the complete journal event under the same stable ID.
-6. Reconciliation compares every distinct cached/configured journal endpoint,
+4. FCM receives a high-priority, 24-hour notification + data message with a
+   deterministic event ID/tag, journal cursor/URL, and byte-bounded preview.
+5. While the app is backgrounded, Google Play services can render the preview
+   directly in the system tray. In the foreground, Android validates and posts
+   it through the app. Both paths use notification tag/ID `eventId / 0`.
+6. App-side receipt or the periodic/foreground safety net asks WorkManager to
+   reconcile the complete journal event under that same stable ID.
+7. Reconciliation compares every distinct cached/configured journal endpoint,
    selects the newest live cursor, and heals the cached URL after success.
-7. A blocked event remains pending. App resume or permission approval rechecks
+8. A blocked event remains pending. App resume or permission approval rechecks
    global permission and the individual channel, posts eligible events, then
    marks all successful IDs in one commit.
-8. A repeated server event is ignored after the same ID is found locally. A
+9. A repeated server event is ignored after the same ID is found locally. A
    full-text upgrade updates the existing notification without alerting twice.
 
 ## 2026-08-24 real-device incident
@@ -72,6 +76,27 @@ cached-URL dependency, so a 404 made the entire official stream silent. The
 original app appeared more reliable because its notification payload could be
 displayed directly without an additional HTTP fetch.
 
+## 2026-08-25 background-delivery incident
+
+After the endpoint fix, the affected device again proved that the backend and
+journal were healthy: opening Weather Metro immediately moved the cursor from
+`85 / 85` to `101 / 101` and delivered 16 events. Android notification
+permission was enabled and the OEM battery setting was already **unrestricted**.
+The foreground-triggered catch-up therefore isolated the remaining failure to
+the data-only FCM wake-up while the app process was backgrounded.
+
+FCM also evaluates whether high-priority messages result in visible user
+notifications. The earlier silent data-only period could cause per-installation
+deprioritisation. A notification payload gives Google Play services a direct,
+user-visible delivery path and is eligible for notification delegation without
+waiting for `FirebaseMessagingService` to start.
+
+FCM notification messages are collapsible by platform design. Weather Metro
+does not treat that transport copy as durable truth: every publication is still
+journalled before sending, and WorkManager/app resume recovers every cursor. The
+system-tray copy optimises immediate visibility; the journal preserves complete,
+ordered delivery.
+
 ## Verification
 
 - `node --test backend/apps-script/Code.test.mjs`: 10/10 passed.
@@ -88,7 +113,9 @@ removed after testing.
 
 ## Deployment and operations
 
-1. Deploy the updated `backend/apps-script/Code.gs` and manifest.
+1. Copy the updated `Code.gs` and `Journal.gs` into the production Apps Script
+   project. No new Web App URL is required because the public journal API shape
+   is unchanged.
 2. Confirm `FIREBASE_PROJECT_ID`, `FIREBASE_CLIENT_EMAIL`, and
    `FIREBASE_PRIVATE_KEY` Script Properties are present.
 3. Run `sendTestNotification`, then run `installOneMinuteTrigger` once.

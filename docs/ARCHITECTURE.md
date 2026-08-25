@@ -35,13 +35,18 @@ without replaying unchanged alerts.
 Alert baselines and issue/update/cancel events use per-item Script Properties,
 so no value exceeds Apps Script's 9 KB quota. Events enter the outbox before FCM
 delivery and failed sends remain queued with exponential backoff. Messages use
-high Android priority, a 24-hour TTL, no collapse key, deterministic event IDs,
-and byte-bounded text so topic payloads remain below the FCM limit.
+high Android priority, a 24-hour TTL, deterministic event IDs/tags, and
+byte-bounded text so topic payloads remain below the FCM limit. Each message has
+both notification and data sections: Google Play services can display the
+system-tray preview without first starting the backgrounded app, while the data
+section retains journal routing metadata.
 
-Android validates each data message, commits its byte-bounded preview to a local
-inbox, and posts it immediately. WorkManager then reconciles the complete Google
-Sheets journal row and updates the same stable notification ID without alerting
-twice. The client compares distinct FCM-cached and build-configured Apps Script
+In the foreground, Android validates each FCM preview, commits it to a local
+inbox, and posts it immediately. In the background, Google Play services posts
+the notification payload directly. Both use the event ID as the notification
+tag and numeric ID `0`, so WorkManager can reconcile the complete Google Sheets
+journal row into the same visible item without alerting twice. The client
+compares distinct FCM-cached and build-configured Apps Script
 URLs and selects the response with the newest server cursor, so a deleted or
 frozen deployment is self-healed. Permission- or channel-blocked events remain
 pending and are replayed when the app resumes after access is restored. Posted

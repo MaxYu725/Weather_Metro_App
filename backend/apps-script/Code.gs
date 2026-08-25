@@ -25,6 +25,7 @@ const CONFIG = Object.freeze({
   androidPackage: 'com.weather.metro',
   maxTitleBytes: 180,
   maxBodyBytes: 900,
+  maxSystemNotificationBodyBytes: 300,
   maxStateBodyBytes: 6000,
   maxOutboxEvents: 100,
 });
@@ -491,31 +492,7 @@ function sendFcm_(message) {
   const props = PropertiesService.getScriptProperties();
   const projectId = props.getProperty('FIREBASE_PROJECT_ID');
   const endpoint = 'https://fcm.googleapis.com/v1/projects/' + encodeURIComponent(projectId) + '/messages:send';
-  const payload = {
-    message: {
-      topic: CONFIG.topic,
-      data: {
-        title: message.title,
-        body: message.body,
-        channel: message.channel,
-        eventId: message.eventId,
-        alertId: message.alertId || '',
-        alertCode: message.alertCode || '',
-        eventKind: message.eventKind || '',
-        sourceType: message.sourceType || '',
-        sourceTime: message.sourceTime || '',
-        target: message.target,
-        bodyTruncated: message.bodyTruncated || 'false',
-        sentAtEpochMs: message.sentAtEpochMs || String(Date.now()),
-        schemaVersion: message.schemaVersion || '3',
-      },
-      android: {
-        priority: message.channel === 'weather_service_status' ? 'NORMAL' : 'HIGH',
-        ttl: '86400s',
-        restrictedPackageName: CONFIG.androidPackage,
-      },
-    },
-  };
+  const payload = buildLegacyFcmPayload_(message);
   const response = UrlFetchApp.fetch(endpoint, {
     method: 'post',
     contentType: 'application/json',
@@ -526,6 +503,60 @@ function sendFcm_(message) {
   if (response.getResponseCode() < 200 || response.getResponseCode() >= 300) {
     throw new Error('FCM HTTP ' + response.getResponseCode() + ': ' + response.getContentText());
   }
+}
+
+/**
+ * Builds a notification + data message rather than a data-only wake-up.
+ *
+ * Android can render the notification payload from Google Play services while
+ * Weather Metro is backgrounded, without starting the app process first. The
+ * same eventId is used as the system notification tag and by the Android
+ * publisher, so foreground delivery and later journal hydration update one
+ * visible notification instead of creating duplicates.
+ */
+function buildFcmPayload_(message, data) {
+  const channel = message.channel || 'weather_alert_general';
+  const eventId = message.eventId || '';
+  const androidNotification = {
+    channelId: channel,
+    icon: 'ic_notification',
+  };
+  if (eventId) androidNotification.tag = eventId;
+
+  return {
+    message: {
+      topic: CONFIG.topic,
+      notification: {
+        title: message.title || '香港天文台',
+        // The topic limit is 2,048 bytes. Keep a useful system-tray excerpt
+        // while the journal retains and later hydrates the complete body.
+        body: truncateUtf8_(message.body || '', CONFIG.maxSystemNotificationBodyBytes),
+      },
+      data: data,
+      android: {
+        priority: channel === 'weather_service_status' ? 'NORMAL' : 'HIGH',
+        ttl: '86400s',
+        restrictedPackageName: CONFIG.androidPackage,
+        notification: androidNotification,
+      },
+    },
+  };
+}
+
+function buildLegacyFcmPayload_(message) {
+  return buildFcmPayload_(message, {
+    channel: message.channel,
+    eventId: message.eventId,
+    alertId: message.alertId || '',
+    alertCode: message.alertCode || '',
+    eventKind: message.eventKind || '',
+    sourceType: message.sourceType || '',
+    sourceTime: message.sourceTime || '',
+    target: message.target,
+    bodyTruncated: message.bodyTruncated || 'false',
+    sentAtEpochMs: message.sentAtEpochMs || String(Date.now()),
+    schemaVersion: message.schemaVersion || '3',
+  });
 }
 
 function accessToken_() {

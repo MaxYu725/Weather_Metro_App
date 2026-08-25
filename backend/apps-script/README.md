@@ -33,7 +33,7 @@ message twice to the user.
 
 The durable path is:
 
-`HKO JSON -> immutable publication ID -> Google Sheets journal -> FCM preview + wake-up -> local inbox -> Android WorkManager full-text reconciliation`
+`HKO JSON -> immutable publication ID -> Google Sheets journal -> FCM system preview + reconciliation metadata -> Android full-text reconciliation`
 
 Important ordering rules:
 
@@ -42,16 +42,18 @@ Important ordering rules:
 3. The Android cursor advances only after the complete event is durably committed
    to the local inbox.
 4. Invalid/corrupt journal rows fail closed: Android does not skip the cursor.
-5. Android durably posts the FCM preview immediately. The complete journal event
-   upgrades the same stable event ID, so endpoint failure cannot suppress the alert.
+5. Google Play services can post the FCM preview while the app is backgrounded;
+   the foreground service uses the same stable tag/ID. The complete journal event
+   upgrades that item, so app-process or endpoint delay cannot suppress visibility.
 6. The client probes distinct cached/configured journal URLs and keeps the live
    page with the newest cursor, healing a deleted or frozen Apps Script deployment.
 
-The FCM body remains a byte-bounded preview, while schema v4 messages also carry
-`journalUrl` and `journalCursor`. A journal-capable Android build displays the
-preview immediately and then replaces its content from the authoritative journal
-under the same notification ID. The update uses `setOnlyAlertOnce`, so full-text
-reconciliation does not buzz a second time.
+The FCM notification body is capped at 300 UTF-8 bytes and the complete request
+is tested below the 2,048-byte topic limit. Schema v4 data carries journal
+metadata without duplicating title/body. A journal-capable Android build replaces
+the preview from the authoritative journal under the same event tag and numeric
+ID. The update uses `setOnlyAlertOnce`, so full-text reconciliation does not buzz
+a second time.
 
 The Google Sheet contains only already-public HKO publication content and event
 metadata. Firebase service-account credentials remain in Script Properties and
