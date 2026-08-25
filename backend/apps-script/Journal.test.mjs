@@ -103,6 +103,33 @@ test('journal keeps the complete HKO body while the FCM body is only a preview',
   assert.equal(queued[0].message.journalUrl, 'https://script.google.com/macros/s/test/exec');
 });
 
+test('journal FCM combines a system notification with durable reconciliation data', () => {
+  const script = loadScript();
+  const event = script.journalEventForPublication_(
+    script.normaliseJournalPublications_(
+      summary(),
+      detail('香港天文台完整警告內容。'.repeat(800)),
+      { swt: [] },
+    )[0],
+    1234,
+  );
+  event.journalCursor = 7;
+  const message = script.enqueueJournalEvents_([], [event], 1234)[0].message;
+  const payload = script.buildJournalFcmPayload_(message);
+
+  assert.equal(payload.message.notification.title, message.title);
+  assert.ok(Buffer.byteLength(payload.message.notification.body, 'utf8') <= 300);
+  assert.equal(payload.message.data.title, undefined);
+  assert.equal(payload.message.data.body, undefined);
+  assert.equal(payload.message.data.journalCursor, '7');
+  assert.equal(payload.message.data.journalUrl, 'https://script.google.com/macros/s/test/exec');
+  assert.equal(payload.message.android.priority, 'HIGH');
+  assert.equal(payload.message.android.notification.channelId, message.channel);
+  assert.equal(payload.message.android.notification.proxy, 'ALLOW');
+  assert.equal(payload.message.android.notification.tag, message.eventId);
+  assert.ok(Buffer.byteLength(JSON.stringify(payload), 'utf8') < 2048);
+});
+
 test('official action and time remain part of journal publication identity', () => {
   const script = loadScript();
   const issued = script.normaliseJournalPublications_(

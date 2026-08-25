@@ -201,6 +201,28 @@ test('FCM preview uses the HKO title directly and carries source semantics', () 
   assert.equal(message.schemaVersion, '3');
 });
 
+test('FCM payload lets Android display the event while the app process is backgrounded', () => {
+  const script = loadScript();
+  const message = script.messageForEvent_(
+    { kind: 'ISSUE', item: publication() },
+    1234,
+  );
+  const payload = script.buildLegacyFcmPayload_(message);
+
+  assert.deepEqual(JSON.parse(JSON.stringify(payload.message.notification)), {
+    title: message.title,
+    body: message.body,
+  });
+  assert.equal(payload.message.data.title, undefined);
+  assert.equal(payload.message.data.body, undefined);
+  assert.equal(payload.message.data.eventId, message.eventId);
+  assert.equal(payload.message.android.priority, 'HIGH');
+  assert.equal(payload.message.android.notification.channelId, message.channel);
+  assert.equal(payload.message.android.notification.icon, 'ic_notification');
+  assert.equal(payload.message.android.notification.proxy, 'ALLOW');
+  assert.equal(payload.message.android.notification.tag, message.eventId);
+});
+
 test('queued messages remain byte-bounded and deduplicated by source publication id', () => {
   const script = loadScript();
   const event = { kind: 'ISSUE', item: publication({ body: '暴雨'.repeat(1000) }) };
