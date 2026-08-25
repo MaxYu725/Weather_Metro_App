@@ -55,7 +55,9 @@ the preview from the authoritative journal under the same event tag and numeric
 ID. The update uses `setOnlyAlertOnce`, so full-text reconciliation does not buzz
 a second time. Android notification proxy mode is explicitly `ALLOW`, asking
 Google Play services to display the system notification without first starting
-the Weather Metro process.
+the Weather Metro process where the platform permits it. Some OEM builds still
+require Weather Metro to be enabled in **Auto launch / 自動啟動** before delivery
+can resume after the app is removed from recents.
 
 The Google Sheet contains only already-public HKO publication content and event
 metadata. Firebase service-account credentials remain in Script Properties and

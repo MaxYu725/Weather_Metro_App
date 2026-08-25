@@ -99,11 +99,17 @@ ordered delivery.
 
 The first combined-payload production test succeeded only while Weather Metro
 remained in the background and failed after it was removed from the recent-apps
-list. The sender now explicitly sets Android notification proxy mode to `ALLOW`.
-FCM otherwise defaults to `IF_PRIORITY_LOWERED`, which does not necessarily ask
-Google Play services to proxy an undowngraded high-priority notification. This
-keeps the fix process-independent without adding a foreground service or a
-permanent notification.
+list. Before the explicit proxy update was deployed, enabling the OEM
+**Auto launch / 自動啟動** permission restored delivery after removing the app
+from recents. This proves that unrestricted battery/background execution and
+permission to restart the process are separate gates on the affected device.
+
+The sender still sets Android notification proxy mode to `ALLOW` as transport
+defence in depth. FCM otherwise defaults to `IF_PRIORITY_LOWERED`, which does
+not necessarily ask Google Play services to proxy an undowngraded high-priority
+notification. It is not presented as a way to override an OEM stopped-package
+policy. No foreground service or permanent notification is required when the
+device permits Weather Metro to auto-start.
 
 ## Verification
 

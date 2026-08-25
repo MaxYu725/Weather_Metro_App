@@ -41,7 +41,9 @@ both notification and data sections: Google Play services can display the
 system-tray preview without first starting the backgrounded app, while the data
 section retains journal routing metadata. The Android notification sets FCM
 proxy mode to `ALLOW`; the backend default (`IF_PRIORITY_LOWERED`) is not relied
-on for process-independent delivery.
+on for process-independent delivery where the device permits it. OEM controls
+that treat removal from recents as a stopped package can still require Weather
+Metro to be enabled under the system's **Auto launch / 自動啟動** list.
 
 In the foreground, Android validates each FCM preview, commits it to a local
 inbox, and posts it immediately. In the background, Google Play services posts
