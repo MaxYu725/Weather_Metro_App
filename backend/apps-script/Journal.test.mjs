@@ -125,6 +125,7 @@ test('journal FCM combines a system notification with durable reconciliation dat
   assert.equal(payload.message.data.journalUrl, 'https://script.google.com/macros/s/test/exec');
   assert.equal(payload.message.android.priority, 'HIGH');
   assert.equal(payload.message.android.notification.channelId, message.channel);
+  assert.equal(payload.message.android.notification.proxy, 'ALLOW');
   assert.equal(payload.message.android.notification.tag, message.eventId);
   assert.ok(Buffer.byteLength(JSON.stringify(payload), 'utf8') < 2048);
 });

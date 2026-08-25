@@ -53,7 +53,9 @@ is tested below the 2,048-byte topic limit. Schema v4 data carries journal
 metadata without duplicating title/body. A journal-capable Android build replaces
 the preview from the authoritative journal under the same event tag and numeric
 ID. The update uses `setOnlyAlertOnce`, so full-text reconciliation does not buzz
-a second time.
+a second time. Android notification proxy mode is explicitly `ALLOW`, asking
+Google Play services to display the system notification without first starting
+the Weather Metro process.
 
 The Google Sheet contains only already-public HKO publication content and event
 metadata. Firebase service-account credentials remain in Script Properties and

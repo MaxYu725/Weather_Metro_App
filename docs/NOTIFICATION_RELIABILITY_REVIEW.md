@@ -97,6 +97,14 @@ journalled before sending, and WorkManager/app resume recovers every cursor. The
 system-tray copy optimises immediate visibility; the journal preserves complete,
 ordered delivery.
 
+The first combined-payload production test succeeded only while Weather Metro
+remained in the background and failed after it was removed from the recent-apps
+list. The sender now explicitly sets Android notification proxy mode to `ALLOW`.
+FCM otherwise defaults to `IF_PRIORITY_LOWERED`, which does not necessarily ask
+Google Play services to proxy an undowngraded high-priority notification. This
+keeps the fix process-independent without adding a foreground service or a
+permanent notification.
+
 ## Verification
 
 - `node --test backend/apps-script/Code.test.mjs`: 10/10 passed.

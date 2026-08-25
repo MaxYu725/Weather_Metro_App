@@ -520,6 +520,10 @@ function buildFcmPayload_(message, data) {
   const androidNotification = {
     channelId: channel,
     icon: 'ic_notification',
+    // The default is IF_PRIORITY_LOWERED. Explicit ALLOW asks Google Play
+    // services to display the notification without starting Weather Metro,
+    // including after the OEM removes the app process from recents.
+    proxy: 'ALLOW',
   };
   if (eventId) androidNotification.tag = eventId;
 

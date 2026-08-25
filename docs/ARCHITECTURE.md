@@ -39,7 +39,9 @@ high Android priority, a 24-hour TTL, deterministic event IDs/tags, and
 byte-bounded text so topic payloads remain below the FCM limit. Each message has
 both notification and data sections: Google Play services can display the
 system-tray preview without first starting the backgrounded app, while the data
-section retains journal routing metadata.
+section retains journal routing metadata. The Android notification sets FCM
+proxy mode to `ALLOW`; the backend default (`IF_PRIORITY_LOWERED`) is not relied
+on for process-independent delivery.
 
 In the foreground, Android validates each FCM preview, commits it to a local
 inbox, and posts it immediately. In the background, Google Play services posts

@@ -219,6 +219,7 @@ test('FCM payload lets Android display the event while the app process is backgr
   assert.equal(payload.message.android.priority, 'HIGH');
   assert.equal(payload.message.android.notification.channelId, message.channel);
   assert.equal(payload.message.android.notification.icon, 'ic_notification');
+  assert.equal(payload.message.android.notification.proxy, 'ALLOW');
   assert.equal(payload.message.android.notification.tag, message.eventId);
 });
 
