@@ -2,7 +2,6 @@ package com.weather.metro.ui.storm
 
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -14,7 +13,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -43,7 +41,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
@@ -60,6 +57,8 @@ import com.weather.metro.domain.storm.StormLiveState
 import com.weather.metro.domain.storm.StormPoint
 import com.weather.metro.domain.storm.StormPointType
 import com.weather.metro.domain.storm.StormTrack
+import com.weather.metro.ui.motion.MetroPressPreset
+import com.weather.metro.ui.motion.metroPressMotion
 import com.weather.metro.ui.theme.LocalMetroSubText
 import com.weather.metro.ui.theme.LocalReduceMotion
 import com.weather.metro.ui.tools.ToolInitialLoadingOverlay
@@ -326,7 +325,6 @@ private fun StormAgencyChip(
 ) {
     val reduceMotion = LocalReduceMotion.current
     val interactionSource = remember { MutableInteractionSource() }
-    val pressed by interactionSource.collectIsPressedAsState()
     val border by animateColorAsState(
         targetValue = if (enabled) accent else Color(0xFF3A3A3A),
         animationSpec = tween(if (reduceMotion) 100 else 180),
@@ -337,17 +335,12 @@ private fun StormAgencyChip(
         animationSpec = tween(if (reduceMotion) 100 else 180),
         label = "storm agency background",
     )
-    val scale by animateFloatAsState(
-        targetValue = if (pressed && !reduceMotion) 0.96f else 1f,
-        animationSpec = tween(if (reduceMotion) 100 else 110),
-        label = "storm agency press",
-    )
     Column(
         modifier = modifier
-            .graphicsLayer {
-                scaleX = scale
-                scaleY = scale
-            }
+            .metroPressMotion(
+                interactionSource = interactionSource,
+                preset = MetroPressPreset.Chip,
+            )
             .border(1.dp, border)
             .background(background)
             .clickable(
