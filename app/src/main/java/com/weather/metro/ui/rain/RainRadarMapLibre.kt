@@ -857,7 +857,6 @@ private fun RainRadarBounds.mapLibreQuad(): LatLngQuad = LatLngQuad(
 private fun RainRadarBounds.center(): LatLng = LatLng(
     (north + south) / 2.0,
     (east + west) / 2.0,
-    (south + north) / 2.0,
 )
 
 private fun defaultRadarZoom(rangeKm: Int): Double = if (rangeKm >= 256) 8.5 else 10.5
