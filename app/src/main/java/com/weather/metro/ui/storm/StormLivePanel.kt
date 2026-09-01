@@ -170,6 +170,8 @@ internal fun StormLivePanel(
 
         StormAgencyControls(
             state = state,
+            pageColour = pageColour,
+            isActive = isActive,
             hkoEnabled = hkoEnabled,
             cmaEnabled = cmaEnabled,
             jmaEnabled = jmaEnabled,
@@ -274,6 +276,8 @@ private fun StormTopBar(
 @Composable
 private fun StormAgencyControls(
     state: StormHostState,
+    pageColour: Color,
+    isActive: Boolean,
     hkoEnabled: Boolean,
     cmaEnabled: Boolean,
     jmaEnabled: Boolean,
@@ -284,42 +288,125 @@ private fun StormAgencyControls(
     onToggleCwa: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    Row(
-        modifier = modifier
-            .fillMaxWidth()
-            .background(STORM_PANEL)
-            .padding(6.dp),
-        horizontalArrangement = Arrangement.spacedBy(6.dp),
-    ) {
-        StormAgencyChip(
-            source = state.sources[StormAgency.HKO] ?: return@Row,
-            enabled = hkoEnabled,
-            accent = agencyColour(StormAgency.HKO),
-            onClick = onToggleHko,
-            modifier = Modifier.weight(1f),
-        )
-        StormAgencyChip(
-            source = state.sources[StormAgency.CMA] ?: return@Row,
-            enabled = cmaEnabled,
-            accent = agencyColour(StormAgency.CMA),
-            onClick = onToggleCma,
-            modifier = Modifier.weight(1f),
-        )
-        StormAgencyChip(
-            source = state.sources[StormAgency.JMA] ?: return@Row,
-            enabled = jmaEnabled,
-            accent = agencyColour(StormAgency.JMA),
-            onClick = onToggleJma,
-            modifier = Modifier.weight(1f),
-        )
-        StormAgencyChip(
-            source = state.sources[StormAgency.CWA] ?: return@Row,
-            enabled = cwaEnabled,
-            accent = agencyColour(StormAgency.CWA),
-            onClick = onToggleCwa,
-            modifier = Modifier.weight(1f),
-        )
+    var expanded by rememberSaveable { mutableStateOf(false) }
+    val enabledCount = listOf(hkoEnabled, cmaEnabled, jmaEnabled, cwaEnabled).count { it }
+
+    LaunchedEffect(isActive) {
+        if (!isActive) expanded = false
     }
+
+    MetroFloatingIsland(
+        expanded = expanded,
+        accent = pageColour,
+        modifier = modifier,
+        collapsedContent = {
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Box(
+                    Modifier
+                        .width(3.dp)
+                        .height(14.dp)
+                        .background(if (hkoEnabled) agencyColour(StormAgency.HKO) else Color(0xFF555555)),
+                )
+                Box(
+                    Modifier
+                        .width(3.dp)
+                        .height(14.dp)
+                        .background(if (cmaEnabled) agencyColour(StormAgency.CMA) else Color(0xFF555555)),
+                )
+                Box(
+                    Modifier
+                        .width(3.dp)
+                        .height(14.dp)
+                        .background(if (jmaEnabled) agencyColour(StormAgency.JMA) else Color(0xFF555555)),
+                )
+                Box(
+                    Modifier
+                        .width(3.dp)
+                        .height(14.dp)
+                        .background(if (cwaEnabled) agencyColour(StormAgency.CWA) else Color(0xFF555555)),
+                )
+            }
+            Text(
+                text = "$enabledCount/4 機構",
+                color = Color.White,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Medium,
+                modifier = Modifier.padding(start = 9.dp),
+            )
+            Text(
+                text = "來源",
+                color = pageColour,
+                fontSize = 12.sp,
+                modifier = Modifier
+                    .clickable { expanded = true }
+                    .padding(start = 10.dp, top = 8.dp, bottom = 8.dp),
+            )
+        },
+        expandedContent = {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = "官方來源",
+                    color = Color.White,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Medium,
+                )
+                Spacer(Modifier.weight(1f))
+                Text(
+                    text = "$enabledCount/4 已啟用",
+                    color = LocalMetroSubText.current,
+                    fontSize = 10.sp,
+                )
+                Text(
+                    text = "收起",
+                    color = pageColour,
+                    fontSize = 12.sp,
+                    modifier = Modifier
+                        .clickable { expanded = false }
+                        .padding(start = 12.dp, top = 8.dp, bottom = 8.dp),
+                )
+            }
+            Spacer(Modifier.height(6.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                StormAgencyChip(
+                    source = state.sources[StormAgency.HKO] ?: return@Row,
+                    enabled = hkoEnabled,
+                    accent = agencyColour(StormAgency.HKO),
+                    onClick = onToggleHko,
+                    modifier = Modifier.weight(1f),
+                )
+                StormAgencyChip(
+                    source = state.sources[StormAgency.CMA] ?: return@Row,
+                    enabled = cmaEnabled,
+                    accent = agencyColour(StormAgency.CMA),
+                    onClick = onToggleCma,
+                    modifier = Modifier.weight(1f),
+                )
+                StormAgencyChip(
+                    source = state.sources[StormAgency.JMA] ?: return@Row,
+                    enabled = jmaEnabled,
+                    accent = agencyColour(StormAgency.JMA),
+                    onClick = onToggleJma,
+                    modifier = Modifier.weight(1f),
+                )
+                StormAgencyChip(
+                    source = state.sources[StormAgency.CWA] ?: return@Row,
+                    enabled = cwaEnabled,
+                    accent = agencyColour(StormAgency.CWA),
+                    onClick = onToggleCwa,
+                    modifier = Modifier.weight(1f),
+                )
+            }
+        },
+    )
 }
 
 @Composable
