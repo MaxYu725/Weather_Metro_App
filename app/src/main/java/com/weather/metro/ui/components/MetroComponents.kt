@@ -53,6 +53,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.weather.metro.ui.motion.MetroPressPreset
+import com.weather.metro.ui.motion.MetroPressReleaseMode
 import com.weather.metro.ui.motion.metroDirectionalPressMotion
 import com.weather.metro.ui.motion.metroPressMotion
 import com.weather.metro.ui.theme.LocalMetroOutline
@@ -95,6 +96,7 @@ fun MetroTile(
         androidx.compose.foundation.layout.PaddingValues(12.dp),
     selected: Boolean = false,
     pressMotionPreset: MetroPressPreset? = MetroPressPreset.Tile,
+    pressReleaseMode: MetroPressReleaseMode = MetroPressReleaseMode.SPRING,
     content: @Composable BoxScope.() -> Unit,
 ) {
     val neutralSurface = LocalMetroSurface.current
@@ -106,7 +108,13 @@ fun MetroTile(
     val pressed by resolvedInteractionSource.collectIsPressedAsState()
     val pressEmphasis by animateFloatAsState(
         targetValue = if (onClick != null && pressed && !reduceMotion) 1f else 0f,
-        animationSpec = tween(if (reduceMotion) 1 else 70),
+        animationSpec = tween(
+            durationMillis = when {
+                reduceMotion -> 1
+                pressed -> 35
+                else -> 90
+            },
+        ),
         label = "metro tile press emphasis",
     )
     val clickableModifier = if (onClick != null) {
@@ -121,18 +129,19 @@ fun MetroTile(
     }
     val motionModifier = if (
         onClick != null &&
-        pressMotionPreset != null &&
-        interactionSource == null
+        pressMotionPreset != null
     ) {
         if (glass) {
             Modifier.metroDirectionalPressMotion(
                 interactionSource = resolvedInteractionSource,
                 preset = pressMotionPreset,
+                releaseMode = pressReleaseMode,
             )
         } else {
             Modifier.metroPressMotion(
                 interactionSource = resolvedInteractionSource,
                 preset = pressMotionPreset,
+                releaseMode = pressReleaseMode,
             )
         }
     } else {
@@ -229,7 +238,8 @@ fun ExpandableMetroTile(
         background = background,
         onClick = { onExpandedChange(!expanded) },
         modifier = modifier,
-        pressMotionPreset = null,
+        pressMotionPreset = MetroPressPreset.Tile,
+        pressReleaseMode = MetroPressReleaseMode.QUICK_SETTLE,
     ) {
         Column(
             modifier = Modifier
