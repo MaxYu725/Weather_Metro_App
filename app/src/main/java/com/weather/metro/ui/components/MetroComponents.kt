@@ -61,7 +61,9 @@ import com.weather.metro.ui.theme.LocalMetroSubText
 import com.weather.metro.ui.theme.LocalMetroSurface
 import com.weather.metro.ui.theme.LocalMetroSurfaceStyle
 import com.weather.metro.ui.theme.LocalReduceMotion
+import com.weather.metro.ui.theme.MetroGlassTokens
 import com.weather.metro.ui.theme.MetroSurfaceStyle
+import com.weather.metro.ui.theme.metroTokenLerp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.net.HttpURLConnection
@@ -79,7 +81,7 @@ fun MetroSectionLabel(text: String, modifier: Modifier = Modifier) {
             top = if (compactHomeLabel) 12.dp else 22.dp,
             bottom = if (compactHomeLabel) 4.dp else 10.dp,
         ),
-        color = if (glass) Color.White.copy(alpha = 0.76f) else LocalMetroSubText.current,
+        color = if (glass) Color.White.copy(alpha = MetroGlassTokens.SectionLabelAlpha) else LocalMetroSubText.current,
         fontSize = if (compactHomeLabel) 15.sp else 18.sp,
         fontWeight = FontWeight.Light,
     )
@@ -148,10 +150,14 @@ fun MetroTile(
     } else {
         Modifier
     }
-    val tileShape = if (glass) RoundedCornerShape(18.dp) else RectangleShape
+    val tileShape = if (glass) RoundedCornerShape(MetroGlassTokens.TileCornerRadiusDp.dp) else RectangleShape
     val depthModifier = if (glass) {
         Modifier.shadow(
-            elevation = (12f - pressEmphasis * 5f).dp,
+            elevation = metroTokenLerp(
+                MetroGlassTokens.TileRestElevationDp,
+                MetroGlassTokens.TilePressedElevationDp,
+                pressEmphasis,
+            ).dp,
             shape = tileShape,
             clip = false,
         )
@@ -163,33 +169,76 @@ fun MetroTile(
             .background(
                 brush = Brush.linearGradient(
                     colors = listOf(
-                        Color.White.copy(alpha = 0.12f + pressEmphasis * 0.035f),
-                        neutralSurface.copy(alpha = 0.48f + pressEmphasis * 0.035f),
-                        background.copy(alpha = 0.12f + pressEmphasis * 0.045f),
+                        Color.White.copy(
+                            alpha = metroTokenLerp(
+                                MetroGlassTokens.TileHighlightRestAlpha,
+                                MetroGlassTokens.TileHighlightPressedAlpha,
+                                pressEmphasis,
+                            ),
+                        ),
+                        neutralSurface.copy(
+                            alpha = metroTokenLerp(
+                                MetroGlassTokens.TileCoreRestAlpha,
+                                MetroGlassTokens.TileCorePressedAlpha,
+                                pressEmphasis,
+                            ),
+                        ),
+                        background.copy(
+                            alpha = metroTokenLerp(
+                                MetroGlassTokens.TileAccentWashRestAlpha,
+                                MetroGlassTokens.TileAccentWashPressedAlpha,
+                                pressEmphasis,
+                            ),
+                        ),
                     ),
                 ),
                 shape = tileShape,
             )
             .border(
-                width = 1.dp,
+                width = MetroGlassTokens.TileOutlineWidthDp.dp,
                 color = when {
-                    selected -> background.copy(alpha = 0.78f)
-                    else -> Color.White.copy(alpha = 0.19f + pressEmphasis * 0.11f)
+                    selected -> background.copy(alpha = MetroGlassTokens.TileSelectedOutlineAlpha)
+                    else -> Color.White.copy(
+                        alpha = metroTokenLerp(
+                            MetroGlassTokens.TileOutlineRestAlpha,
+                            MetroGlassTokens.TileOutlinePressedAlpha,
+                            pressEmphasis,
+                        ),
+                    )
                 },
                 shape = tileShape,
             )
             .drawBehind {
-                val accentWidth = (3.5f + pressEmphasis * 2.5f).dp.toPx()
+                val accentWidth = metroTokenLerp(
+                    MetroGlassTokens.AccentBarRestWidthDp,
+                    MetroGlassTokens.AccentBarPressedWidthDp,
+                    pressEmphasis,
+                ).dp.toPx()
                 drawRect(
-                    color = background.copy(alpha = 0.88f + pressEmphasis * 0.12f),
+                    color = background.copy(
+                        alpha = metroTokenLerp(
+                            MetroGlassTokens.AccentBarRestAlpha,
+                            MetroGlassTokens.AccentBarPressedAlpha,
+                            pressEmphasis,
+                        ),
+                    ),
                     size = Size(accentWidth, size.height),
                 )
-                val inset = 18.dp.toPx()
+                val inset = MetroGlassTokens.TopHighlightInsetDp.dp.toPx()
                 drawLine(
-                    color = Color.White.copy(alpha = 0.19f + pressEmphasis * 0.08f),
-                    start = Offset(inset, 1.dp.toPx()),
-                    end = Offset((size.width - inset).coerceAtLeast(inset), 1.dp.toPx()),
-                    strokeWidth = 1.dp.toPx(),
+                    color = Color.White.copy(
+                        alpha = metroTokenLerp(
+                            MetroGlassTokens.TopHighlightRestAlpha,
+                            MetroGlassTokens.TopHighlightPressedAlpha,
+                            pressEmphasis,
+                        ),
+                    ),
+                    start = Offset(inset, MetroGlassTokens.TopHighlightStrokeDp.dp.toPx()),
+                    end = Offset(
+                        (size.width - inset).coerceAtLeast(inset),
+                        MetroGlassTokens.TopHighlightStrokeDp.dp.toPx(),
+                    ),
+                    strokeWidth = MetroGlassTokens.TopHighlightStrokeDp.dp.toPx(),
                 )
             }
     } else {
@@ -250,7 +299,7 @@ fun ExpandableMetroTile(
             collapsed()
             if (expanded) {
                 Spacer(Modifier.height(6.dp))
-                HorizontalDivider(color = Color.White.copy(alpha = 0.28f))
+                HorizontalDivider(color = Color.White.copy(alpha = MetroGlassTokens.ExpandedDividerAlpha))
                 Spacer(Modifier.height(6.dp))
                 expandedContent()
             }
@@ -266,11 +315,15 @@ fun MetroStat(
     secondary: Boolean = false,
 ) {
     val glass = LocalMetroSurfaceStyle.current == MetroSurfaceStyle.GLASS
-    val shape = RoundedCornerShape(12.dp)
+    val shape = RoundedCornerShape(MetroGlassTokens.StatCornerRadiusDp.dp)
     val statChrome = if (glass) {
         Modifier
-            .background(Color.White.copy(alpha = 0.075f), shape)
-            .border(0.7.dp, Color.White.copy(alpha = 0.11f), shape)
+            .background(Color.White.copy(alpha = MetroGlassTokens.StatFillAlpha), shape)
+            .border(
+                MetroGlassTokens.StatOutlineWidthDp.dp,
+                Color.White.copy(alpha = MetroGlassTokens.StatOutlineAlpha),
+                shape,
+            )
     } else {
         Modifier.background(Color.Black.copy(alpha = 0.16f))
     }
