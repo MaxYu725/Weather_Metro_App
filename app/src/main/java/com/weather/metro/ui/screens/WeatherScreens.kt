@@ -445,7 +445,7 @@ fun ForecastScreen(snapshot: WeatherSnapshot, pageColour: Color) {
     val summaryOffset = if (hasNineDaySummary) 1 else 0
     LazyColumn(
         state = listState,
-        modifier = Modifier.fillMaxSize(),
+        modifier = Modifier.fillMaxSize().padding(bottom = 18.dp),
         contentPadding = androidx.compose.foundation.layout.PaddingValues(start = 22.dp, end = 16.dp, bottom = 48.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
@@ -521,7 +521,7 @@ fun ForecastScreen(snapshot: WeatherSnapshot, pageColour: Color) {
                         HkoRemoteImage(
                             hkoWeatherIconUrl(day.iconCode),
                             day.description,
-                            Modifier.size(52.dp),
+                            Modifier.size(if (expanded) 46.dp else 52.dp),
                         )
                         Spacer(Modifier.width(10.dp))
                         if (!expanded) {
@@ -537,7 +537,7 @@ fun ForecastScreen(snapshot: WeatherSnapshot, pageColour: Color) {
                                 Spacer(Modifier.height(3.dp))
                                 Text(
                                     "降雨 ${day.precipitationProbability}",
-                                    color = Color.White.copy(alpha = 0.68f),
+                                    color = Color.White.copy(alpha = 0.88f),
                                     fontSize = 10.sp,
                                 )
                             }
@@ -549,23 +549,28 @@ fun ForecastScreen(snapshot: WeatherSnapshot, pageColour: Color) {
                             Text(
                                 "${day.maxTemperatureC.roundToInt()}°",
                                 color = Color.White,
-                                fontSize = 30.sp,
-                                lineHeight = 30.sp,
+                                fontSize = if (expanded) 28.sp else 30.sp,
+                                lineHeight = if (expanded) 28.sp else 30.sp,
                                 fontWeight = FontWeight.Light,
                             )
-                            Text(
-                                "最低 ${day.minTemperatureC.roundToInt()}°",
-                                color = Color.White.copy(alpha = 0.68f),
-                                fontSize = 11.sp,
-                            )
-                            Spacer(Modifier.height(4.dp))
-                            MetroGlassContextSurface(accent = pageColour) {
+                            if (expanded) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text(
+                                        "最低 ${day.minTemperatureC.roundToInt()}°",
+                                        color = Color.White.copy(alpha = 0.72f),
+                                        fontSize = 10.sp,
+                                    )
+                                    Spacer(Modifier.width(6.dp))
+                                    ForecastDetailBadge(expanded = true, pageColour = pageColour)
+                                }
+                            } else {
                                 Text(
-                                    if (expanded) "收起" else "詳情",
-                                    color = Color.White.copy(alpha = 0.84f),
-                                    fontSize = 9.sp,
-                                    modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp),
+                                    "最低 ${day.minTemperatureC.roundToInt()}°",
+                                    color = Color.White.copy(alpha = 0.68f),
+                                    fontSize = 11.sp,
                                 )
+                                Spacer(Modifier.height(3.dp))
+                                ForecastDetailBadge(expanded = false, pageColour = pageColour)
                             }
                         }
                     }
@@ -610,6 +615,22 @@ fun ForecastScreen(snapshot: WeatherSnapshot, pageColour: Color) {
                         lineHeight = 18.sp,
                     )
                 },
+            )
+        }
+    }
+}
+
+@Composable
+private fun ForecastDetailBadge(expanded: Boolean, pageColour: Color) {
+    MetroGlassContextSurface(accent = pageColour) {
+        Box(
+            modifier = Modifier.width(42.dp).height(28.dp),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(
+                if (expanded) "收起" else "詳情",
+                color = Color.White.copy(alpha = 0.86f),
+                fontSize = 9.sp,
             )
         }
     }
