@@ -28,6 +28,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -39,9 +40,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
@@ -50,10 +54,12 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.weather.metro.ui.motion.MetroPressPreset
 import com.weather.metro.ui.motion.metroPressMotion
-import com.weather.metro.ui.theme.LocalMetroSubText
 import com.weather.metro.ui.theme.LocalMetroOutline
+import com.weather.metro.ui.theme.LocalMetroSubText
 import com.weather.metro.ui.theme.LocalMetroSurface
+import com.weather.metro.ui.theme.LocalMetroSurfaceStyle
 import com.weather.metro.ui.theme.LocalReduceMotion
+import com.weather.metro.ui.theme.MetroSurfaceStyle
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.net.HttpURLConnection
@@ -64,13 +70,14 @@ fun MetroSectionLabel(text: String, modifier: Modifier = Modifier) {
     val compactHomeLabel = text == "alerts & tips" ||
         text == "next 2 hours" ||
         text == "live weather"
+    val glass = LocalMetroSurfaceStyle.current == MetroSurfaceStyle.GLASS
     Text(
         text = text,
         modifier = modifier.padding(
             top = if (compactHomeLabel) 12.dp else 22.dp,
             bottom = if (compactHomeLabel) 4.dp else 10.dp,
         ),
-        color = LocalMetroSubText.current,
+        color = if (glass) Color.White.copy(alpha = 0.76f) else LocalMetroSubText.current,
         fontSize = if (compactHomeLabel) 15.sp else 18.sp,
         fontWeight = FontWeight.Light,
     )
@@ -92,6 +99,7 @@ fun MetroTile(
     val neutralSurface = LocalMetroSurface.current
     val neutralOutline = LocalMetroOutline.current
     val reduceMotion = LocalReduceMotion.current
+    val glass = LocalMetroSurfaceStyle.current == MetroSurfaceStyle.GLASS
     val resolvedInteractionSource = interactionSource ?: remember { MutableInteractionSource() }
     val indication = LocalIndication.current
     val pressed by resolvedInteractionSource.collectIsPressedAsState()
@@ -122,27 +130,74 @@ fun MetroTile(
     } else {
         Modifier
     }
-    val chromeModifier = Modifier
-        .background(neutralSurface)
-        .background(
-            background.copy(
-                alpha = if (selected) 0.14f else 0.035f + pressEmphasis * 0.055f,
-            ),
+    val tileShape = if (glass) RoundedCornerShape(18.dp) else RectangleShape
+    val depthModifier = if (glass) {
+        Modifier.shadow(
+            elevation = (10f + pressEmphasis * 3f).dp,
+            shape = tileShape,
+            clip = false,
         )
-        .border(
-            width = 1.dp,
-            color = if (selected) background.copy(alpha = 0.72f) else neutralOutline,
-        )
-        .drawBehind {
-            drawRect(
-                color = background.copy(alpha = 0.92f + pressEmphasis * 0.08f),
-                size = Size((3f + pressEmphasis * 2f).dp.toPx(), size.height),
+    } else {
+        Modifier
+    }
+    val chromeModifier = if (glass) {
+        Modifier
+            .background(
+                brush = Brush.linearGradient(
+                    colors = listOf(
+                        Color.White.copy(alpha = 0.12f + pressEmphasis * 0.035f),
+                        neutralSurface.copy(alpha = 0.48f + pressEmphasis * 0.035f),
+                        background.copy(alpha = 0.12f + pressEmphasis * 0.045f),
+                    ),
+                ),
+                shape = tileShape,
             )
-        }
+            .border(
+                width = 1.dp,
+                color = when {
+                    selected -> background.copy(alpha = 0.78f)
+                    else -> Color.White.copy(alpha = 0.19f + pressEmphasis * 0.11f)
+                },
+                shape = tileShape,
+            )
+            .drawBehind {
+                val accentWidth = (3.5f + pressEmphasis * 2.5f).dp.toPx()
+                drawRect(
+                    color = background.copy(alpha = 0.88f + pressEmphasis * 0.12f),
+                    size = Size(accentWidth, size.height),
+                )
+                val inset = 18.dp.toPx()
+                drawLine(
+                    color = Color.White.copy(alpha = 0.19f + pressEmphasis * 0.08f),
+                    start = Offset(inset, 1.dp.toPx()),
+                    end = Offset((size.width - inset).coerceAtLeast(inset), 1.dp.toPx()),
+                    strokeWidth = 1.dp.toPx(),
+                )
+            }
+    } else {
+        Modifier
+            .background(neutralSurface)
+            .background(
+                background.copy(
+                    alpha = if (selected) 0.14f else 0.035f + pressEmphasis * 0.055f,
+                ),
+            )
+            .border(
+                width = 1.dp,
+                color = if (selected) background.copy(alpha = 0.72f) else neutralOutline,
+            )
+            .drawBehind {
+                drawRect(
+                    color = background.copy(alpha = 0.92f + pressEmphasis * 0.08f),
+                    size = Size((3f + pressEmphasis * 2f).dp.toPx(), size.height),
+                )
+            }
+    }
     Box(
         modifier = modifier
             .then(motionModifier)
-            .clip(androidx.compose.ui.graphics.RectangleShape)
+            .then(depthModifier)
+            .clip(tileShape)
             .then(chromeModifier)
             .then(clickableModifier)
             .padding(contentPadding),
@@ -191,9 +246,18 @@ fun MetroStat(
     modifier: Modifier = Modifier,
     secondary: Boolean = false,
 ) {
+    val glass = LocalMetroSurfaceStyle.current == MetroSurfaceStyle.GLASS
+    val shape = RoundedCornerShape(12.dp)
+    val statChrome = if (glass) {
+        Modifier
+            .background(Color.White.copy(alpha = 0.075f), shape)
+            .border(0.7.dp, Color.White.copy(alpha = 0.11f), shape)
+    } else {
+        Modifier.background(Color.Black.copy(alpha = 0.16f))
+    }
     Column(
         modifier = modifier
-            .background(Color.Black.copy(alpha = 0.16f))
+            .then(statChrome)
             .padding(horizontal = 9.dp, vertical = 5.dp),
     ) {
         Text(
