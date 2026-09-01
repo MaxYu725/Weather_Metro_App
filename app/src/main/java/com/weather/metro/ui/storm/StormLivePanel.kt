@@ -57,6 +57,7 @@ import com.weather.metro.domain.storm.StormLiveState
 import com.weather.metro.domain.storm.StormPoint
 import com.weather.metro.domain.storm.StormPointType
 import com.weather.metro.domain.storm.StormTrack
+import com.weather.metro.ui.components.MetroFloatingIsland
 import com.weather.metro.ui.motion.MetroPressPreset
 import com.weather.metro.ui.motion.metroPressMotion
 import com.weather.metro.ui.theme.LocalMetroSubText
@@ -72,7 +73,6 @@ import kotlin.math.sin
 import kotlin.math.sqrt
 
 private val STORM_PANEL = Color(0xEB090909)
-private val STORM_MUTED_PANEL = Color(0xE6111111)
 private val STORM_POPUP_PANEL = Color(0xF20D0D0D)
 private const val HONG_KONG_LAT = 22.3023
 private const val HONG_KONG_LON = 114.1746
@@ -108,6 +108,7 @@ internal fun StormLivePanel(
     var jmaEnabled by rememberSaveable { mutableStateOf(true) }
     var cwaEnabled by rememberSaveable { mutableStateOf(true) }
     var fitToken by rememberSaveable { mutableIntStateOf(0) }
+    var bottomHudExpanded by rememberSaveable { mutableStateOf(false) }
     var selectedPointRef by remember { mutableStateOf<StormMapPointRef?>(null) }
     var containerSize by remember { mutableStateOf(IntSize.Zero) }
 
@@ -125,6 +126,10 @@ internal fun StormLivePanel(
         .flatMap { tracksByAgency[it].orEmpty() }
     val selectedPoint = resolveStormPointSelection(selectedPointRef, tracksByAgency)
     val reduceMotion = LocalReduceMotion.current
+
+    LaunchedEffect(isActive) {
+        if (!isActive) bottomHudExpanded = false
+    }
 
     LaunchedEffect(enabledAgencies, tracksByAgency, selectedPointRef) {
         val ref = selectedPointRef ?: return@LaunchedEffect
@@ -178,7 +183,9 @@ internal fun StormLivePanel(
                 .padding(top = 68.dp, start = 8.dp, end = 8.dp),
         )
 
-        StormBottomHud(
+        StormBottomIsland(
+            expanded = bottomHudExpanded,
+            onExpandedChange = { bottomHudExpanded = it },
             state = state,
             visibleTracks = visibleTracks,
             enabledAgencyCount = enabledAgencies.size,
@@ -375,7 +382,9 @@ private fun StormAgencyChip(
 }
 
 @Composable
-private fun StormBottomHud(
+private fun StormBottomIsland(
+    expanded: Boolean,
+    onExpandedChange: (Boolean) -> Unit,
     state: StormHostState,
     visibleTracks: List<StormTrack>,
     enabledAgencyCount: Int,
@@ -386,34 +395,42 @@ private fun StormBottomHud(
     val sourceError = state.sources.values
         .firstOrNull { !it.errorMessage.isNullOrBlank() }
         ?.let { source -> "${source.agency.name}: ${source.errorMessage}" }
-    Column(
-        modifier = modifier
-            .fillMaxWidth()
-            .background(STORM_MUTED_PANEL)
-            .padding(horizontal = 12.dp, vertical = 10.dp),
-    ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Column(Modifier.weight(1f)) {
+    val summary = when {
+        enabledAgencyCount == 0 -> "未選擇來源"
+        state.isRefreshing -> "正在同步四機構官方資料…"
+        visibleTracks.isEmpty() -> "目前沒有可顯示的活躍路徑"
+        else -> "顯示 ${visibleTracks.size} 條機構路徑 · $enabledAgencyCount/4 來源"
+    }
+    val compactSummary = when {
+        enabledAgencyCount == 0 -> "未選擇來源"
+        state.isRefreshing -> "同步中 · $enabledAgencyCount/4"
+        visibleTracks.isEmpty() -> "暫無路徑 · $enabledAgencyCount/4"
+        else -> "${visibleTracks.size} 路徑 · $enabledAgencyCount/4 來源"
+    }
+    val guidance = if (state.cacheRestored) {
+        "點擊路徑點查看完整資料 · 路徑線按機構色 · 路徑點按強度色"
+    } else {
+        "正在讀取 Storm 裝置快取…"
+    }
+
+    MetroFloatingIsland(
+        expanded = expanded,
+        accent = pageColour,
+        modifier = modifier,
+        collapsedContent = {
+            Column(Modifier.widthIn(max = 190.dp)) {
                 Text(
-                    text = when {
-                        enabledAgencyCount == 0 -> "未選擇來源"
-                        state.isRefreshing -> "正在同步四機構官方資料…"
-                        visibleTracks.isEmpty() -> "目前沒有可顯示的活躍路徑"
-                        else -> "顯示 ${visibleTracks.size} 條機構路徑 · $enabledAgencyCount/4 來源"
-                    },
+                    text = compactSummary,
                     color = Color.White,
                     fontSize = 13.sp,
                     fontWeight = FontWeight.Medium,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
                 )
                 Text(
-                    text = if (state.cacheRestored) {
-                        "點擊路徑點查看完整資料 · 路徑線按機構色 · 路徑點按強度色"
-                    } else {
-                        "正在讀取 Storm 裝置快取…"
-                    },
+                    text = if (state.cacheRestored) "點擊路徑點查看資料" else "正在讀取裝置快取…",
                     color = LocalMetroSubText.current,
-                    fontSize = 10.sp,
-                    lineHeight = 14.sp,
+                    fontSize = 9.sp,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
@@ -421,36 +438,83 @@ private fun StormBottomHud(
             Text(
                 text = "全景",
                 color = pageColour,
-                fontSize = 13.sp,
+                fontSize = 12.sp,
                 modifier = Modifier
                     .clickable(onClick = onFit)
-                    .padding(start = 14.dp, top = 8.dp, bottom = 8.dp),
+                    .padding(start = 12.dp, top = 8.dp, bottom = 8.dp),
             )
-        }
+            Text(
+                text = "詳情",
+                color = pageColour,
+                fontSize = 12.sp,
+                modifier = Modifier
+                    .clickable { onExpandedChange(true) }
+                    .padding(start = 10.dp, top = 8.dp, bottom = 8.dp),
+            )
+        },
+        expandedContent = {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(Modifier.weight(1f)) {
+                    Text(
+                        text = summary,
+                        color = Color.White,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Medium,
+                    )
+                    Text(
+                        text = guidance,
+                        color = LocalMetroSubText.current,
+                        fontSize = 10.sp,
+                        lineHeight = 14.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+                Text(
+                    text = "全景",
+                    color = pageColour,
+                    fontSize = 12.sp,
+                    modifier = Modifier
+                        .clickable(onClick = onFit)
+                        .padding(start = 12.dp, top = 8.dp, bottom = 8.dp),
+                )
+                Text(
+                    text = "收起",
+                    color = pageColour,
+                    fontSize = 12.sp,
+                    modifier = Modifier
+                        .clickable { onExpandedChange(false) }
+                        .padding(start = 10.dp, top = 8.dp, bottom = 8.dp),
+                )
+            }
 
-        if (visibleTracks.isNotEmpty()) {
-            Spacer(Modifier.height(5.dp))
-            Text(
-                text = visibleTracks.take(4).joinToString(" · ") { track ->
-                    "${track.agency.name} ${trackDisplayName(track)}"
-                },
-                color = Color.White.copy(alpha = 0.78f),
-                fontSize = 10.sp,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-        }
-        sourceError?.let { message ->
-            Spacer(Modifier.height(4.dp))
-            Text(
-                text = message,
-                color = Color(0xFFFF9E9E),
-                fontSize = 9.sp,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-        }
-    }
+            if (visibleTracks.isNotEmpty()) {
+                Spacer(Modifier.height(5.dp))
+                Text(
+                    text = visibleTracks.take(4).joinToString(" · ") { track ->
+                        "${track.agency.name} ${trackDisplayName(track)}"
+                    },
+                    color = Color.White.copy(alpha = 0.78f),
+                    fontSize = 10.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            sourceError?.let { message ->
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    text = message,
+                    color = Color(0xFFFF9E9E),
+                    fontSize = 9.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        },
+    )
 }
 
 @Composable
