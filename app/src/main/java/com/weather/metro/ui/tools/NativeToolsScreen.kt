@@ -14,11 +14,9 @@ import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
 import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -44,7 +42,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -57,6 +54,8 @@ import androidx.lifecycle.repeatOnLifecycle
 import com.weather.metro.data.tools.RainRadarMode
 import com.weather.metro.ui.components.MetroSectionLabel
 import com.weather.metro.ui.components.MetroTile
+import com.weather.metro.ui.motion.MetroPressPreset
+import com.weather.metro.ui.motion.metroPressMotion
 import com.weather.metro.ui.rain.RAIN_TOOL_POLICY_TICK_MS
 import com.weather.metro.ui.rain.RainForecastMapLibrePanel
 import com.weather.metro.ui.rain.RainHostState
@@ -566,21 +565,14 @@ private fun ToolTile(
     modifier: Modifier = Modifier.fillMaxWidth().height(142.dp),
     onClick: (() -> Unit)? = null,
 ) {
-    val reduceMotion = LocalReduceMotion.current
     val interactionSource = remember { MutableInteractionSource() }
-    val pressed by interactionSource.collectIsPressedAsState()
-    val scale by animateFloatAsState(
-        targetValue = if (pressed && !reduceMotion) 0.975f else 1f,
-        animationSpec = tween(if (reduceMotion) 100 else 120),
-        label = "tool tile press",
-    )
     MetroTile(
         seed = seed,
         background = background,
-        modifier = modifier.graphicsLayer {
-            scaleX = scale
-            scaleY = scale
-        },
+        modifier = modifier.metroPressMotion(
+            interactionSource = interactionSource,
+            preset = MetroPressPreset.Tile,
+        ),
         onClick = onClick,
         interactionSource = interactionSource,
     ) {

@@ -8,13 +8,11 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
-import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -31,12 +29,13 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.weather.metro.ui.components.MetroStat
 import com.weather.metro.ui.components.MetroTile
+import com.weather.metro.ui.motion.MetroPressPreset
+import com.weather.metro.ui.motion.metroPressMotion
 import com.weather.metro.ui.theme.LocalMetroSubText
 import com.weather.metro.ui.theme.LocalReduceMotion
 import com.weather.metro.ui.tools.ToolLoadingPanel
@@ -227,7 +226,6 @@ private fun RadiusSelector(
                 val selected = selectedRadiusKm == radiusKm
                 val reduceMotion = LocalReduceMotion.current
                 val interactionSource = remember { MutableInteractionSource() }
-                val pressed by interactionSource.collectIsPressedAsState()
                 val background by animateColorAsState(
                     targetValue = if (selected) pageColour else Color(0xFF202020),
                     animationSpec = tween(if (reduceMotion) 100 else 180),
@@ -238,19 +236,14 @@ private fun RadiusSelector(
                     animationSpec = tween(if (reduceMotion) 100 else 180),
                     label = "rain radius text",
                 )
-                val scale by animateFloatAsState(
-                    targetValue = if (pressed && !reduceMotion) 0.94f else 1f,
-                    animationSpec = tween(if (reduceMotion) 100 else 110),
-                    label = "rain radius press",
-                )
                 Box(
                     modifier = Modifier
                         .weight(1f)
                         .height(38.dp)
-                        .graphicsLayer {
-                            scaleX = scale
-                            scaleY = scale
-                        }
+                        .metroPressMotion(
+                            interactionSource = interactionSource,
+                            preset = MetroPressPreset.CompactControl,
+                        )
                         .background(background)
                         .clickable(
                             interactionSource = interactionSource,

@@ -6,6 +6,7 @@ import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
@@ -15,6 +16,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
@@ -41,12 +43,13 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.weather.metro.ui.motion.MetroPressPreset
+import com.weather.metro.ui.motion.metroPressMotion
 import com.weather.metro.ui.theme.LocalMetroSubText
 import com.weather.metro.ui.theme.LocalMetroOutline
 import com.weather.metro.ui.theme.LocalMetroSurface
@@ -83,12 +86,20 @@ fun MetroTile(
     contentPadding: androidx.compose.foundation.layout.PaddingValues =
         androidx.compose.foundation.layout.PaddingValues(12.dp),
     selected: Boolean = false,
+    pressMotionPreset: MetroPressPreset? = MetroPressPreset.Tile,
     content: @Composable BoxScope.() -> Unit,
 ) {
     val neutralSurface = LocalMetroSurface.current
     val neutralOutline = LocalMetroOutline.current
+    val reduceMotion = LocalReduceMotion.current
     val resolvedInteractionSource = interactionSource ?: remember { MutableInteractionSource() }
     val indication = LocalIndication.current
+    val pressed by resolvedInteractionSource.collectIsPressedAsState()
+    val pressEmphasis by animateFloatAsState(
+        targetValue = if (onClick != null && pressed && !reduceMotion) 1f else 0f,
+        animationSpec = tween(if (reduceMotion) 1 else 70),
+        label = "metro tile press emphasis",
+    )
     val clickableModifier = if (onClick != null) {
         Modifier.clickable(
             interactionSource = resolvedInteractionSource,
@@ -99,21 +110,38 @@ fun MetroTile(
     } else {
         Modifier
     }
+    val motionModifier = if (
+        onClick != null &&
+        pressMotionPreset != null &&
+        interactionSource == null
+    ) {
+        Modifier.metroPressMotion(
+            interactionSource = resolvedInteractionSource,
+            preset = pressMotionPreset,
+        )
+    } else {
+        Modifier
+    }
     val chromeModifier = Modifier
         .background(neutralSurface)
-        .background(background.copy(alpha = if (selected) 0.14f else 0.035f))
+        .background(
+            background.copy(
+                alpha = if (selected) 0.14f else 0.035f + pressEmphasis * 0.055f,
+            ),
+        )
         .border(
             width = 1.dp,
             color = if (selected) background.copy(alpha = 0.72f) else neutralOutline,
         )
         .drawBehind {
             drawRect(
-                color = background.copy(alpha = 0.92f),
-                size = Size(3.dp.toPx(), size.height),
+                color = background.copy(alpha = 0.92f + pressEmphasis * 0.08f),
+                size = Size((3f + pressEmphasis * 2f).dp.toPx(), size.height),
             )
         }
     Box(
         modifier = modifier
+            .then(motionModifier)
             .clip(androidx.compose.ui.graphics.RectangleShape)
             .then(chromeModifier)
             .then(clickableModifier)
@@ -138,6 +166,7 @@ fun ExpandableMetroTile(
         background = background,
         onClick = { onExpandedChange(!expanded) },
         modifier = modifier,
+        pressMotionPreset = null,
     ) {
         Column(
             modifier = Modifier
