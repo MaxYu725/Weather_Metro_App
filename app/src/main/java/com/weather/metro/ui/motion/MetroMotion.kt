@@ -18,13 +18,16 @@ import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import com.weather.metro.ui.theme.LocalReduceMotion
 
 /**
  * Shared press-response language for Weather Metro / Visual V2.
  *
- * The base V1.1 modifier only observes [MutableInteractionSource]. V2.1 adds an optional pointer
+ * The base V1.1 modifier only observes [MutableInteractionSource]. V2 adds an optional pointer
  * observer for Glass surfaces. The observer runs on [PointerEventPass.Initial] and never consumes a
  * pointer change, so HorizontalPager and MapLibre remain responsible for gesture arbitration.
  */
@@ -65,6 +68,35 @@ internal data class MetroPressScale(
     val y: Float,
 )
 
+internal enum class MetroDirectionalProfile(
+    val scaleXGain: Float,
+    val scaleYGain: Float,
+    val rotationXDegrees: Float,
+    val rotationYDegrees: Float,
+    val translationXDp: Float,
+    val translationYDp: Float,
+) {
+    /** Device-tested V2.1 tuning. Keep large weather cards deliberately calm. */
+    LARGE(
+        scaleXGain = 1f,
+        scaleYGain = 1f,
+        rotationXDegrees = 1.6f,
+        rotationYDegrees = 2.6f,
+        translationXDp = 2.8f,
+        translationYDp = 1.4f,
+    ),
+
+    /** Small square-ish action cards need more travel for the same motion to remain legible. */
+    COMPACT(
+        scaleXGain = 1.35f,
+        scaleYGain = 1.25f,
+        rotationXDegrees = 2.2f,
+        rotationYDegrees = 4.0f,
+        translationXDp = 4.2f,
+        translationYDp = 1.8f,
+    ),
+}
+
 internal data class MetroDirectionalTransform(
     val scaleX: Float,
     val scaleY: Float,
@@ -89,31 +121,53 @@ internal fun metroPressScale(
 }
 
 /**
+ * Classifies only genuinely compact, approximately button-sized tiles as COMPACT.
+ * Wide strips stay on the calmer LARGE profile even when short, avoiding excessive perspective.
+ */
+internal fun metroDirectionalProfile(
+    widthDp: Float,
+    heightDp: Float,
+): MetroDirectionalProfile = if (
+    widthDp > 0f &&
+    heightDp > 0f &&
+    widthDp <= 180f &&
+    heightDp <= 120f
+) {
+    MetroDirectionalProfile.COMPACT
+} else {
+    MetroDirectionalProfile.LARGE
+}
+
+/**
  * Converts touch origin + spring progress into a bounded Glass-surface transform.
  *
- * Touch coordinates are normalized to 0..1. The effect is deliberately subtle: the material should
- * appear to yield toward the finger, not behave like a freely rotating 3D card.
+ * Touch coordinates are normalized to 0..1. Large cards preserve the device-tested V2.1 values;
+ * compact cards receive stronger but still bounded deformation because their shorter edges otherwise
+ * make the same normalized movement visually disappear.
  */
 internal fun metroDirectionalTransform(
     preset: MetroPressPreset,
     progress: Float,
     touchX: Float,
     touchY: Float,
+    profile: MetroDirectionalProfile = MetroDirectionalProfile.LARGE,
 ): MetroDirectionalTransform {
     val deformation = progress.coerceIn(-0.20f, 1f)
     val x = touchX.coerceIn(0f, 1f)
     val y = touchY.coerceIn(0f, 1f)
     val horizontal = (x - 0.5f) * 2f
     val vertical = (y - 0.5f) * 2f
-    val scale = metroPressScale(preset, deformation)
+    val baseScale = metroPressScale(preset, deformation)
+    val tunedScaleX = 1f - ((1f - baseScale.x) * profile.scaleXGain)
+    val tunedScaleY = 1f - ((1f - baseScale.y) * profile.scaleYGain)
 
     return MetroDirectionalTransform(
-        scaleX = scale.x,
-        scaleY = scale.y,
-        rotationX = vertical * 1.6f * deformation,
-        rotationY = -horizontal * 2.6f * deformation,
-        translationXDp = horizontal * 2.8f * deformation,
-        translationYDp = 1.4f * deformation,
+        scaleX = tunedScaleX,
+        scaleY = tunedScaleY,
+        rotationX = vertical * profile.rotationXDegrees * deformation,
+        rotationY = -horizontal * profile.rotationYDegrees * deformation,
+        translationXDp = horizontal * profile.translationXDp * deformation,
+        translationYDp = profile.translationYDp * deformation,
         originX = x,
         originY = y,
     )
@@ -156,11 +210,11 @@ fun Modifier.metroPressMotion(
 }
 
 /**
- * Glass V2.1 press response with touch-origin tilt and displacement.
+ * Glass V2 press response with touch-origin tilt, displacement and automatic size-aware tuning.
  *
  * Pointer events are observed only; no change is consumed. Once Clickable/Pager cancels the pressed
  * interaction because a gesture becomes a drag, progress springs back to rest while Pager keeps the
- * gesture. This is the key safety boundary for introducing directional motion on the home surface.
+ * gesture. This remains the key safety boundary for directional motion on the home surface.
  */
 @Composable
 fun Modifier.metroDirectionalPressMotion(
@@ -169,9 +223,11 @@ fun Modifier.metroDirectionalPressMotion(
     enabled: Boolean = true,
 ): Modifier {
     val reduceMotion = LocalReduceMotion.current
+    val density = LocalDensity.current
     val pressed by interactionSource.collectIsPressedAsState()
     val progress = remember { Animatable(0f) }
     var touchOrigin by remember { mutableStateOf(Offset(0.5f, 0.5f)) }
+    var elementSize by remember { mutableStateOf(IntSize.Zero) }
 
     LaunchedEffect(pressed, reduceMotion, enabled, preset) {
         when {
@@ -191,30 +247,34 @@ fun Modifier.metroDirectionalPressMotion(
     }
 
     val observed = if (!reduceMotion && enabled) {
-        pointerInput(Unit) {
-            awaitPointerEventScope {
-                while (true) {
-                    val event = awaitPointerEvent(PointerEventPass.Initial)
-                    val change = event.changes.firstOrNull { it.pressed } ?: continue
-                    if (size.width > 0 && size.height > 0) {
-                        touchOrigin = Offset(
-                            x = (change.position.x / size.width.toFloat()).coerceIn(0f, 1f),
-                            y = (change.position.y / size.height.toFloat()).coerceIn(0f, 1f),
-                        )
+        onSizeChanged { elementSize = it }
+            .pointerInput(Unit) {
+                awaitPointerEventScope {
+                    while (true) {
+                        val event = awaitPointerEvent(PointerEventPass.Initial)
+                        val change = event.changes.firstOrNull { it.pressed } ?: continue
+                        if (size.width > 0 && size.height > 0) {
+                            touchOrigin = Offset(
+                                x = (change.position.x / size.width.toFloat()).coerceIn(0f, 1f),
+                                y = (change.position.y / size.height.toFloat()).coerceIn(0f, 1f),
+                            )
+                        }
                     }
                 }
             }
-        }
     } else {
         this
     }
 
     return observed.graphicsLayer {
+        val widthDp = if (density.density > 0f) elementSize.width / density.density else 0f
+        val heightDp = if (density.density > 0f) elementSize.height / density.density else 0f
         val transform = metroDirectionalTransform(
             preset = preset,
             progress = progress.value,
             touchX = touchOrigin.x,
             touchY = touchOrigin.y,
+            profile = metroDirectionalProfile(widthDp, heightDp),
         )
         transformOrigin = TransformOrigin(transform.originX, transform.originY)
         scaleX = transform.scaleX
