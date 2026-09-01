@@ -1,0 +1,1 @@
+Visual V2.3 CI trigger: short-tap impulse + expandable tile motion.
