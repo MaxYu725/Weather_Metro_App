@@ -524,21 +524,25 @@ fun ForecastScreen(snapshot: WeatherSnapshot, pageColour: Color) {
                             Modifier.size(52.dp),
                         )
                         Spacer(Modifier.width(10.dp))
-                        Column(Modifier.weight(1f)) {
-                            Text(
-                                day.description,
-                                color = Color.White.copy(alpha = 0.86f),
-                                fontSize = 12.sp,
-                                lineHeight = 15.sp,
-                                maxLines = 2,
-                                overflow = TextOverflow.Ellipsis,
-                            )
-                            Spacer(Modifier.height(3.dp))
-                            Text(
-                                "降雨 ${day.precipitationProbability}",
-                                color = pageColour.copy(alpha = 0.92f),
-                                fontSize = 10.sp,
-                            )
+                        if (!expanded) {
+                            Column(Modifier.weight(1f)) {
+                                Text(
+                                    day.description,
+                                    color = Color.White.copy(alpha = 0.86f),
+                                    fontSize = 12.sp,
+                                    lineHeight = 15.sp,
+                                    maxLines = 2,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                                Spacer(Modifier.height(3.dp))
+                                Text(
+                                    "降雨 ${day.precipitationProbability}",
+                                    color = Color.White.copy(alpha = 0.68f),
+                                    fontSize = 10.sp,
+                                )
+                            }
+                        } else {
+                            Spacer(Modifier.weight(1f))
                         }
                         Spacer(Modifier.width(8.dp))
                         Column(horizontalAlignment = Alignment.End) {
@@ -554,11 +558,15 @@ fun ForecastScreen(snapshot: WeatherSnapshot, pageColour: Color) {
                                 color = Color.White.copy(alpha = 0.68f),
                                 fontSize = 11.sp,
                             )
-                            Text(
-                                if (expanded) "−" else "+",
-                                color = Color.White.copy(alpha = 0.82f),
-                                fontSize = 18.sp,
-                            )
+                            Spacer(Modifier.height(4.dp))
+                            MetroGlassContextSurface(accent = pageColour) {
+                                Text(
+                                    if (expanded) "收起" else "詳情",
+                                    color = Color.White.copy(alpha = 0.84f),
+                                    fontSize = 9.sp,
+                                    modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp),
+                                )
+                            }
                         }
                     }
                 },
@@ -579,7 +587,7 @@ fun ForecastScreen(snapshot: WeatherSnapshot, pageColour: Color) {
                             label = "濕度",
                             value = "${day.minHumidityPercent}–${day.maxHumidityPercent}%",
                             modifier = Modifier.weight(1f),
-                            secondary = true,
+                            secondary = false,
                         )
                         MetroStat(
                             label = "顯著降雨概率",
