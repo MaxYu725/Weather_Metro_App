@@ -33,6 +33,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -483,12 +484,21 @@ private fun RadarTopHud(
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .background(RADAR_MAPLIBRE_PANEL)
-            .padding(horizontal = 14.dp, vertical = 12.dp),
+            .background(
+                brush = Brush.verticalGradient(
+                    colors = listOf(
+                        Color.Black.copy(alpha = 0.78f),
+                        Color.Black.copy(alpha = 0.46f),
+                        accent.copy(alpha = 0.08f),
+                        Color.Transparent,
+                    ),
+                ),
+            )
+            .padding(start = 14.dp, end = 14.dp, top = 10.dp, bottom = 18.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        RadarHudButton("‹ tools", accent, onBack)
+        RadarHeaderAction("‹ tools", accent, onBack)
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = timeline?.let { "雷達 · ${it.rangeKm} km · ${it.heightKm} km高" } ?: "雷達",
@@ -508,7 +518,22 @@ private fun RadarTopHud(
                 fontSize = 11.sp,
             )
         }
-        RadarHudButton("更新", accent, onRefresh)
+        RadarHeaderAction("更新", accent, onRefresh)
+    }
+}
+
+@Composable
+private fun RadarHeaderAction(label: String, accent: Color, onClick: () -> Unit) {
+    MetroGlassContextSurface(
+        accent = accent,
+        modifier = Modifier.clickable(onClick = onClick),
+    ) {
+        Text(
+            text = label,
+            color = accent,
+            fontSize = 13.sp,
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
+        )
     }
 }
 
@@ -665,11 +690,11 @@ private fun RadarChip(
     onClick: () -> Unit,
 ) {
     val background = when {
-        selected -> accent
-        else -> Color(0xFF202020)
+        selected -> accent.copy(alpha = if (enabled) 0.30f else 0.16f)
+        else -> Color(0xFF202020).copy(alpha = if (enabled) 1f else 0.45f)
     }
     val border = when {
-        selected -> accent
+        selected -> accent.copy(alpha = if (enabled) 0.82f else 0.38f)
         enabled -> Color(0xFF414141)
         else -> Color(0xFF282828)
     }
@@ -678,7 +703,7 @@ private fun RadarChip(
         color = Color.White.copy(alpha = if (enabled) 1f else 0.42f),
         fontSize = 10.sp,
         modifier = Modifier
-            .background(background.copy(alpha = if (enabled) 1f else 0.45f))
+            .background(background)
             .border(1.dp, border)
             .clickable(enabled = enabled, onClick = onClick)
             .padding(horizontal = 8.dp, vertical = 7.dp),
