@@ -1,8 +1,5 @@
 package com.weather.metro.ui.rain
 
-import androidx.compose.foundation.background
-import androidx.compose.foundation.border
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -19,6 +16,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.repeatOnLifecycle
 import com.weather.metro.data.tools.RainRadarMode
+import com.weather.metro.ui.components.MetroGlassContextSurface
 import kotlinx.coroutines.delay
 
 @Composable
@@ -76,16 +74,15 @@ fun RainRadarProductionStatus(
         freshness.label
     }
 
-    Box(
-        modifier = modifier
-            .background(Color(0xE6101010))
-            .border(1.dp, Color(0xFF343434))
-            .padding(horizontal = 9.dp, vertical = 5.dp),
+    MetroGlassContextSurface(
+        accent = colour,
+        modifier = modifier,
     ) {
         Text(
             text = label,
             color = colour,
             fontSize = 10.sp,
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
         )
     }
 }
