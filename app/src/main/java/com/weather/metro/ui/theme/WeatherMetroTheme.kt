@@ -22,12 +22,28 @@ val LocalMetroSurface = staticCompositionLocalOf { Color(0xD911161A) }
 val LocalMetroOutline = staticCompositionLocalOf { Color.White.copy(alpha = 0.12f) }
 val LocalReduceMotion = staticCompositionLocalOf { false }
 
+enum class MetroSurfaceStyle {
+    FLAT,
+    GLASS,
+}
+
+val LocalMetroSurfaceStyle = staticCompositionLocalOf { MetroSurfaceStyle.FLAT }
+
+@Composable
+fun MetroSurfaceStyleProvider(
+    style: MetroSurfaceStyle,
+    content: @Composable () -> Unit,
+) {
+    CompositionLocalProvider(LocalMetroSurfaceStyle provides style, content = content)
+}
+
 @Composable
 fun WeatherMetroTheme(settings: UiSettings, content: @Composable () -> Unit) {
     val accent = argbColor(settings.pageColours.currentArgb)
-    val subText = if (settings.highContrast) Color.White else Color(0xFFAAAAAA)
+    val subText = if (settings.highContrast) Color.White else Color(0xFFC0C8CE)
     val metroSurface = if (settings.highContrast) Color(0xF20B0F12) else Color(0xD911161A)
     val metroOutline = Color.White.copy(alpha = if (settings.highContrast) 0.26f else 0.12f)
+    val surfaceStyle = if (settings.highContrast) MetroSurfaceStyle.FLAT else MetroSurfaceStyle.GLASS
     val systemDensity = LocalDensity.current
     val scaledDensity = Density(
         density = systemDensity.density,
@@ -36,11 +52,11 @@ fun WeatherMetroTheme(settings: UiSettings, content: @Composable () -> Unit) {
     val scheme = darkColorScheme(
         primary = accent,
         onPrimary = Color.White,
-        background = Color.Black,
+        background = Color(0xFF102431),
         onBackground = Color.White,
-        surface = Color(0xFF161616),
+        surface = Color(0xFF172D3A),
         onSurface = Color.White,
-        surfaceVariant = Color(0xFF252525),
+        surfaceVariant = Color(0xFF223B49),
         onSurfaceVariant = subText,
         error = Color(0xFFE51400),
     )
@@ -50,6 +66,7 @@ fun WeatherMetroTheme(settings: UiSettings, content: @Composable () -> Unit) {
         LocalMetroSubText provides subText,
         LocalMetroSurface provides metroSurface,
         LocalMetroOutline provides metroOutline,
+        LocalMetroSurfaceStyle provides surfaceStyle,
         LocalReduceMotion provides settings.reduceMotion,
         LocalDensity provides scaledDensity,
         LocalOverscrollFactory provides null,
