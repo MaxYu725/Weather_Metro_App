@@ -1,9 +1,7 @@
 package com.weather.metro.ui.screens
 
-import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -11,11 +9,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.material3.Slider
-import androidx.compose.material3.SliderDefaults
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -26,7 +20,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.weather.metro.BuildConfig
@@ -34,6 +27,7 @@ import com.weather.metro.data.settings.PageColourSlot
 import com.weather.metro.data.settings.UiSettings
 import com.weather.metro.notification.PersonalizedNotificationDiagnosticVerdict
 import com.weather.metro.notification.PersonalizedNotificationDiagnostics
+import com.weather.metro.ui.components.MetroSectionLabel
 import com.weather.metro.ui.components.MetroTile
 import com.weather.metro.ui.theme.LocalMetroSubText
 import com.weather.metro.ui.theme.argbColor
@@ -65,8 +59,11 @@ fun SettingsScreen(
 ) {
     val accents = listOf(0xFF1BA1E2, 0xFF00A300, 0xFFA200FF, 0xFFE671B8, 0xFFF09609, 0xFFE51400)
     var selectedPage by rememberSaveable { mutableStateOf(PageColourSlot.CURRENT) }
+    var diagnosticsExpanded by rememberSaveable { mutableStateOf(false) }
     LazyColumn(
-        modifier = Modifier.fillMaxSize(),
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(bottom = 18.dp),
         contentPadding = androidx.compose.foundation.layout.PaddingValues(
             start = 22.dp,
             end = 16.dp,
@@ -74,6 +71,7 @@ fun SettingsScreen(
         ),
         verticalArrangement = Arrangement.spacedBy(9.dp),
     ) {
+        item { MetroSectionLabel("appearance") }
         item {
             MetroTile("page-colours", pageColour, Modifier.fillMaxWidth()) {
                 Column {
@@ -83,24 +81,13 @@ fun SettingsScreen(
                         horizontalArrangement = Arrangement.spacedBy(4.dp),
                     ) {
                         PageColourSlot.entries.forEach { slot ->
-                            val selected = selectedPage == slot
-                            Box(
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .height(42.dp)
-                                    .background(argbColor(settings.pageColours.colour(slot)))
-                                    .clickable { selectedPage = slot }
-                                    .padding(horizontal = 3.dp),
-                                contentAlignment = Alignment.Center,
-                            ) {
-                                Text(
-                                    text = if (selected) "✓ ${slot.label}" else slot.label,
-                                    color = Color.White,
-                                    fontSize = 9.sp,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Clip,
-                                )
-                            }
+                            SettingsPageChip(
+                                label = slot.label,
+                                accent = argbColor(settings.pageColours.colour(slot)),
+                                selected = selectedPage == slot,
+                                modifier = Modifier.weight(1f),
+                                onClick = { selectedPage = slot },
+                            )
                         }
                     }
                     Spacer(Modifier.height(10.dp))
@@ -112,17 +99,11 @@ fun SettingsScreen(
                     Spacer(Modifier.height(6.dp))
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         accents.forEach { value ->
-                            Box(
-                                Modifier
-                                    .size(36.dp)
-                                    .background(argbColor(value))
-                                    .clickable { onPageColourChange(selectedPage, value) },
-                                contentAlignment = Alignment.Center,
-                            ) {
-                                if (settings.pageColours.colour(selectedPage) == value) {
-                                    Text("✓", color = Color.White)
-                                }
-                            }
+                            SettingsAccentSwatch(
+                                accent = argbColor(value),
+                                selected = settings.pageColours.colour(selectedPage) == value,
+                                onClick = { onPageColourChange(selectedPage, value) },
+                            )
                         }
                     }
                 }
@@ -132,12 +113,10 @@ fun SettingsScreen(
             MetroTile("text-settings", pageColour, Modifier.fillMaxWidth()) {
                 Column {
                     PersonalizedSettingTitle("text size", "${(settings.textScale * 100).roundToInt()}%")
-                    Slider(
+                    SettingsGlassSlider(
                         value = settings.textScale,
                         onValueChange = onTextScaleChange,
-                        valueRange = 0.9f..1.5f,
-                        steps = 5,
-                        colors = personalizedSliderColors(),
+                        accent = pageColour,
                     )
                 }
             }
@@ -162,6 +141,7 @@ fun SettingsScreen(
                 onChange = onHighContrastChange,
             )
         }
+        item { MetroSectionLabel("location & notifications") }
         item {
             PersonalizedSettingToggle(
                 seed = "location",
@@ -202,12 +182,12 @@ fun SettingsScreen(
                 onChange = onPersonalizedRainNotificationsChange,
             )
         }
+        item { MetroSectionLabel("diagnostics & system") }
         item {
             MetroTile(
                 "notification-diagnostics",
                 pageColour,
                 Modifier.fillMaxWidth(),
-                onClick = onRefreshNotificationDiagnostics,
             ) {
                 Column {
                     PersonalizedSettingTitle(
@@ -215,69 +195,93 @@ fun SettingsScreen(
                         notificationDiagnostics.verdict.displayLabel(),
                     )
                     DiagnosticLine(
-                        "HKO journal work periodic ${notificationDiagnostics.officialPeriodicActiveCount} / " +
-                            "immediate ${notificationDiagnostics.officialImmediateActiveCount}",
+                        "HKO ${if (notificationDiagnostics.officialError.isBlank()) "synced" else "attention"} · " +
+                            "location ${notificationDiagnostics.locationDistrict.ifBlank { "unavailable" }}",
                     )
-                    DiagnosticLine(
-                        "HKO journal ${officialJournalCursorText(notificationDiagnostics)} · synced " +
-                            eventAgeText(
-                                notificationDiagnostics.checkedAtEpochMs,
-                                notificationDiagnostics.officialLastSuccessEpochMs,
-                            ) + " · delivered ${notificationDiagnostics.officialDeliveredEventsLastRun}",
-                    )
-                    if (notificationDiagnostics.officialError.isNotBlank()) {
-                        DiagnosticLine("HKO journal error ${notificationDiagnostics.officialError}")
-                    } else {
-                        DiagnosticLine(
-                            "HKO journal last attempt " + eventAgeText(
-                                notificationDiagnostics.checkedAtEpochMs,
-                                notificationDiagnostics.officialLastAttemptEpochMs,
-                            ),
+                    Row(
+                        modifier = Modifier.padding(top = 7.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        SettingsActionBadge(
+                            text = if (diagnosticsExpanded) "收起" else "詳情",
+                            accent = pageColour,
+                            minWidth = 64.dp,
+                            onClick = { diagnosticsExpanded = !diagnosticsExpanded },
+                        )
+                        SettingsActionBadge(
+                            text = "refresh diagnostics",
+                            accent = pageColour,
+                            minWidth = 132.dp,
+                            onClick = onRefreshNotificationDiagnostics,
                         )
                     }
-                    DiagnosticLine(
-                        "periodic ${notificationDiagnostics.periodicActiveCount} active · " +
-                            "dispatch 2D1 ${notificationDiagnostics.periodicDispatchHeavyRain.onOff()} / " +
-                            "SWIRLS ${notificationDiagnostics.periodicDispatchPersonalizedRain.onOff()}",
-                    )
-                    DiagnosticLine(
-                        "immediate ${notificationDiagnostics.immediateActiveCount} active · " +
-                            "2D1 ${notificationDiagnostics.immediateDispatchHeavyRain.onOff()} / " +
-                            "SWIRLS ${notificationDiagnostics.immediateDispatchPersonalizedRain.onOff()}",
-                    )
-                    DiagnosticLine(
-                        "location ${notificationDiagnostics.locationDistrict.ifBlank { "unavailable" }} · " +
-                            ageText(notificationDiagnostics.locationAgeMs),
-                    )
-                    DiagnosticLine(
-                        "2D1 ${notificationDiagnostics.heavyRainStatus} · checked " +
-                            eventAgeText(
+                    if (diagnosticsExpanded) {
+                        Spacer(Modifier.height(10.dp))
+                        DiagnosticLine(
+                            "HKO journal work periodic ${notificationDiagnostics.officialPeriodicActiveCount} / " +
+                                "immediate ${notificationDiagnostics.officialImmediateActiveCount}",
+                        )
+                        DiagnosticLine(
+                            "HKO journal ${officialJournalCursorText(notificationDiagnostics)} · synced " +
+                                eventAgeText(
+                                    notificationDiagnostics.checkedAtEpochMs,
+                                    notificationDiagnostics.officialLastSuccessEpochMs,
+                                ) + " · delivered ${notificationDiagnostics.officialDeliveredEventsLastRun}",
+                        )
+                        if (notificationDiagnostics.officialError.isNotBlank()) {
+                            DiagnosticLine("HKO journal error ${notificationDiagnostics.officialError}")
+                        } else {
+                            DiagnosticLine(
+                                "HKO journal last attempt " + eventAgeText(
+                                    notificationDiagnostics.checkedAtEpochMs,
+                                    notificationDiagnostics.officialLastAttemptEpochMs,
+                                ),
+                            )
+                        }
+                        DiagnosticLine(
+                            "periodic ${notificationDiagnostics.periodicActiveCount} active · " +
+                                "dispatch 2D1 ${notificationDiagnostics.periodicDispatchHeavyRain.onOff()} / " +
+                                "SWIRLS ${notificationDiagnostics.periodicDispatchPersonalizedRain.onOff()}",
+                        )
+                        DiagnosticLine(
+                            "immediate ${notificationDiagnostics.immediateActiveCount} active · " +
+                                "2D1 ${notificationDiagnostics.immediateDispatchHeavyRain.onOff()} / " +
+                                "SWIRLS ${notificationDiagnostics.immediateDispatchPersonalizedRain.onOff()}",
+                        )
+                        DiagnosticLine(
+                            "location ${notificationDiagnostics.locationDistrict.ifBlank { "unavailable" }} · " +
+                                ageText(notificationDiagnostics.locationAgeMs),
+                        )
+                        DiagnosticLine(
+                            "2D1 ${notificationDiagnostics.heavyRainStatus} · checked " +
+                                eventAgeText(
+                                    notificationDiagnostics.checkedAtEpochMs,
+                                    notificationDiagnostics.heavyRainLastCheckedEpochMs,
+                                ),
+                        )
+                        DiagnosticLine(
+                            "SWIRLS ${notificationDiagnostics.personalizedRainStatus} · checked " +
+                                eventAgeText(
+                                    notificationDiagnostics.checkedAtEpochMs,
+                                    notificationDiagnostics.personalizedRainLastCheckedEpochMs,
+                                ),
+                        )
+                        DiagnosticLine(
+                            "SWIRLS source " + eventAgeText(
                                 notificationDiagnostics.checkedAtEpochMs,
-                                notificationDiagnostics.heavyRainLastCheckedEpochMs,
-                            ),
-                    )
-                    DiagnosticLine(
-                        "SWIRLS ${notificationDiagnostics.personalizedRainStatus} · checked " +
-                            eventAgeText(
-                                notificationDiagnostics.checkedAtEpochMs,
-                                notificationDiagnostics.personalizedRainLastCheckedEpochMs,
-                            ),
-                    )
-                    DiagnosticLine(
-                        "SWIRLS source " + eventAgeText(
-                            notificationDiagnostics.checkedAtEpochMs,
-                            notificationDiagnostics.personalizedRainLastSourceRunEpochMs,
-                        ) + " · pending " + notificationDiagnostics.personalizedRainPendingKind.ifBlank { "none" },
-                    )
-                    if (notificationDiagnostics.error.isNotBlank()) {
-                        DiagnosticLine("error ${notificationDiagnostics.error}")
+                                notificationDiagnostics.personalizedRainLastSourceRunEpochMs,
+                            ) + " · pending " + notificationDiagnostics.personalizedRainPendingKind.ifBlank { "none" },
+                        )
+                        if (notificationDiagnostics.error.isNotBlank()) {
+                            DiagnosticLine("error ${notificationDiagnostics.error}")
+                        }
+                        Text(
+                            "diagnostics never exposes exact coordinates",
+                            color = Color.White.copy(alpha = 0.68f),
+                            fontSize = 10.sp,
+                            modifier = Modifier.padding(top = 6.dp),
+                        )
                     }
-                    Text(
-                        "tap to refresh · diagnostics never exposes exact coordinates",
-                        color = Color.White.copy(alpha = 0.72f),
-                        fontSize = 11.sp,
-                        modifier = Modifier.padding(top = 8.dp),
-                    )
                 }
             }
         }
@@ -288,7 +292,7 @@ fun SettingsScreen(
                         "system notification settings",
                         "檢查通知權限及各重要程度頻道是否已開啟",
                     )
-                    Text("open settings ↗", color = Color.White.copy(alpha = 0.78f), fontSize = 14.sp)
+                    SettingsActionBadge("open settings ↗", pageColour)
                 }
             }
         }
@@ -296,7 +300,7 @@ fun SettingsScreen(
             MetroTile("cache", pageColour, Modifier.fillMaxWidth(), onClick = onClearCache) {
                 Column {
                     PersonalizedSettingTitle("clear cache", "移除離線天氣資料並重新同步")
-                    Text("clear now", color = Color.White.copy(alpha = 0.78f), fontSize = 14.sp)
+                    SettingsActionBadge("clear now", pageColour)
                 }
             }
         }
@@ -325,7 +329,11 @@ private fun PersonalizedSettingToggle(
             Column(Modifier.weight(1f)) {
                 PersonalizedSettingTitle(title, description)
             }
-            Switch(checked = checked, onCheckedChange = onChange)
+            SettingsGlassToggle(
+                checked = checked,
+                accent = pageColour,
+                onCheckedChange = onChange,
+            )
         }
     }
 }
