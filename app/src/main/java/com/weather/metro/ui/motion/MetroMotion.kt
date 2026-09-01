@@ -27,9 +27,9 @@ import com.weather.metro.ui.theme.LocalReduceMotion
 /**
  * Shared press-response language for Weather Metro / Visual V2.
  *
- * The base V1.1 modifier only observes [MutableInteractionSource]. V2 adds an optional pointer
- * observer for Glass surfaces. The observer runs on [PointerEventPass.Initial] and never consumes a
- * pointer change, so HorizontalPager and MapLibre remain responsible for gesture arbitration.
+ * V2.3 keeps pointer observation non-consuming, but gives every observed press an immediate readable
+ * deformation floor. This keeps quick taps visible instead of requiring a long press to let the
+ * press-in tween reach a meaningful value.
  */
 enum class MetroPressPreset(
     internal val pressedScaleX: Float,
@@ -62,6 +62,18 @@ enum class MetroPressPreset(
         releaseStiffness = Spring.StiffnessMedium,
     ),
 }
+
+/**
+ * Normal tiles keep the under-damped physical return. Expandable tiles settle quickly instead so
+ * their 620 ms content-size animation does not compete with a simultaneous release overshoot.
+ */
+enum class MetroPressReleaseMode {
+    SPRING,
+    QUICK_SETTLE,
+}
+
+internal const val METRO_PRESS_IMPULSE = 0.45f
+private const val METRO_QUICK_SETTLE_MS = 60
 
 internal data class MetroPressScale(
     val x: Float,
@@ -108,7 +120,7 @@ internal data class MetroDirectionalTransform(
     val originY: Float,
 )
 
-/** Small negative deformation is intentional so release can overshoot past rest. */
+/** Small negative deformation is intentional so spring release can overshoot past rest. */
 internal fun metroPressScale(
     preset: MetroPressPreset,
     progress: Float,
@@ -119,6 +131,12 @@ internal fun metroPressScale(
         y = 1f - ((1f - preset.pressedScaleY) * deformation),
     )
 }
+
+/**
+ * Immediate floor used when a press begins. It never rewinds an in-flight stronger deformation.
+ */
+internal fun metroPressImpulse(currentProgress: Float): Float =
+    maxOf(currentProgress, METRO_PRESS_IMPULSE)
 
 /**
  * Classifies only genuinely compact, approximately button-sized tiles as COMPACT.
@@ -173,31 +191,49 @@ internal fun metroDirectionalTransform(
     )
 }
 
+private suspend fun settlePressProgress(
+    progress: Animatable<Float, *>,
+    preset: MetroPressPreset,
+    releaseMode: MetroPressReleaseMode,
+) {
+    when (releaseMode) {
+        MetroPressReleaseMode.SPRING -> progress.animateTo(
+            targetValue = 0f,
+            animationSpec = spring(
+                dampingRatio = preset.releaseDampingRatio,
+                stiffness = preset.releaseStiffness,
+            ),
+        )
+        MetroPressReleaseMode.QUICK_SETTLE -> progress.animateTo(
+            targetValue = 0f,
+            animationSpec = tween(durationMillis = METRO_QUICK_SETTLE_MS),
+        )
+    }
+}
+
 /** Base non-directional press response retained for flat surfaces and compact controls. */
 @Composable
 fun Modifier.metroPressMotion(
     interactionSource: MutableInteractionSource,
     preset: MetroPressPreset = MetroPressPreset.Tile,
     enabled: Boolean = true,
+    releaseMode: MetroPressReleaseMode = MetroPressReleaseMode.SPRING,
 ): Modifier {
     val reduceMotion = LocalReduceMotion.current
     val pressed by interactionSource.collectIsPressedAsState()
     val progress = remember { Animatable(0f) }
 
-    LaunchedEffect(pressed, reduceMotion, enabled, preset) {
+    LaunchedEffect(pressed, reduceMotion, enabled, preset, releaseMode) {
         when {
             reduceMotion || !enabled -> progress.snapTo(0f)
-            pressed -> progress.animateTo(
-                targetValue = 1f,
-                animationSpec = tween(durationMillis = preset.pressInMillis),
-            )
-            else -> progress.animateTo(
-                targetValue = 0f,
-                animationSpec = spring(
-                    dampingRatio = preset.releaseDampingRatio,
-                    stiffness = preset.releaseStiffness,
-                ),
-            )
+            pressed -> {
+                progress.snapTo(metroPressImpulse(progress.value))
+                progress.animateTo(
+                    targetValue = 1f,
+                    animationSpec = tween(durationMillis = preset.pressInMillis),
+                )
+            }
+            else -> settlePressProgress(progress, preset, releaseMode)
         }
     }
 
@@ -213,14 +249,16 @@ fun Modifier.metroPressMotion(
  * Glass V2 press response with touch-origin tilt, displacement and automatic size-aware tuning.
  *
  * Pointer events are observed only; no change is consumed. Once Clickable/Pager cancels the pressed
- * interaction because a gesture becomes a drag, progress springs back to rest while Pager keeps the
- * gesture. This remains the key safety boundary for directional motion on the home surface.
+ * interaction because a gesture becomes a drag, progress returns to rest while Pager keeps the
+ * gesture. A press starts at [METRO_PRESS_IMPULSE], so even a quick tap gets a visible first-frame
+ * response before click navigation can replace the current surface.
  */
 @Composable
 fun Modifier.metroDirectionalPressMotion(
     interactionSource: MutableInteractionSource,
     preset: MetroPressPreset = MetroPressPreset.Tile,
     enabled: Boolean = true,
+    releaseMode: MetroPressReleaseMode = MetroPressReleaseMode.SPRING,
 ): Modifier {
     val reduceMotion = LocalReduceMotion.current
     val density = LocalDensity.current
@@ -229,20 +267,17 @@ fun Modifier.metroDirectionalPressMotion(
     var touchOrigin by remember { mutableStateOf(Offset(0.5f, 0.5f)) }
     var elementSize by remember { mutableStateOf(IntSize.Zero) }
 
-    LaunchedEffect(pressed, reduceMotion, enabled, preset) {
+    LaunchedEffect(pressed, reduceMotion, enabled, preset, releaseMode) {
         when {
             reduceMotion || !enabled -> progress.snapTo(0f)
-            pressed -> progress.animateTo(
-                targetValue = 1f,
-                animationSpec = tween(durationMillis = preset.pressInMillis),
-            )
-            else -> progress.animateTo(
-                targetValue = 0f,
-                animationSpec = spring(
-                    dampingRatio = preset.releaseDampingRatio,
-                    stiffness = preset.releaseStiffness,
-                ),
-            )
+            pressed -> {
+                progress.snapTo(metroPressImpulse(progress.value))
+                progress.animateTo(
+                    targetValue = 1f,
+                    animationSpec = tween(durationMillis = preset.pressInMillis),
+                )
+            }
+            else -> settlePressProgress(progress, preset, releaseMode)
         }
     }
 
