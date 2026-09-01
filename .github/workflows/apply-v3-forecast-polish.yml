@@ -1,0 +1,78 @@
+name: Apply V3.0.2 Forecast Polish
+
+on:
+  push:
+    branches:
+      - feature/visual-v3.0-forecast
+    paths:
+      - .github/workflows/apply-v3-forecast-polish.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feature/visual-v3.0-forecast
+          fetch-depth: 0
+
+      - name: Apply guarded Forecast polish
+        shell: python
+        run: |
+          from pathlib import Path
+
+          path = Path('app/src/main/java/com/weather/metro/ui/screens/WeatherScreens.kt')
+          text = path.read_text()
+          start = text.index('fun ForecastScreen(')
+          end = text.index('@Composable\nprivate fun LocalForecastDetails', start)
+          section = text[start:end]
+
+          def replace_once(old: str, new: str, label: str) -> None:
+              global section
+              count = section.count(old)
+              if count != 1:
+                  raise SystemExit(f'{label}: expected exactly one match, found {count}')
+              section = section.replace(old, new, 1)
+
+          replace_once(
+              'modifier = Modifier.fillMaxSize(),\n        contentPadding = androidx.compose.foundation.layout.PaddingValues(start = 22.dp, end = 16.dp, bottom = 48.dp),',
+              'modifier = Modifier.fillMaxSize().padding(bottom = 18.dp),\n        contentPadding = androidx.compose.foundation.layout.PaddingValues(start = 22.dp, end = 16.dp, bottom = 48.dp),',
+              'Forecast attribution safe zone',
+          )
+
+          replace_once(
+              'Modifier.size(52.dp),',
+              'Modifier.size(if (expanded) 46.dp else 52.dp),',
+              'Expanded forecast icon size',
+          )
+
+          replace_once(
+              '''Text(\n                                    "降雨 ${day.precipitationProbability}",\n                                    color = Color.White.copy(alpha = 0.68f),\n                                    fontSize = 10.sp,\n                                )''',
+              '''Text(\n                                    "降雨 ${day.precipitationProbability}",\n                                    color = Color.White.copy(alpha = 0.88f),\n                                    fontSize = 10.sp,\n                                )''',
+              'Rain preview neutral contrast',
+          )
+
+          old_right = '''Column(horizontalAlignment = Alignment.End) {\n                            Text(\n                                "${day.maxTemperatureC.roundToInt()}°",\n                                color = Color.White,\n                                fontSize = 30.sp,\n                                lineHeight = 30.sp,\n                                fontWeight = FontWeight.Light,\n                            )\n                            Text(\n                                "最低 ${day.minTemperatureC.roundToInt()}°",\n                                color = Color.White.copy(alpha = 0.68f),\n                                fontSize = 11.sp,\n                            )\n                            Spacer(Modifier.height(4.dp))\n                            MetroGlassContextSurface(accent = pageColour) {\n                                Text(\n                                    if (expanded) "收起" else "詳情",\n                                    color = Color.White.copy(alpha = 0.84f),\n                                    fontSize = 9.sp,\n                                    modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp),\n                                )\n                            }\n                        }'''
+          new_right = '''Column(horizontalAlignment = Alignment.End) {\n                            Text(\n                                "${day.maxTemperatureC.roundToInt()}°",\n                                color = Color.White,\n                                fontSize = if (expanded) 28.sp else 30.sp,\n                                lineHeight = if (expanded) 28.sp else 30.sp,\n                                fontWeight = FontWeight.Light,\n                            )\n                            if (expanded) {\n                                Row(verticalAlignment = Alignment.CenterVertically) {\n                                    Text(\n                                        "最低 ${day.minTemperatureC.roundToInt()}°",\n                                        color = Color.White.copy(alpha = 0.72f),\n                                        fontSize = 10.sp,\n                                    )\n                                    Spacer(Modifier.width(6.dp))\n                                    ForecastDetailBadge(expanded = true, pageColour = pageColour)\n                                }\n                            } else {\n                                Text(\n                                    "最低 ${day.minTemperatureC.roundToInt()}°",\n                                    color = Color.White.copy(alpha = 0.68f),\n                                    fontSize = 11.sp,\n                                )\n                                Spacer(Modifier.height(3.dp))\n                                ForecastDetailBadge(expanded = false, pageColour = pageColour)\n                            }\n                        }'''
+          replace_once(old_right, new_right, 'Forecast temperature/detail hierarchy')
+
+          helper = '''@Composable\nprivate fun ForecastDetailBadge(expanded: Boolean, pageColour: Color) {\n    MetroGlassContextSurface(accent = pageColour) {\n        Box(\n            modifier = Modifier.width(42.dp).height(28.dp),\n            contentAlignment = Alignment.Center,\n        ) {\n            Text(\n                if (expanded) "收起" else "詳情",\n                color = Color.White.copy(alpha = 0.86f),\n                fontSize = 9.sp,\n            )\n        }\n    }\n}\n\n'''
+          if 'private fun ForecastDetailBadge(' in text:
+              raise SystemExit('ForecastDetailBadge already exists unexpectedly')
+
+          updated = text[:start] + section + text[end:]
+          insertion = updated.index('@Composable\nprivate fun LocalForecastDetails', start)
+          updated = updated[:insertion] + helper + updated[insertion:]
+          path.write_text(updated)
+
+      - name: Commit guarded polish
+        run: |
+          git config user.name "Weather Metro CI"
+          git config user.email "actions@users.noreply.github.com"
+          git add app/src/main/java/com/weather/metro/ui/screens/WeatherScreens.kt
+          git diff --cached --check
+          git commit -m "Visual V3.0.2: polish forecast card spacing"
+          git push origin HEAD:feature/visual-v3.0-forecast
