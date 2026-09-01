@@ -43,6 +43,7 @@ fun WeatherMetroTheme(settings: UiSettings, content: @Composable () -> Unit) {
     val subText = if (settings.highContrast) Color.White else Color(0xFFC0C8CE)
     val metroSurface = if (settings.highContrast) Color(0xF20B0F12) else Color(0xD911161A)
     val metroOutline = Color.White.copy(alpha = if (settings.highContrast) 0.26f else 0.12f)
+    val surfaceStyle = if (settings.highContrast) MetroSurfaceStyle.FLAT else MetroSurfaceStyle.GLASS
     val systemDensity = LocalDensity.current
     val scaledDensity = Density(
         density = systemDensity.density,
@@ -65,6 +66,7 @@ fun WeatherMetroTheme(settings: UiSettings, content: @Composable () -> Unit) {
         LocalMetroSubText provides subText,
         LocalMetroSurface provides metroSurface,
         LocalMetroOutline provides metroOutline,
+        LocalMetroSurfaceStyle provides surfaceStyle,
         LocalReduceMotion provides settings.reduceMotion,
         LocalDensity provides scaledDensity,
         LocalOverscrollFactory provides null,
