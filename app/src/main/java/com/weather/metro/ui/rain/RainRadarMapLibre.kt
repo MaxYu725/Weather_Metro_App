@@ -49,6 +49,8 @@ import com.weather.metro.domain.rain.RainRadarBounds
 import com.weather.metro.domain.rain.RainRadarFrame
 import com.weather.metro.domain.rain.RainRadarTimeline
 import com.weather.metro.ui.components.MetroFloatingIsland
+import com.weather.metro.ui.components.MetroGlassContextSurface
+import com.weather.metro.ui.theme.LocalMetroAccent
 import com.weather.metro.ui.theme.LocalReduceMotion
 import com.weather.metro.ui.tools.ToolLoadingPanel
 import com.weather.metro.ui.tools.destroyAfterToolTransition
@@ -738,7 +740,10 @@ private fun RadarZoomControls(
     map: MapLibreMap?,
     modifier: Modifier = Modifier,
 ) {
-    Column(modifier = modifier) {
+    Column(
+        modifier = modifier,
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
         RadarMapControl("+") {
             val readyMap = map ?: return@RadarMapControl
             val current = readyMap.cameraPosition
@@ -764,13 +769,12 @@ private fun RadarZoomControls(
 
 @Composable
 private fun RadarMapControl(label: String, onClick: () -> Unit) {
-    Box(
+    val accent = LocalMetroAccent.current
+    MetroGlassContextSurface(
+        accent = accent,
         modifier = Modifier
             .size(42.dp)
-            .background(Color(0xE60A0A0A))
-            .border(1.dp, Color(0xFF2E2E2E))
             .clickable(onClick = onClick),
-        contentAlignment = Alignment.Center,
     ) {
         Text(label, color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.Light)
     }
