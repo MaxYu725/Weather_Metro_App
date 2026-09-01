@@ -43,6 +43,19 @@ internal object MetroGlassTokens {
     const val StatFillAlpha = 0.075f
     const val StatOutlineAlpha = 0.11f
     const val StatOutlineWidthDp = 0.7f
+
+    /** 44465-inspired contextual island. Kept separate from Tile values so island tuning stays local. */
+    const val IslandCollapsedCornerRadiusDp = 28f
+    const val IslandExpandedCornerRadiusDp = 20f
+    const val IslandElevationDp = 18f
+    const val IslandHighlightAlpha = 0.16f
+    const val IslandCoreAlpha = 0.58f
+    const val IslandAccentWashAlpha = 0.14f
+    const val IslandOutlineAlpha = 0.25f
+    const val IslandOutlineWidthDp = 1f
+    const val IslandCollapsedHorizontalPaddingDp = 9f
+    const val IslandExpandedHorizontalPaddingDp = 10f
+    const val IslandVerticalPaddingDp = 8f
 }
 
 /** Background / environment palette that gives translucent Glass surfaces a readable depth reference. */

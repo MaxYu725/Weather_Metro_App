@@ -48,6 +48,7 @@ import com.weather.metro.domain.LocationInfo
 import com.weather.metro.domain.rain.RainRadarBounds
 import com.weather.metro.domain.rain.RainRadarFrame
 import com.weather.metro.domain.rain.RainRadarTimeline
+import com.weather.metro.ui.components.MetroFloatingIsland
 import com.weather.metro.ui.theme.LocalReduceMotion
 import com.weather.metro.ui.tools.ToolLoadingPanel
 import com.weather.metro.ui.tools.destroyAfterToolTransition
@@ -138,11 +139,15 @@ fun RainRadarMapLibrePanel(
     val frame = state.selectedFrame
     val contentReady = timeline != null && frame != null
     var playing by rememberSaveable { mutableStateOf(false) }
+    var controlsExpanded by rememberSaveable { mutableStateOf(false) }
     val accent = if (pageColour.alpha > 0f) pageColour else RADAR_MAPLIBRE_FALLBACK_ACCENT
     val reduceMotion = LocalReduceMotion.current
 
     LaunchedEffect(isActive) {
-        if (!isActive) playing = false
+        if (!isActive) {
+            playing = false
+            controlsExpanded = false
+        }
     }
     LaunchedEffect(state.rangeKm, state.heightKm, state.mode) {
         playing = false
@@ -226,46 +231,88 @@ fun RainRadarMapLibrePanel(
                 .padding(start = 10.dp, end = 10.dp, bottom = 10.dp),
         ) {
             val activeTimeline = timeline ?: return@AnimatedVisibility
-            RadarControlsHud(
-                state = state,
-                timeline = activeTimeline,
-                selectedIndex = state.selectedFrameIndex ?: activeTimeline.frames.lastIndex,
-                playing = playing,
-                accent = accent,
-                onTogglePlay = {
-                    if (activeTimeline.frames.size >= 2) {
-                        if (!playing && (state.selectedFrameIndex ?: activeTimeline.frames.lastIndex) >= activeTimeline.frames.lastIndex) {
-                            onSelectFrame(0)
-                        }
-                        playing = !playing
+            val selectedIndex = state.selectedFrameIndex ?: activeTimeline.frames.lastIndex
+            val togglePlay = {
+                if (activeTimeline.frames.size >= 2) {
+                    if (!playing && selectedIndex >= activeTimeline.frames.lastIndex) {
+                        onSelectFrame(0)
                     }
+                    playing = !playing
+                }
+            }
+            MetroFloatingIsland(
+                expanded = controlsExpanded,
+                accent = accent,
+                modifier = if (controlsExpanded) Modifier.fillMaxWidth() else Modifier,
+                collapsedContent = {
+                    RadarSquareButton(if (playing) "❚❚" else "▶", accent, true, togglePlay)
+                    Spacer(Modifier.size(8.dp))
+                    Column {
+                        Text(
+                            text = formatRadarTime(activeTimeline.frames[selectedIndex].time),
+                            color = Color.White,
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.Light,
+                        )
+                        Text(
+                            text = "${selectedIndex + 1}/${activeTimeline.frames.size}",
+                            color = RADAR_MAPLIBRE_MUTED,
+                            fontSize = 9.sp,
+                        )
+                    }
+                    Spacer(Modifier.size(8.dp))
+                    RadarCompactButton("控制", accent) { controlsExpanded = true }
                 },
-                onSelectFrame = { index ->
-                    playing = false
-                    onSelectFrame(index)
+                expandedContent = {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            text = "雷達控制",
+                            color = Color.White.copy(alpha = 0.78f),
+                            fontSize = 11.sp,
+                        )
+                        Spacer(Modifier.weight(1f))
+                        RadarCompactButton("收起", accent) { controlsExpanded = false }
+                    }
+                    Spacer(Modifier.size(4.dp))
+                    RadarControlsHud(
+                        state = state,
+                        timeline = activeTimeline,
+                        selectedIndex = selectedIndex,
+                        playing = playing,
+                        accent = accent,
+                        onTogglePlay = togglePlay,
+                        onSelectFrame = { index ->
+                            playing = false
+                            onSelectFrame(index)
+                        },
+                        onSelectRange = { rangeKm ->
+                            playing = false
+                            onSelectRange(rangeKm)
+                        },
+                        onSelectHeight = { heightKm ->
+                            playing = false
+                            onSelectHeight(heightKm)
+                        },
+                        onSelectMode = { mode ->
+                            playing = false
+                            onSelectMode(mode)
+                        },
+                        onOpacityChange = onOpacityChange,
+                        onPlaybackSpeedChange = { speed ->
+                            playing = false
+                            onPlaybackSpeedChange(speed)
+                        },
+                        onJumpToLatest = {
+                            playing = false
+                            onJumpToLatest()
+                        },
+                        showChrome = false,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
                 },
-                onSelectRange = { rangeKm ->
-                    playing = false
-                    onSelectRange(rangeKm)
-                },
-                onSelectHeight = { heightKm ->
-                    playing = false
-                    onSelectHeight(heightKm)
-                },
-                onSelectMode = { mode ->
-                    playing = false
-                    onSelectMode(mode)
-                },
-                onOpacityChange = onOpacityChange,
-                onPlaybackSpeedChange = { speed ->
-                    playing = false
-                    onPlaybackSpeedChange(speed)
-                },
-                onJumpToLatest = {
-                    playing = false
-                    onJumpToLatest()
-                },
-                modifier = Modifier.fillMaxWidth(),
             )
         }
     }
@@ -478,19 +525,26 @@ private fun RadarControlsHud(
     onOpacityChange: (Float) -> Unit,
     onPlaybackSpeedChange: (RainRadarPlaybackSpeed) -> Unit,
     onJumpToLatest: () -> Unit,
+    showChrome: Boolean = true,
     modifier: Modifier = Modifier,
 ) {
     val contract = state.contract.value
     val supportedRanges = contract?.rangesKm.orEmpty()
     val supportedHeights = contract?.heightsForRange(state.rangeKm).orEmpty()
     val supportedModes = contract?.modes.orEmpty()
+    val surfaceModifier = if (showChrome) {
+        Modifier
+            .background(RADAR_MAPLIBRE_PANEL)
+            .border(1.dp, Color(0xFF343434))
+            .padding(horizontal = 10.dp, vertical = 8.dp)
+    } else {
+        Modifier
+    }
 
     Column(
         modifier = modifier
             .fillMaxWidth()
-            .background(RADAR_MAPLIBRE_PANEL)
-            .border(1.dp, Color(0xFF343434))
-            .padding(horizontal = 10.dp, vertical = 8.dp),
+            .then(surfaceModifier),
         verticalArrangement = Arrangement.spacedBy(7.dp),
     ) {
         LazyRow(horizontalArrangement = Arrangement.spacedBy(5.dp)) {
