@@ -2,7 +2,6 @@ package com.weather.metro.ui.screens
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -10,7 +9,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -22,7 +20,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.weather.metro.BuildConfig
@@ -62,8 +59,11 @@ fun SettingsScreen(
 ) {
     val accents = listOf(0xFF1BA1E2, 0xFF00A300, 0xFFA200FF, 0xFFE671B8, 0xFFF09609, 0xFFE51400)
     var selectedPage by rememberSaveable { mutableStateOf(PageColourSlot.CURRENT) }
+    var diagnosticsExpanded by rememberSaveable { mutableStateOf(false) }
     LazyColumn(
-        modifier = Modifier.fillMaxSize(),
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(bottom = 18.dp),
         contentPadding = androidx.compose.foundation.layout.PaddingValues(
             start = 22.dp,
             end = 16.dp,
@@ -188,7 +188,6 @@ fun SettingsScreen(
                 "notification-diagnostics",
                 pageColour,
                 Modifier.fillMaxWidth(),
-                onClick = onRefreshNotificationDiagnostics,
             ) {
                 Column {
                     PersonalizedSettingTitle(
@@ -196,74 +195,93 @@ fun SettingsScreen(
                         notificationDiagnostics.verdict.displayLabel(),
                     )
                     DiagnosticLine(
-                        "HKO journal work periodic ${notificationDiagnostics.officialPeriodicActiveCount} / " +
-                            "immediate ${notificationDiagnostics.officialImmediateActiveCount}",
+                        "HKO ${if (notificationDiagnostics.officialError.isBlank()) "synced" else "attention"} · " +
+                            "location ${notificationDiagnostics.locationDistrict.ifBlank { "unavailable" }}",
                     )
-                    DiagnosticLine(
-                        "HKO journal ${officialJournalCursorText(notificationDiagnostics)} · synced " +
-                            eventAgeText(
-                                notificationDiagnostics.checkedAtEpochMs,
-                                notificationDiagnostics.officialLastSuccessEpochMs,
-                            ) + " · delivered ${notificationDiagnostics.officialDeliveredEventsLastRun}",
-                    )
-                    if (notificationDiagnostics.officialError.isNotBlank()) {
-                        DiagnosticLine("HKO journal error ${notificationDiagnostics.officialError}")
-                    } else {
-                        DiagnosticLine(
-                            "HKO journal last attempt " + eventAgeText(
-                                notificationDiagnostics.checkedAtEpochMs,
-                                notificationDiagnostics.officialLastAttemptEpochMs,
-                            ),
+                    Row(
+                        modifier = Modifier.padding(top = 7.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        SettingsActionBadge(
+                            text = if (diagnosticsExpanded) "收起" else "詳情",
+                            accent = pageColour,
+                            minWidth = 64.dp,
+                            onClick = { diagnosticsExpanded = !diagnosticsExpanded },
+                        )
+                        SettingsActionBadge(
+                            text = "refresh diagnostics",
+                            accent = pageColour,
+                            minWidth = 132.dp,
+                            onClick = onRefreshNotificationDiagnostics,
                         )
                     }
-                    DiagnosticLine(
-                        "periodic ${notificationDiagnostics.periodicActiveCount} active · " +
-                            "dispatch 2D1 ${notificationDiagnostics.periodicDispatchHeavyRain.onOff()} / " +
-                            "SWIRLS ${notificationDiagnostics.periodicDispatchPersonalizedRain.onOff()}",
-                    )
-                    DiagnosticLine(
-                        "immediate ${notificationDiagnostics.immediateActiveCount} active · " +
-                            "2D1 ${notificationDiagnostics.immediateDispatchHeavyRain.onOff()} / " +
-                            "SWIRLS ${notificationDiagnostics.immediateDispatchPersonalizedRain.onOff()}",
-                    )
-                    DiagnosticLine(
-                        "location ${notificationDiagnostics.locationDistrict.ifBlank { "unavailable" }} · " +
-                            ageText(notificationDiagnostics.locationAgeMs),
-                    )
-                    DiagnosticLine(
-                        "2D1 ${notificationDiagnostics.heavyRainStatus} · checked " +
-                            eventAgeText(
+                    if (diagnosticsExpanded) {
+                        Spacer(Modifier.height(10.dp))
+                        DiagnosticLine(
+                            "HKO journal work periodic ${notificationDiagnostics.officialPeriodicActiveCount} / " +
+                                "immediate ${notificationDiagnostics.officialImmediateActiveCount}",
+                        )
+                        DiagnosticLine(
+                            "HKO journal ${officialJournalCursorText(notificationDiagnostics)} · synced " +
+                                eventAgeText(
+                                    notificationDiagnostics.checkedAtEpochMs,
+                                    notificationDiagnostics.officialLastSuccessEpochMs,
+                                ) + " · delivered ${notificationDiagnostics.officialDeliveredEventsLastRun}",
+                        )
+                        if (notificationDiagnostics.officialError.isNotBlank()) {
+                            DiagnosticLine("HKO journal error ${notificationDiagnostics.officialError}")
+                        } else {
+                            DiagnosticLine(
+                                "HKO journal last attempt " + eventAgeText(
+                                    notificationDiagnostics.checkedAtEpochMs,
+                                    notificationDiagnostics.officialLastAttemptEpochMs,
+                                ),
+                            )
+                        }
+                        DiagnosticLine(
+                            "periodic ${notificationDiagnostics.periodicActiveCount} active · " +
+                                "dispatch 2D1 ${notificationDiagnostics.periodicDispatchHeavyRain.onOff()} / " +
+                                "SWIRLS ${notificationDiagnostics.periodicDispatchPersonalizedRain.onOff()}",
+                        )
+                        DiagnosticLine(
+                            "immediate ${notificationDiagnostics.immediateActiveCount} active · " +
+                                "2D1 ${notificationDiagnostics.immediateDispatchHeavyRain.onOff()} / " +
+                                "SWIRLS ${notificationDiagnostics.immediateDispatchPersonalizedRain.onOff()}",
+                        )
+                        DiagnosticLine(
+                            "location ${notificationDiagnostics.locationDistrict.ifBlank { "unavailable" }} · " +
+                                ageText(notificationDiagnostics.locationAgeMs),
+                        )
+                        DiagnosticLine(
+                            "2D1 ${notificationDiagnostics.heavyRainStatus} · checked " +
+                                eventAgeText(
+                                    notificationDiagnostics.checkedAtEpochMs,
+                                    notificationDiagnostics.heavyRainLastCheckedEpochMs,
+                                ),
+                        )
+                        DiagnosticLine(
+                            "SWIRLS ${notificationDiagnostics.personalizedRainStatus} · checked " +
+                                eventAgeText(
+                                    notificationDiagnostics.checkedAtEpochMs,
+                                    notificationDiagnostics.personalizedRainLastCheckedEpochMs,
+                                ),
+                        )
+                        DiagnosticLine(
+                            "SWIRLS source " + eventAgeText(
                                 notificationDiagnostics.checkedAtEpochMs,
-                                notificationDiagnostics.heavyRainLastCheckedEpochMs,
-                            ),
-                    )
-                    DiagnosticLine(
-                        "SWIRLS ${notificationDiagnostics.personalizedRainStatus} · checked " +
-                            eventAgeText(
-                                notificationDiagnostics.checkedAtEpochMs,
-                                notificationDiagnostics.personalizedRainLastCheckedEpochMs,
-                            ),
-                    )
-                    DiagnosticLine(
-                        "SWIRLS source " + eventAgeText(
-                            notificationDiagnostics.checkedAtEpochMs,
-                            notificationDiagnostics.personalizedRainLastSourceRunEpochMs,
-                        ) + " · pending " + notificationDiagnostics.personalizedRainPendingKind.ifBlank { "none" },
-                    )
-                    if (notificationDiagnostics.error.isNotBlank()) {
-                        DiagnosticLine("error ${notificationDiagnostics.error}")
+                                notificationDiagnostics.personalizedRainLastSourceRunEpochMs,
+                            ) + " · pending " + notificationDiagnostics.personalizedRainPendingKind.ifBlank { "none" },
+                        )
+                        if (notificationDiagnostics.error.isNotBlank()) {
+                            DiagnosticLine("error ${notificationDiagnostics.error}")
+                        }
+                        Text(
+                            "diagnostics never exposes exact coordinates",
+                            color = Color.White.copy(alpha = 0.68f),
+                            fontSize = 10.sp,
+                            modifier = Modifier.padding(top = 6.dp),
+                        )
                     }
-                    SettingsActionBadge(
-                        text = "refresh diagnostics",
-                        accent = pageColour,
-                        modifier = Modifier.padding(top = 8.dp),
-                    )
-                    Text(
-                        "diagnostics never exposes exact coordinates",
-                        color = Color.White.copy(alpha = 0.68f),
-                        fontSize = 10.sp,
-                        modifier = Modifier.padding(top = 6.dp),
-                    )
                 }
             }
         }
