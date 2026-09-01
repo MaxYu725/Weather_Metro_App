@@ -129,7 +129,8 @@ fun MetroTile(
     }
     val motionModifier = if (
         onClick != null &&
-        pressMotionPreset != null
+        pressMotionPreset != null &&
+        interactionSource == null
     ) {
         if (glass) {
             Modifier.metroDirectionalPressMotion(
