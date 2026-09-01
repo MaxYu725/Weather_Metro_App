@@ -1,6 +1,5 @@
 package com.weather.metro.ui.screens
 
-import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -13,9 +12,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.material3.Slider
-import androidx.compose.material3.SliderDefaults
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -34,6 +30,7 @@ import com.weather.metro.data.settings.PageColourSlot
 import com.weather.metro.data.settings.UiSettings
 import com.weather.metro.notification.PersonalizedNotificationDiagnosticVerdict
 import com.weather.metro.notification.PersonalizedNotificationDiagnostics
+import com.weather.metro.ui.components.MetroSectionLabel
 import com.weather.metro.ui.components.MetroTile
 import com.weather.metro.ui.theme.LocalMetroSubText
 import com.weather.metro.ui.theme.argbColor
@@ -74,6 +71,7 @@ fun SettingsScreen(
         ),
         verticalArrangement = Arrangement.spacedBy(9.dp),
     ) {
+        item { MetroSectionLabel("appearance") }
         item {
             MetroTile("page-colours", pageColour, Modifier.fillMaxWidth()) {
                 Column {
@@ -83,24 +81,13 @@ fun SettingsScreen(
                         horizontalArrangement = Arrangement.spacedBy(4.dp),
                     ) {
                         PageColourSlot.entries.forEach { slot ->
-                            val selected = selectedPage == slot
-                            Box(
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .height(42.dp)
-                                    .background(argbColor(settings.pageColours.colour(slot)))
-                                    .clickable { selectedPage = slot }
-                                    .padding(horizontal = 3.dp),
-                                contentAlignment = Alignment.Center,
-                            ) {
-                                Text(
-                                    text = if (selected) "✓ ${slot.label}" else slot.label,
-                                    color = Color.White,
-                                    fontSize = 9.sp,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Clip,
-                                )
-                            }
+                            SettingsPageChip(
+                                label = slot.label,
+                                accent = argbColor(settings.pageColours.colour(slot)),
+                                selected = selectedPage == slot,
+                                modifier = Modifier.weight(1f),
+                                onClick = { selectedPage = slot },
+                            )
                         }
                     }
                     Spacer(Modifier.height(10.dp))
@@ -112,17 +99,11 @@ fun SettingsScreen(
                     Spacer(Modifier.height(6.dp))
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         accents.forEach { value ->
-                            Box(
-                                Modifier
-                                    .size(36.dp)
-                                    .background(argbColor(value))
-                                    .clickable { onPageColourChange(selectedPage, value) },
-                                contentAlignment = Alignment.Center,
-                            ) {
-                                if (settings.pageColours.colour(selectedPage) == value) {
-                                    Text("✓", color = Color.White)
-                                }
-                            }
+                            SettingsAccentSwatch(
+                                accent = argbColor(value),
+                                selected = settings.pageColours.colour(selectedPage) == value,
+                                onClick = { onPageColourChange(selectedPage, value) },
+                            )
                         }
                     }
                 }
@@ -132,12 +113,10 @@ fun SettingsScreen(
             MetroTile("text-settings", pageColour, Modifier.fillMaxWidth()) {
                 Column {
                     PersonalizedSettingTitle("text size", "${(settings.textScale * 100).roundToInt()}%")
-                    Slider(
+                    SettingsGlassSlider(
                         value = settings.textScale,
                         onValueChange = onTextScaleChange,
-                        valueRange = 0.9f..1.5f,
-                        steps = 5,
-                        colors = personalizedSliderColors(),
+                        accent = pageColour,
                     )
                 }
             }
@@ -162,6 +141,7 @@ fun SettingsScreen(
                 onChange = onHighContrastChange,
             )
         }
+        item { MetroSectionLabel("location & notifications") }
         item {
             PersonalizedSettingToggle(
                 seed = "location",
@@ -202,6 +182,7 @@ fun SettingsScreen(
                 onChange = onPersonalizedRainNotificationsChange,
             )
         }
+        item { MetroSectionLabel("diagnostics & system") }
         item {
             MetroTile(
                 "notification-diagnostics",
@@ -272,11 +253,16 @@ fun SettingsScreen(
                     if (notificationDiagnostics.error.isNotBlank()) {
                         DiagnosticLine("error ${notificationDiagnostics.error}")
                     }
-                    Text(
-                        "tap to refresh · diagnostics never exposes exact coordinates",
-                        color = Color.White.copy(alpha = 0.72f),
-                        fontSize = 11.sp,
+                    SettingsActionBadge(
+                        text = "refresh diagnostics",
+                        accent = pageColour,
                         modifier = Modifier.padding(top = 8.dp),
+                    )
+                    Text(
+                        "diagnostics never exposes exact coordinates",
+                        color = Color.White.copy(alpha = 0.68f),
+                        fontSize = 10.sp,
+                        modifier = Modifier.padding(top = 6.dp),
                     )
                 }
             }
@@ -288,7 +274,7 @@ fun SettingsScreen(
                         "system notification settings",
                         "檢查通知權限及各重要程度頻道是否已開啟",
                     )
-                    Text("open settings ↗", color = Color.White.copy(alpha = 0.78f), fontSize = 14.sp)
+                    SettingsActionBadge("open settings ↗", pageColour)
                 }
             }
         }
@@ -296,7 +282,7 @@ fun SettingsScreen(
             MetroTile("cache", pageColour, Modifier.fillMaxWidth(), onClick = onClearCache) {
                 Column {
                     PersonalizedSettingTitle("clear cache", "移除離線天氣資料並重新同步")
-                    Text("clear now", color = Color.White.copy(alpha = 0.78f), fontSize = 14.sp)
+                    SettingsActionBadge("clear now", pageColour)
                 }
             }
         }
@@ -325,7 +311,11 @@ private fun PersonalizedSettingToggle(
             Column(Modifier.weight(1f)) {
                 PersonalizedSettingTitle(title, description)
             }
-            Switch(checked = checked, onCheckedChange = onChange)
+            SettingsGlassToggle(
+                checked = checked,
+                accent = pageColour,
+                onCheckedChange = onChange,
+            )
         }
     }
 }
