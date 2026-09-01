@@ -33,6 +33,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -483,12 +484,21 @@ private fun RadarTopHud(
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .background(RADAR_MAPLIBRE_PANEL)
-            .padding(horizontal = 14.dp, vertical = 12.dp),
+            .background(
+                brush = Brush.verticalGradient(
+                    colors = listOf(
+                        Color.Black.copy(alpha = 0.78f),
+                        Color.Black.copy(alpha = 0.46f),
+                        accent.copy(alpha = 0.08f),
+                        Color.Transparent,
+                    ),
+                ),
+            )
+            .padding(start = 14.dp, end = 14.dp, top = 10.dp, bottom = 18.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        RadarHudButton("‹ tools", accent, onBack)
+        RadarHeaderAction("‹ tools", accent, onBack)
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = timeline?.let { "雷達 · ${it.rangeKm} km · ${it.heightKm} km高" } ?: "雷達",
@@ -508,7 +518,22 @@ private fun RadarTopHud(
                 fontSize = 11.sp,
             )
         }
-        RadarHudButton("更新", accent, onRefresh)
+        RadarHeaderAction("更新", accent, onRefresh)
+    }
+}
+
+@Composable
+private fun RadarHeaderAction(label: String, accent: Color, onClick: () -> Unit) {
+    MetroGlassContextSurface(
+        accent = accent,
+        modifier = Modifier.clickable(onClick = onClick),
+    ) {
+        Text(
+            text = label,
+            color = accent,
+            fontSize = 13.sp,
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
+        )
     }
 }
 
@@ -832,6 +857,7 @@ private fun RainRadarBounds.mapLibreQuad(): LatLngQuad = LatLngQuad(
 private fun RainRadarBounds.center(): LatLng = LatLng(
     (north + south) / 2.0,
     (east + west) / 2.0,
+    (south + north) / 2.0,
 )
 
 private fun defaultRadarZoom(rangeKm: Int): Double = if (rangeKm >= 256) 8.5 else 10.5
