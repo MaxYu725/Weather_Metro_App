@@ -22,6 +22,13 @@ class MetroMotionTest {
     }
 
     @Test
+    fun shortTapImpulseStartsAtReadableMinimumWithoutRewindingStrongerPress() {
+        assertEquals(METRO_PRESS_IMPULSE, metroPressImpulse(0f), 0.0001f)
+        assertEquals(METRO_PRESS_IMPULSE, metroPressImpulse(0.2f), 0.0001f)
+        assertEquals(0.8f, metroPressImpulse(0.8f), 0.0001f)
+    }
+
+    @Test
     fun releaseOvershootIsSmallAndBounded() {
         val overshoot = metroPressScale(MetroPressPreset.Tile, -1f)
         val fullyPressed = metroPressScale(MetroPressPreset.Tile, 2f)
