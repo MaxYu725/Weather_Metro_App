@@ -30,6 +30,7 @@ import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.weather.metro.R
+import com.weather.metro.ui.theme.LocalMetroAccent
 import com.weather.metro.ui.theme.LocalReduceMotion
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.suspendCancellableCoroutine
@@ -63,6 +64,7 @@ internal fun backdropSnapshotSize(width: Int, height: Int): BackdropSnapshotSize
 fun HongKongBackdrop(modifier: Modifier = Modifier) {
     val context = LocalContext.current
     val reduceMotion = LocalReduceMotion.current
+    val accent = LocalMetroAccent.current
     var containerSize by remember { mutableStateOf(IntSize.Zero) }
     val snapshotSize = remember(containerSize) {
         backdropSnapshotSize(containerSize.width, containerSize.height)
@@ -129,7 +131,7 @@ fun HongKongBackdrop(modifier: Modifier = Modifier) {
     Box(
         modifier = modifier
             .onSizeChanged { containerSize = it }
-            .background(Color(0xFF080B0D)),
+            .background(Color(0xFF102431)),
     ) {
         backdrop?.let { bitmap ->
             Image(
@@ -145,18 +147,25 @@ fun HongKongBackdrop(modifier: Modifier = Modifier) {
                 .fillMaxSize()
                 .background(
                     Brush.verticalGradient(
-                        0f to Color.Black.copy(alpha = 0.16f),
-                        0.40f to Color.Black.copy(alpha = 0.06f),
-                        1f to Color.Black.copy(alpha = 0.28f),
+                        0f to Color(0xFF102431).copy(alpha = 0.12f),
+                        0.42f to Color.Transparent,
+                        1f to Color(0xFF102431).copy(alpha = 0.18f),
                     ),
                 )
                 .drawWithContent {
                     drawContent()
                     drawRect(
                         brush = Brush.radialGradient(
-                            colors = listOf(Color.Transparent, Color.Black.copy(alpha = 0.15f)),
+                            colors = listOf(accent.copy(alpha = 0.10f), Color.Transparent),
+                            center = Offset(size.width * 0.78f, size.height * 0.18f),
+                            radius = size.maxDimension * 0.58f,
+                        ),
+                    )
+                    drawRect(
+                        brush = Brush.radialGradient(
+                            colors = listOf(Color.Transparent, Color.Black.copy(alpha = 0.08f)),
                             center = Offset(size.width * 0.52f, size.height * 0.42f),
-                            radius = size.maxDimension * 0.72f,
+                            radius = size.maxDimension * 0.78f,
                         ),
                     )
                 },
@@ -168,7 +177,7 @@ fun HongKongBackdrop(modifier: Modifier = Modifier) {
 fun HongKongMapAttribution(modifier: Modifier = Modifier) {
     Text(
         text = "© OpenStreetMap · © CARTO",
-        color = Color.White.copy(alpha = 0.46f),
+        color = Color.White.copy(alpha = 0.54f),
         fontSize = 8.sp,
         modifier = modifier.padding(end = 7.dp, bottom = 3.dp),
     )
