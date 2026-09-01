@@ -620,7 +620,7 @@ fun ToolsScreen(pageColour: Color) {
     val context = LocalContext.current
     val tools = listOf(
         Triple("rainfall", "定點降雨及閃電預報", "https://maps.weather.gov.hk/ocf/index_uc.html?data=ncrf"),
-        Triple("radar", "香港天文台雷達圖像", "https://www.hko.gov.hk/tc/wxinfo/currwx/tc_gis.htm"),
+        Triple("radar", "香港天文台雷達圖像", "https://www.hko.gov.hk/tc/wxinfo/radars/radar-range.htm"),
         Triple("cyclone", "熱帶氣旋位置及路徑", "https://www.hko.gov.hk/tc/wxinfo/currwx/tc_gis.htm"),
         Triple("lightning", "閃電位置資訊", "https://maps.weather.gov.hk/llis/llis.htm"),
     )
