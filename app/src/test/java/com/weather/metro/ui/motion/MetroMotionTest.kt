@@ -16,19 +16,21 @@ class MetroMotionTest {
     fun fullProgressUsesPresetCompression() {
         val scale = metroPressScale(MetroPressPreset.CompactControl, 1f)
         assertEquals(0.965f, scale.x, 0.0001f)
-        assertEquals(0.920f, scale.y, 0.0001f)
+        assertEquals(0.900f, scale.y, 0.0001f)
         assertTrue(scale.y < scale.x)
     }
 
     @Test
-    fun progressIsClampedToSafeRange() {
-        val below = metroPressScale(MetroPressPreset.Tile, -1f)
-        val above = metroPressScale(MetroPressPreset.Tile, 2f)
+    fun releaseOvershootIsSmallAndBounded() {
+        val overshoot = metroPressScale(MetroPressPreset.Tile, -1f)
+        val fullyPressed = metroPressScale(MetroPressPreset.Tile, 2f)
 
-        assertEquals(1f, below.x, 0.0001f)
-        assertEquals(1f, below.y, 0.0001f)
-        assertEquals(0.985f, above.x, 0.0001f)
-        assertEquals(0.965f, above.y, 0.0001f)
+        assertEquals(1.003f, overshoot.x, 0.0001f)
+        assertEquals(1.014f, overshoot.y, 0.0001f)
+        assertTrue(overshoot.x > 1f)
+        assertTrue(overshoot.y > 1f)
+        assertEquals(0.985f, fullyPressed.x, 0.0001f)
+        assertEquals(0.930f, fullyPressed.y, 0.0001f)
     }
 
     @Test
