@@ -52,6 +52,7 @@ import com.weather.metro.domain.WeatherSnapshot
 import com.weather.metro.ui.AppNavigationRequest
 import com.weather.metro.ui.components.ExpandableMetroTile
 import com.weather.metro.ui.components.HkoRemoteImage
+import com.weather.metro.ui.components.MetroGlassContextSurface
 import com.weather.metro.ui.components.MetroSectionLabel
 import com.weather.metro.ui.components.MetroStat
 import com.weather.metro.ui.components.MetroTile
@@ -446,22 +447,40 @@ fun ForecastScreen(snapshot: WeatherSnapshot, pageColour: Color) {
         state = listState,
         modifier = Modifier.fillMaxSize(),
         contentPadding = androidx.compose.foundation.layout.PaddingValues(start = 22.dp, end = 16.dp, bottom = 48.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         if (hasNineDaySummary) {
             item {
                 MetroTile("forecast-summary", pageColour, Modifier.fillMaxWidth()) {
                     Column {
-                        Text("九天天氣概況", color = Color.White, fontSize = 23.sp, fontWeight = FontWeight.Light)
-                        Spacer(Modifier.height(6.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text(
+                                "九天天氣概況",
+                                color = Color.White,
+                                fontSize = 23.sp,
+                                fontWeight = FontWeight.Light,
+                                modifier = Modifier.weight(1f),
+                            )
+                            MetroGlassContextSurface(accent = pageColour) {
+                                Text(
+                                    formatHkoTime(snapshot.nineDayForecast.updatedAt),
+                                    color = Color.White.copy(alpha = 0.82f),
+                                    fontSize = 10.sp,
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp),
+                                )
+                            }
+                        }
+                        Spacer(Modifier.height(8.dp))
                         Text(
                             snapshot.nineDayForecast.generalSituation,
-                            color = Color.White,
+                            color = Color.White.copy(alpha = 0.94f),
                             fontSize = 15.sp,
                             lineHeight = 21.sp,
                             textAlign = TextAlign.Justify,
                         )
-                        Text(formatHkoTime(snapshot.nineDayForecast.updatedAt), color = Color.White.copy(alpha = 0.72f), fontSize = 10.sp)
                     }
                 }
             }
@@ -482,30 +501,106 @@ fun ForecastScreen(snapshot: WeatherSnapshot, pageColour: Color) {
                     }
                 },
                 collapsed = {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Column(Modifier.width(76.dp)) {
-                        Text(day.weekday, color = Color.White, fontSize = 22.sp)
-                        Text(day.date, color = Color.White.copy(alpha = 0.7f), fontSize = 11.sp)
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Column(Modifier.width(78.dp)) {
+                            Text(
+                                day.weekday,
+                                color = Color.White,
+                                fontSize = 21.sp,
+                                fontWeight = FontWeight.Medium,
+                            )
+                            Text(
+                                day.date,
+                                color = Color.White.copy(alpha = 0.62f),
+                                fontSize = 10.sp,
+                            )
+                        }
+                        HkoRemoteImage(
+                            hkoWeatherIconUrl(day.iconCode),
+                            day.description,
+                            Modifier.size(52.dp),
+                        )
+                        Spacer(Modifier.width(10.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text(
+                                day.description,
+                                color = Color.White.copy(alpha = 0.86f),
+                                fontSize = 12.sp,
+                                lineHeight = 15.sp,
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                            Spacer(Modifier.height(3.dp))
+                            Text(
+                                "降雨 ${day.precipitationProbability}",
+                                color = pageColour.copy(alpha = 0.92f),
+                                fontSize = 10.sp,
+                            )
+                        }
+                        Spacer(Modifier.width(8.dp))
+                        Column(horizontalAlignment = Alignment.End) {
+                            Text(
+                                "${day.maxTemperatureC.roundToInt()}°",
+                                color = Color.White,
+                                fontSize = 30.sp,
+                                lineHeight = 30.sp,
+                                fontWeight = FontWeight.Light,
+                            )
+                            Text(
+                                "最低 ${day.minTemperatureC.roundToInt()}°",
+                                color = Color.White.copy(alpha = 0.68f),
+                                fontSize = 11.sp,
+                            )
+                            Text(
+                                if (expanded) "−" else "+",
+                                color = Color.White.copy(alpha = 0.82f),
+                                fontSize = 18.sp,
+                            )
+                        }
                     }
-                    HkoRemoteImage(hkoWeatherIconUrl(day.iconCode), day.description, Modifier.size(44.dp))
-                    Spacer(Modifier.weight(1f))
-                    Text(
-                        "${day.minTemperatureC.roundToInt()}° – ${day.maxTemperatureC.roundToInt()}°",
-                        color = Color.White,
-                        fontSize = 24.sp,
-                        fontWeight = FontWeight.Light,
-                    )
-                }
                 },
                 expandedContent = {
-                Text(day.description, color = Color.White, fontSize = 15.sp, lineHeight = 21.sp, textAlign = TextAlign.Justify)
-                Spacer(Modifier.height(5.dp))
-                Text(day.wind, color = Color.White.copy(alpha = 0.82f), fontSize = 14.sp)
-                Text(
-                    "濕度 ${day.minHumidityPercent}–${day.maxHumidityPercent}% · 顯著降雨概率 ${day.precipitationProbability}",
-                    color = Color.White.copy(alpha = 0.75f),
-                    fontSize = 12.sp,
-                )
+                    Text(
+                        day.description,
+                        color = Color.White,
+                        fontSize = 15.sp,
+                        lineHeight = 21.sp,
+                        textAlign = TextAlign.Justify,
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    ) {
+                        MetroStat(
+                            label = "濕度",
+                            value = "${day.minHumidityPercent}–${day.maxHumidityPercent}%",
+                            modifier = Modifier.weight(1f),
+                            secondary = true,
+                        )
+                        MetroStat(
+                            label = "顯著降雨概率",
+                            value = day.precipitationProbability,
+                            modifier = Modifier.weight(1f),
+                            secondary = false,
+                        )
+                    }
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        "風",
+                        color = pageColour.copy(alpha = 0.92f),
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Medium,
+                    )
+                    Text(
+                        day.wind,
+                        color = Color.White.copy(alpha = 0.86f),
+                        fontSize = 13.sp,
+                        lineHeight = 18.sp,
+                    )
                 },
             )
         }
@@ -525,7 +620,7 @@ fun ToolsScreen(pageColour: Color) {
     val context = LocalContext.current
     val tools = listOf(
         Triple("rainfall", "定點降雨及閃電預報", "https://maps.weather.gov.hk/ocf/index_uc.html?data=ncrf"),
-        Triple("radar", "香港天文台雷達圖像", "https://www.hko.gov.hk/tc/wxinfo/radars/radar-range.htm"),
+        Triple("radar", "香港天文台雷達圖像", "https://www.hko.gov.hk/tc/wxinfo/currwx/tc_gis.htm"),
         Triple("cyclone", "熱帶氣旋位置及路徑", "https://www.hko.gov.hk/tc/wxinfo/currwx/tc_gis.htm"),
         Triple("lightning", "閃電位置資訊", "https://maps.weather.gov.hk/llis/llis.htm"),
     )
