@@ -52,11 +52,11 @@ fun WeatherMetroTheme(settings: UiSettings, content: @Composable () -> Unit) {
     val scheme = darkColorScheme(
         primary = accent,
         onPrimary = Color.White,
-        background = Color(0xFF102431),
+        background = MetroEnvironmentTokens.BackdropBase,
         onBackground = Color.White,
-        surface = Color(0xFF172D3A),
+        surface = MetroEnvironmentTokens.Surface,
         onSurface = Color.White,
-        surfaceVariant = Color(0xFF223B49),
+        surfaceVariant = MetroEnvironmentTokens.SurfaceVariant,
         onSurfaceVariant = subText,
         error = Color(0xFFE51400),
     )
