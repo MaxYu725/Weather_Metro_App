@@ -4,7 +4,10 @@ import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -12,7 +15,9 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
@@ -20,9 +25,11 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.weather.metro.ui.components.MetroGlassContextSurface
@@ -112,11 +119,20 @@ internal fun SettingsGlassToggle(
                     .offset(x = knobOffset)
                     .size(26.dp)
                     .background(
-                        if (checked) accent else Color.White.copy(alpha = 0.72f),
+                        if (checked) accent.copy(alpha = 0.94f) else Color.White.copy(alpha = 0.70f),
                         CircleShape,
                     )
                     .border(1.dp, Color.White.copy(alpha = 0.66f), CircleShape),
-            )
+                contentAlignment = Alignment.TopCenter,
+            ) {
+                Box(
+                    modifier = Modifier
+                        .padding(top = 4.dp)
+                        .width(12.dp)
+                        .height(3.dp)
+                        .background(Color.White.copy(alpha = 0.34f), CircleShape),
+                )
+            }
         }
     }
 }
@@ -127,26 +143,80 @@ internal fun SettingsGlassSlider(
     onValueChange: (Float) -> Unit,
     accent: Color,
 ) {
+    val fraction = ((value - 0.9f) / (1.5f - 0.9f)).coerceIn(0f, 1f)
     MetroGlassContextSurface(
         accent = accent,
         modifier = Modifier.fillMaxWidth(),
     ) {
-        Slider(
-            value = value,
-            onValueChange = onValueChange,
-            valueRange = 0.9f..1.5f,
-            steps = 5,
+        BoxWithConstraints(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 10.dp, vertical = 2.dp),
-            colors = SliderDefaults.colors(
-                thumbColor = Color.White,
-                activeTrackColor = accent.copy(alpha = 0.92f),
-                inactiveTrackColor = Color.White.copy(alpha = 0.16f),
-                activeTickColor = Color.White.copy(alpha = 0.72f),
-                inactiveTickColor = Color.White.copy(alpha = 0.28f),
-            ),
-        )
+                .height(54.dp)
+                .padding(horizontal = 12.dp),
+        ) {
+            val thumbSize = 28.dp
+            val thumbTravel = (maxWidth - thumbSize).coerceAtLeast(0.dp)
+            val trackShape = RoundedCornerShape(99.dp)
+
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(7.dp)
+                    .align(Alignment.Center)
+                    .clip(trackShape)
+                    .background(Color.White.copy(alpha = 0.13f)),
+            )
+            Box(
+                modifier = Modifier
+                    .width(maxWidth * fraction)
+                    .height(7.dp)
+                    .align(Alignment.CenterStart)
+                    .clip(trackShape)
+                    .background(accent.copy(alpha = 0.58f)),
+            )
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .align(Alignment.Center),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                repeat(7) {
+                    Box(
+                        Modifier
+                            .size(4.dp)
+                            .background(Color.White.copy(alpha = 0.42f), CircleShape),
+                    )
+                }
+            }
+            Slider(
+                value = value,
+                onValueChange = onValueChange,
+                valueRange = 0.9f..1.5f,
+                steps = 5,
+                modifier = Modifier.fillMaxSize(),
+                colors = SliderDefaults.colors(
+                    thumbColor = Color.Transparent,
+                    activeTrackColor = Color.Transparent,
+                    inactiveTrackColor = Color.Transparent,
+                    activeTickColor = Color.Transparent,
+                    inactiveTickColor = Color.Transparent,
+                ),
+            )
+            MetroGlassContextSurface(
+                accent = accent,
+                modifier = Modifier
+                    .offset(x = thumbTravel * fraction)
+                    .size(thumbSize)
+                    .align(Alignment.CenterStart),
+            ) {
+                Box(
+                    Modifier
+                        .size(9.dp)
+                        .background(Color.White.copy(alpha = 0.92f), CircleShape),
+                )
+            }
+        }
     }
 }
 
@@ -155,16 +225,21 @@ internal fun SettingsActionBadge(
     text: String,
     accent: Color,
     modifier: Modifier = Modifier,
+    minWidth: Dp = 132.dp,
+    onClick: (() -> Unit)? = null,
 ) {
+    val actionModifier = modifier
+        .widthIn(min = minWidth)
+        .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
     MetroGlassContextSurface(
         accent = accent,
-        modifier = modifier,
+        modifier = actionModifier,
     ) {
         Text(
             text = text,
             color = Color.White.copy(alpha = 0.84f),
             fontSize = 11.sp,
-            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp),
         )
     }
 }
