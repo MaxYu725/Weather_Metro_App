@@ -53,6 +53,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.weather.metro.ui.motion.MetroPressPreset
+import com.weather.metro.ui.motion.metroDirectionalPressMotion
 import com.weather.metro.ui.motion.metroPressMotion
 import com.weather.metro.ui.theme.LocalMetroOutline
 import com.weather.metro.ui.theme.LocalMetroSubText
@@ -123,17 +124,24 @@ fun MetroTile(
         pressMotionPreset != null &&
         interactionSource == null
     ) {
-        Modifier.metroPressMotion(
-            interactionSource = resolvedInteractionSource,
-            preset = pressMotionPreset,
-        )
+        if (glass) {
+            Modifier.metroDirectionalPressMotion(
+                interactionSource = resolvedInteractionSource,
+                preset = pressMotionPreset,
+            )
+        } else {
+            Modifier.metroPressMotion(
+                interactionSource = resolvedInteractionSource,
+                preset = pressMotionPreset,
+            )
+        }
     } else {
         Modifier
     }
     val tileShape = if (glass) RoundedCornerShape(18.dp) else RectangleShape
     val depthModifier = if (glass) {
         Modifier.shadow(
-            elevation = (10f + pressEmphasis * 3f).dp,
+            elevation = (12f - pressEmphasis * 5f).dp,
             shape = tileShape,
             clip = false,
         )
