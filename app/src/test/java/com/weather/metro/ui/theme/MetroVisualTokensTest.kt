@@ -23,6 +23,16 @@ class MetroVisualTokensTest {
     }
 
     @Test
+    fun contextualGlassTokensStayWithinTheVisualV2MaterialRange() {
+        assertEquals(15f, MetroGlassTokens.ContextCornerRadiusDp, 0.0001f)
+        assertEquals(10f, MetroGlassTokens.ContextElevationDp, 0.0001f)
+        assertEquals(0.13f, MetroGlassTokens.ContextHighlightAlpha, 0.0001f)
+        assertEquals(0.52f, MetroGlassTokens.ContextCoreAlpha, 0.0001f)
+        assertEquals(0.11f, MetroGlassTokens.ContextAccentWashAlpha, 0.0001f)
+        assertEquals(0.23f, MetroGlassTokens.ContextOutlineAlpha, 0.0001f)
+    }
+
+    @Test
     fun tokenInterpolationIsBoundedAndMatchesPressEndpoints() {
         assertEquals(
             MetroGlassTokens.TileRestElevationDp,
