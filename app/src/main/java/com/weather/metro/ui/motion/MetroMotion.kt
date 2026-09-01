@@ -56,6 +56,23 @@ enum class MetroPressPreset(
     ),
 }
 
+internal data class MetroPressScale(
+    val x: Float,
+    val y: Float,
+)
+
+/** Pure deformation calculation kept separate so motion tuning can be regression-tested. */
+internal fun metroPressScale(
+    preset: MetroPressPreset,
+    progress: Float,
+): MetroPressScale {
+    val deformation = progress.coerceIn(0f, 1f)
+    return MetroPressScale(
+        x = 1f - ((1f - preset.pressedScaleX) * deformation),
+        y = 1f - ((1f - preset.pressedScaleY) * deformation),
+    )
+}
+
 /**
  * Applies Weather Metro's flexible press response without installing any pointer-input handler.
  *
@@ -90,8 +107,8 @@ fun Modifier.metroPressMotion(
     }
 
     return graphicsLayer {
-        val deformation = progress.value
-        scaleX = 1f - ((1f - preset.pressedScaleX) * deformation)
-        scaleY = 1f - ((1f - preset.pressedScaleY) * deformation)
+        val scale = metroPressScale(preset, progress.value)
+        scaleX = scale.x
+        scaleY = scale.y
     }
 }
