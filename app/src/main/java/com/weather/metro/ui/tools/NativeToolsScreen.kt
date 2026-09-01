@@ -273,7 +273,7 @@ fun NativeToolsScreen(
                 onRefresh = onRefreshRadar,
                 onSelectFrame = onSelectRadarFrame,
                 onSelectRange = onSelectRadarRange,
-                onSelectHeight = onSelectHeight,
+                onSelectHeight = onSelectRadarHeight,
                 onSelectMode = onSelectRadarMode,
                 onOpacityChange = onRadarOpacityChange,
                 onPlaybackSpeedChange = onRadarPlaybackSpeedChange,
