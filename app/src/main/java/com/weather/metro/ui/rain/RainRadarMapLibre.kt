@@ -690,11 +690,11 @@ private fun RadarChip(
     onClick: () -> Unit,
 ) {
     val background = when {
-        selected -> accent
-        else -> Color(0xFF202020)
+        selected -> accent.copy(alpha = if (enabled) 0.30f else 0.16f)
+        else -> Color(0xFF202020).copy(alpha = if (enabled) 1f else 0.45f)
     }
     val border = when {
-        selected -> accent
+        selected -> accent.copy(alpha = if (enabled) 0.82f else 0.38f)
         enabled -> Color(0xFF414141)
         else -> Color(0xFF282828)
     }
@@ -703,7 +703,7 @@ private fun RadarChip(
         color = Color.White.copy(alpha = if (enabled) 1f else 0.42f),
         fontSize = 10.sp,
         modifier = Modifier
-            .background(background.copy(alpha = if (enabled) 1f else 0.45f))
+            .background(background)
             .border(1.dp, border)
             .clickable(enabled = enabled, onClick = onClick)
             .padding(horizontal = 8.dp, vertical = 7.dp),
