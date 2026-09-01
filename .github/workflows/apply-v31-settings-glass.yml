@@ -1,0 +1,115 @@
+name: Apply V3.1 Settings Glass
+
+on:
+  push:
+    branches:
+      - feature/visual-v3.1-settings
+    paths:
+      - .github/workflows/apply-v31-settings-glass.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feature/visual-v3.1-settings
+          fetch-depth: 0
+
+      - name: Apply guarded Settings Glass patch
+        shell: python
+        run: |
+          from pathlib import Path
+
+          path = Path('app/src/main/java/com/weather/metro/ui/screens/PersonalizedSettingsScreen.kt')
+          text = path.read_text()
+
+          def replace_once(old: str, new: str, label: str) -> None:
+              global text
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f'{label}: expected exactly one match, found {count}')
+              text = text.replace(old, new, 1)
+
+          for old in [
+              'import androidx.compose.foundation.background\n',
+              'import androidx.compose.material3.Slider\n',
+              'import androidx.compose.material3.SliderDefaults\n',
+              'import androidx.compose.material3.Switch\n',
+          ]:
+              if old not in text:
+                  raise SystemExit(f'missing expected import: {old.strip()}')
+              text = text.replace(old, '', 1)
+
+          replace_once(
+              'import com.weather.metro.ui.components.MetroTile\n',
+              'import com.weather.metro.ui.components.MetroSectionLabel\nimport com.weather.metro.ui.components.MetroTile\n',
+              'MetroSectionLabel import',
+          )
+
+          replace_once(
+              '''    ) {\n        item {\n            MetroTile("page-colours", pageColour, Modifier.fillMaxWidth()) {''',
+              '''    ) {\n        item { MetroSectionLabel("appearance") }\n        item {\n            MetroTile("page-colours", pageColour, Modifier.fillMaxWidth()) {''',
+              'appearance section',
+          )
+
+          old_pages = '''                        PageColourSlot.entries.forEach { slot ->\n                            val selected = selectedPage == slot\n                            Box(\n                                modifier = Modifier\n                                    .weight(1f)\n                                    .height(42.dp)\n                                    .background(argbColor(settings.pageColours.colour(slot)))\n                                    .clickable { selectedPage = slot }\n                                    .padding(horizontal = 3.dp),\n                                contentAlignment = Alignment.Center,\n                            ) {\n                                Text(\n                                    text = if (selected) "✓ ${slot.label}" else slot.label,\n                                    color = Color.White,\n                                    fontSize = 9.sp,\n                                    maxLines = 1,\n                                    overflow = TextOverflow.Clip,\n                                )\n                            }\n                        }'''
+          new_pages = '''                        PageColourSlot.entries.forEach { slot ->\n                            SettingsPageChip(\n                                label = slot.label,\n                                accent = argbColor(settings.pageColours.colour(slot)),\n                                selected = selectedPage == slot,\n                                modifier = Modifier.weight(1f),\n                                onClick = { selectedPage = slot },\n                            )\n                        }'''
+          replace_once(old_pages, new_pages, 'page accent selector')
+
+          old_swatches = '''                        accents.forEach { value ->\n                            Box(\n                                Modifier\n                                    .size(36.dp)\n                                    .background(argbColor(value))\n                                    .clickable { onPageColourChange(selectedPage, value) },\n                                contentAlignment = Alignment.Center,\n                            ) {\n                                if (settings.pageColours.colour(selectedPage) == value) {\n                                    Text("✓", color = Color.White)\n                                }\n                            }\n                        }'''
+          new_swatches = '''                        accents.forEach { value ->\n                            SettingsAccentSwatch(\n                                accent = argbColor(value),\n                                selected = settings.pageColours.colour(selectedPage) == value,\n                                onClick = { onPageColourChange(selectedPage, value) },\n                            )\n                        }'''
+          replace_once(old_swatches, new_swatches, 'accent swatches')
+
+          old_slider = '''                    Slider(\n                        value = settings.textScale,\n                        onValueChange = onTextScaleChange,\n                        valueRange = 0.9f..1.5f,\n                        steps = 5,\n                        colors = personalizedSliderColors(),\n                    )'''
+          new_slider = '''                    SettingsGlassSlider(\n                        value = settings.textScale,\n                        onValueChange = onTextScaleChange,\n                        accent = pageColour,\n                    )'''
+          replace_once(old_slider, new_slider, 'text size glass slider')
+
+          replace_once(
+              '''        item {\n            PersonalizedSettingToggle(\n                seed = "location",''',
+              '''        item { MetroSectionLabel("location & notifications") }\n        item {\n            PersonalizedSettingToggle(\n                seed = "location",''',
+              'location and notifications section',
+          )
+
+          replace_once(
+              '''        item {\n            MetroTile(\n                "notification-diagnostics",''',
+              '''        item { MetroSectionLabel("diagnostics & system") }\n        item {\n            MetroTile(\n                "notification-diagnostics",''',
+              'diagnostics section',
+          )
+
+          replace_once(
+              '''                    Text(\n                        "tap to refresh · diagnostics never exposes exact coordinates",\n                        color = Color.White.copy(alpha = 0.72f),\n                        fontSize = 11.sp,\n                        modifier = Modifier.padding(top = 8.dp),\n                    )''',
+              '''                    SettingsActionBadge(\n                        text = "refresh diagnostics",\n                        accent = pageColour,\n                        modifier = Modifier.padding(top = 8.dp),\n                    )\n                    Text(\n                        "diagnostics never exposes exact coordinates",\n                        color = Color.White.copy(alpha = 0.68f),\n                        fontSize = 10.sp,\n                        modifier = Modifier.padding(top = 6.dp),\n                    )''',
+              'diagnostics action badge',
+          )
+
+          replace_once(
+              '                    Text("open settings ↗", color = Color.White.copy(alpha = 0.78f), fontSize = 14.sp)',
+              '                    SettingsActionBadge("open settings ↗", pageColour)',
+              'system settings action',
+          )
+          replace_once(
+              '                    Text("clear now", color = Color.White.copy(alpha = 0.78f), fontSize = 14.sp)',
+              '                    SettingsActionBadge("clear now", pageColour)',
+              'clear cache action',
+          )
+
+          replace_once(
+              '            Switch(checked = checked, onCheckedChange = onChange)',
+              '''            SettingsGlassToggle(\n                checked = checked,\n                accent = pageColour,\n                onCheckedChange = onChange,\n            )''',
+              'glass toggle',
+          )
+
+          path.write_text(text)
+
+      - name: Commit guarded Settings Glass patch
+        run: |
+          git config user.name "Weather Metro CI"
+          git config user.email "actions@users.noreply.github.com"
+          git add app/src/main/java/com/weather/metro/ui/screens/PersonalizedSettingsScreen.kt
+          git diff --cached --check
+          git commit -m "Visual V3.1: apply Settings Glass hierarchy"
+          git push origin HEAD:feature/visual-v3.1-settings
