@@ -44,6 +44,15 @@ internal object MetroGlassTokens {
     const val StatOutlineAlpha = 0.11f
     const val StatOutlineWidthDp = 0.7f
 
+    /** Small contextual controls such as map zoom and passive freshness badges. */
+    const val ContextCornerRadiusDp = 15f
+    const val ContextElevationDp = 10f
+    const val ContextHighlightAlpha = 0.13f
+    const val ContextCoreAlpha = 0.52f
+    const val ContextAccentWashAlpha = 0.11f
+    const val ContextOutlineAlpha = 0.23f
+    const val ContextOutlineWidthDp = 1f
+
     /** 44465-inspired contextual island. Kept separate from Tile values so island tuning stays local. */
     const val IslandCollapsedCornerRadiusDp = 28f
     const val IslandExpandedCornerRadiusDp = 20f
