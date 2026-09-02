@@ -25,6 +25,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -37,6 +38,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
@@ -54,6 +56,7 @@ import com.weather.metro.domain.LocationInfo
 import com.weather.metro.domain.rain.RainForecastFrame
 import com.weather.metro.domain.rain.RainForecastSource
 import com.weather.metro.domain.rain.RainForecastTimeline
+import com.weather.metro.ui.components.MetroGlassContextSurface
 import com.weather.metro.ui.theme.LocalReduceMotion
 import com.weather.metro.ui.tools.ToolLoadingPanel
 import com.weather.metro.ui.tools.destroyAfterToolTransition
@@ -81,7 +84,6 @@ import kotlin.math.roundToInt
 
 private val MAPLIBRE_FALLBACK_ACCENT = Color(0xFF20A7D8)
 private val MAPLIBRE_MUTED = Color(0xFF8E8E8E)
-private val MAPLIBRE_PANEL = Color(0xF20A0A0A)
 private val MAPLIBRE_WARNING = Color(0xFFFFB300)
 private const val MAPLIBRE_RAIN_SOURCE = "weather-metro-rain-image"
 private const val MAPLIBRE_RAIN_LAYER = "weather-metro-rain-layer"
@@ -533,6 +535,7 @@ private fun MapLibreForecastSurface(
 
         MapLibreZoomControls(
             map = map,
+            accent = markerColour,
             modifier = Modifier
                 .align(Alignment.TopStart)
                 .padding(start = 16.dp, top = 82.dp),
@@ -613,10 +616,11 @@ private fun Bitmap.asImageBitmapCompat(): Bitmap = this
 @Composable
 private fun MapLibreZoomControls(
     map: MapLibreMap?,
+    accent: Color,
     modifier: Modifier = Modifier,
 ) {
     Column(modifier = modifier) {
-        MapLibreMapControl("+") {
+        MapLibreMapControl("+", accent) {
             val readyMap = map ?: return@MapLibreMapControl
             val current = readyMap.cameraPosition
             readyMap.cameraPosition = CameraPosition.Builder()
@@ -626,7 +630,7 @@ private fun MapLibreZoomControls(
                 .tilt(current.tilt)
                 .build()
         }
-        MapLibreMapControl("−") {
+        MapLibreMapControl("−", accent) {
             val readyMap = map ?: return@MapLibreMapControl
             val current = readyMap.cameraPosition
             readyMap.cameraPosition = CameraPosition.Builder()
@@ -640,14 +644,12 @@ private fun MapLibreZoomControls(
 }
 
 @Composable
-private fun MapLibreMapControl(label: String, onClick: () -> Unit) {
-    Box(
+private fun MapLibreMapControl(label: String, accent: Color, onClick: () -> Unit) {
+    MetroGlassContextSurface(
+        accent = accent,
         modifier = Modifier
-            .size(42.dp)
-            .background(Color(0xE60A0A0A))
-            .border(1.dp, Color(0xFF2E2E2E))
-            .clickable(onClick = onClick),
-        contentAlignment = Alignment.Center,
+  .size(42.dp)
+  .clickable(onClick = onClick),
     ) {
         Text(label, color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.Light)
     }
@@ -663,54 +665,66 @@ private fun MapLibreTopHud(
 ) {
     val location = state.location?.label ?: "目前位置"
     val refreshing = state.forecast.status == RainResourceStatus.LOADING
+    val timeline = state.forecast.value
     Row(
         modifier = modifier
-            .fillMaxWidth()
-            .background(Color(0xF20A0A0A))
-            .padding(start = 18.dp, end = 14.dp, top = 13.dp, bottom = 12.dp),
+  .fillMaxWidth()
+  .background(
+      brush = Brush.verticalGradient(
+colors = listOf(
+    Color.Black.copy(alpha = 0.78f),
+    Color.Black.copy(alpha = 0.46f),
+    accent.copy(alpha = 0.08f),
+    Color.Transparent,
+),
+      ),
+  )
+  .padding(start = 14.dp, end = 14.dp, top = 10.dp, bottom = 18.dp),
         verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        Text(
-            text = location,
-            color = Color.White,
-            fontSize = 21.sp,
-            fontWeight = FontWeight.SemiBold,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.weight(1f),
-        )
-        Row(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
-            MapLibreHudActionButton("‹", accent, false, false, onBack)
-            MapLibreHudActionButton("↻", accent, refreshing, true, onRefresh)
+        MapLibreHeaderAction("‹ 返回", accent, onBack)
+        Column(modifier = Modifier.weight(1f)) {
+  Text(
+      text = "兩小時降雨 · $location",
+      color = Color.White,
+      fontSize = 16.sp,
+      fontWeight = FontWeight.Medium,
+      maxLines = 1,
+      overflow = TextOverflow.Ellipsis,
+  )
+  Text(
+      text = when {
+timeline == null -> "HKO 短臨預報"
+state.forecast.isStale -> "已保留上次成功預報"
+refreshing -> "正在更新 HKO SWIRLS…"
+else -> "HKO SWIRLS · ${timeline.cadenceMinutes} 分鐘一格 · ${timeline.accumulationMinutes} 分鐘累積"
+      },
+      color = MAPLIBRE_MUTED,
+      fontSize = 10.sp,
+      maxLines = 1,
+      overflow = TextOverflow.Ellipsis,
+  )
         }
+        MapLibreHeaderAction("更新", accent, onRefresh)
     }
 }
 
 @Composable
-private fun MapLibreHudActionButton(
+private fun MapLibreHeaderAction(
     label: String,
     accent: Color,
-    emphasized: Boolean,
-    accentLabel: Boolean,
     onClick: () -> Unit,
 ) {
-    Box(
-        modifier = Modifier
-            .size(44.dp)
-            .background(if (emphasized) accent else Color(0xFF0D0D0D))
-            .border(1.dp, if (emphasized) accent else Color(0xFF3A3A3A))
-            .clickable(onClick = onClick),
-        contentAlignment = Alignment.Center,
+    MetroGlassContextSurface(
+        accent = accent,
+        modifier = Modifier.clickable(onClick = onClick),
     ) {
         Text(
-            text = label,
-            color = when {
-                emphasized -> Color.White
-                accentLabel -> accent
-                else -> Color.White
-            },
-            fontSize = 24.sp,
-            fontWeight = FontWeight.Light,
+  text = label,
+  color = accent,
+  fontSize = 12.sp,
+  modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
         )
     }
 }
@@ -747,23 +761,32 @@ private fun MapLibreTimelineHud(
     Column(
         modifier = modifier
             .fillMaxWidth()
-            .background(MAPLIBRE_PANEL)
-            .border(1.dp, Color(0xFF474747))
+            .background(
+                color = Color.Black.copy(alpha = 0.70f),
+                shape = RoundedCornerShape(18.dp),
+            )
+            .border(
+                width = 1.dp,
+                color = Color.White.copy(alpha = 0.22f),
+                shape = RoundedCornerShape(18.dp),
+            )
             .padding(horizontal = 11.dp, vertical = 9.dp),
         verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("${timeline.cadenceMinutes}分鐘步進", color = Color.White, fontSize = 12.sp)
+            Text("${timeline.cadenceMinutes} 分鐘一格", color = Color.White, fontSize = 12.sp)
             Spacer(Modifier.size(7.dp))
-            Text(
-                "mm / ${timeline.accumulationMinutes}分鐘",
-                color = accent,
-                fontSize = 10.sp,
-                modifier = Modifier.border(1.dp, accent.copy(alpha = 0.72f)).padding(horizontal = 5.dp, vertical = 2.dp),
-            )
+            MetroGlassContextSurface(accent = accent) {
+                Text(
+                    "${timeline.accumulationMinutes} 分鐘累積",
+                    color = accent,
+                    fontSize = 9.sp,
+                    modifier = Modifier.padding(horizontal = 7.dp, vertical = 4.dp),
+                )
+            }
             Spacer(Modifier.weight(1f))
             Text(
-                "${formatForecastTime(frame.windowStart)}–${formatForecastTime(frame.windowEnd)}  ${timeline.loadedFrameCount}/${timeline.frames.size}",
+                "${formatForecastTime(frame.windowStart)}–${formatForecastTime(frame.windowEnd)} · ${timeline.loadedFrameCount}/${timeline.frames.size}",
                 color = Color.White.copy(alpha = 0.78f),
                 fontSize = 10.sp,
             )
@@ -796,8 +819,15 @@ private fun MapLibreTimelineHud(
                     }
                     Column(
                         modifier = Modifier
-                            .background(if (selected) accent else Color(0xFF101010))
-                            .border(1.dp, borderColour)
+                            .background(
+                                color = when {
+                                    selected -> accent.copy(alpha = 0.30f)
+                                    failed -> MAPLIBRE_WARNING.copy(alpha = 0.10f)
+                                    else -> Color.Black.copy(alpha = 0.38f)
+                                },
+                                shape = RoundedCornerShape(12.dp),
+                            )
+                            .border(1.dp, borderColour, RoundedCornerShape(12.dp))
                             .clickable { onSelectFrame(index) }
                             .padding(horizontal = 10.dp, vertical = 6.dp),
                         horizontalAlignment = Alignment.CenterHorizontally,
@@ -867,7 +897,7 @@ private fun MapLibreTimelineHud(
         }
         val stale = if (isStale) " · 舊資料" else ""
         Text(
-            text = "$source · 每${timeline.cadenceMinutes}分鐘一格 · 每格為${timeline.accumulationMinutes}分鐘累積$loadingMode$stale · MapLibre · © OSM © CARTO",
+            text = "$source · ${timeline.cadenceMinutes} 分鐘一格 · ${timeline.accumulationMinutes} 分鐘累積$loadingMode$stale · MapLibre · © OSM © CARTO",
             color = if (isStale) MAPLIBRE_WARNING else MAPLIBRE_MUTED,
             fontSize = 8.sp,
             maxLines = 1,
@@ -891,15 +921,17 @@ private fun MapLibreCompactButton(
     enabled: Boolean = true,
     onClick: () -> Unit,
 ) {
-    Text(
-        text = label,
-        color = if (enabled) accent else MAPLIBRE_MUTED.copy(alpha = 0.45f),
-        fontSize = 10.sp,
-        modifier = Modifier
-            .border(1.dp, if (enabled) accent.copy(alpha = 0.7f) else Color(0xFF2B2B2B))
-            .clickable(enabled = enabled, onClick = onClick)
-            .padding(horizontal = 7.dp, vertical = 7.dp),
-    )
+    MetroGlassContextSurface(
+        accent = if (enabled) accent else Color.White.copy(alpha = 0.08f),
+        modifier = Modifier.clickable(enabled = enabled, onClick = onClick),
+    ) {
+        Text(
+  text = label,
+  color = if (enabled) accent else MAPLIBRE_MUTED.copy(alpha = 0.45f),
+  fontSize = 10.sp,
+  modifier = Modifier.padding(horizontal = 7.dp, vertical = 7.dp),
+        )
+    }
 }
 
 @Composable
@@ -909,12 +941,11 @@ private fun MapLibreMiniButton(
     enabled: Boolean = true,
     onClick: () -> Unit,
 ) {
-    Box(
+    MetroGlassContextSurface(
+        accent = if (enabled) accent else Color.White.copy(alpha = 0.08f),
         modifier = Modifier
-            .size(26.dp)
-            .border(1.dp, if (enabled) accent.copy(alpha = 0.7f) else Color(0xFF2B2B2B))
-            .clickable(enabled = enabled, onClick = onClick),
-        contentAlignment = Alignment.Center,
+  .size(26.dp)
+  .clickable(enabled = enabled, onClick = onClick),
     ) {
         Text(label, color = if (enabled) accent else MAPLIBRE_MUTED.copy(alpha = 0.45f), fontSize = 14.sp)
     }
@@ -958,7 +989,7 @@ private fun MapLibreCenteredState(
                     Text(errorMessage ?: "請稍後再試", color = MAPLIBRE_MUTED, fontSize = 10.sp, maxLines = 2)
                     Spacer(Modifier.size(12.dp))
                     Text(
-                        "retry",
+                        "重新載入",
                         color = accent,
                         fontSize = 13.sp,
                         modifier = Modifier.clickable(onClick = onRefresh).padding(10.dp),
