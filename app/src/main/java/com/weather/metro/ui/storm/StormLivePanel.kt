@@ -111,6 +111,7 @@ internal fun StormLivePanel(
     var cwaEnabled by rememberSaveable { mutableStateOf(true) }
     var fitToken by rememberSaveable { mutableIntStateOf(0) }
     var bottomHudExpanded by rememberSaveable { mutableStateOf(false) }
+    var selectedStormKey by rememberSaveable { mutableStateOf<String?>(null) }
     var selectedPointRef by remember { mutableStateOf<StormMapPointRef?>(null) }
     var containerSize by remember { mutableStateOf(IntSize.Zero) }
 
@@ -120,9 +121,13 @@ internal fun StormLivePanel(
         if (jmaEnabled) add(StormAgency.JMA)
         if (cwaEnabled) add(StormAgency.CWA)
     }
-    val tracksByAgency = StormAgency.entries.associateWith { agency ->
+    val allTracksByAgency = StormAgency.entries.associateWith { agency ->
         state.sources[agency]?.storms.orEmpty()
     }
+    val stormGroups = buildStormDisplayGroups(allTracksByAgency)
+    val focusedGroup = stormGroups.firstOrNull { it.key == selectedStormKey } ?: stormGroups.firstOrNull()
+    val tracksByAgency = focusedGroup?.tracksByAgency
+        ?: StormAgency.entries.associateWith { emptyList<StormTrack>() }
     val visibleTracks = StormAgency.entries
         .filter { it in enabledAgencies }
         .flatMap { tracksByAgency[it].orEmpty() }
@@ -131,6 +136,15 @@ internal fun StormLivePanel(
 
     LaunchedEffect(isActive) {
         if (!isActive) bottomHudExpanded = false
+    }
+
+    LaunchedEffect(stormGroups.map { it.key }, selectedStormKey) {
+        val nextKey = stormGroups.firstOrNull { it.key == selectedStormKey }?.key ?: stormGroups.firstOrNull()?.key
+        if (nextKey != selectedStormKey) {
+            selectedStormKey = nextKey
+            selectedPointRef = null
+            fitToken += 1
+        }
     }
 
     LaunchedEffect(enabledAgencies, tracksByAgency, selectedPointRef) {
@@ -170,22 +184,47 @@ internal fun StormLivePanel(
             modifier = Modifier.align(Alignment.TopCenter),
         )
 
-        StormAgencyControls(
-            state = state,
-            pageColour = pageColour,
-            isActive = isActive,
-            hkoEnabled = hkoEnabled,
-            cmaEnabled = cmaEnabled,
-            jmaEnabled = jmaEnabled,
-            cwaEnabled = cwaEnabled,
-            onToggleHko = { hkoEnabled = !hkoEnabled },
-            onToggleCma = { cmaEnabled = !cmaEnabled },
-            onToggleJma = { jmaEnabled = !jmaEnabled },
-            onToggleCwa = { cwaEnabled = !cwaEnabled },
+        Column(
             modifier = Modifier
                 .align(Alignment.TopCenter)
+                .fillMaxWidth()
                 .padding(top = 68.dp, start = 8.dp, end = 8.dp),
-        )
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            if (stormGroups.isNotEmpty()) {
+                StormFocusControls(
+                    groups = stormGroups,
+                    selectedKey = focusedGroup?.key,
+                    pageColour = pageColour,
+                    isActive = isActive,
+                    onSelect = { key ->
+                        if (selectedStormKey != key) {
+                            selectedStormKey = key
+                            selectedPointRef = null
+                            bottomHudExpanded = false
+                            fitToken += 1
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Spacer(Modifier.height(6.dp))
+            }
+
+            StormAgencyControls(
+                state = state,
+                pageColour = pageColour,
+                isActive = isActive,
+                hkoEnabled = hkoEnabled,
+                cmaEnabled = cmaEnabled,
+                jmaEnabled = jmaEnabled,
+                cwaEnabled = cwaEnabled,
+                onToggleHko = { hkoEnabled = !hkoEnabled },
+                onToggleCma = { cmaEnabled = !cmaEnabled },
+                onToggleJma = { jmaEnabled = !jmaEnabled },
+                onToggleCwa = { cwaEnabled = !cwaEnabled },
+                modifier = Modifier.fillMaxWidth(),
+            )
+        }
 
         StormBottomIsland(
             expanded = bottomHudExpanded,
@@ -614,7 +653,7 @@ private fun StormPointPopup(
     var popupSize by remember(selected.ref) { mutableStateOf(IntSize.Zero) }
     val marginPx = with(density) { 10.dp.toPx() }
     val gapPx = with(density) { 14.dp.toPx() }
-    val safeTopPx = with(density) { 138.dp.toPx() }
+    val safeTopPx = with(density) { 176.dp.toPx() }
     val safeBottomPx = with(density) { 92.dp.toPx() }
     val anchorX = selected.ref.anchorXPx ?: containerSize.width / 2f
     val anchorY = selected.ref.anchorYPx ?: containerSize.height / 2f
