@@ -9,15 +9,14 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 
 /**
- * Global Weather Metro policy for top interactive chrome: respect punch holes,
- * notches and other system-reserved top areas, while maps and decorative
- * backdrops remain edge-to-edge behind the reserved area.
+ * Global top-chrome policy: avoid punch holes, notches and other system-reserved
+ * areas without shrinking edge-to-edge maps or decorative backdrops.
  */
 @Composable
 fun Modifier.metroSafeTop(): Modifier =
     windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top))
 
-/** Global policy for bottom controls above gesture/navigation safe areas. */
+/** Global bottom-control policy for gesture/navigation safe areas. */
 @Composable
 fun Modifier.metroSafeBottom(): Modifier =
     windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Bottom))
