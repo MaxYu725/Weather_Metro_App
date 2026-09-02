@@ -1,38 +1,8 @@
 package com.weather.metro.ui.storm
 
-import androidx.compose.foundation.background
-import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.weather.metro.domain.storm.StormAgency
 import com.weather.metro.domain.storm.StormPoint
 import com.weather.metro.domain.storm.StormTrack
-import com.weather.metro.ui.components.MetroFloatingIsland
-import com.weather.metro.ui.theme.LocalMetroSubText
 import java.time.Instant
 import kotlin.math.asin
 import kotlin.math.cos
@@ -132,163 +102,6 @@ internal fun buildStormDisplayGroups(
     )
 }
 
-@Composable
-internal fun StormFocusControls(
-    groups: List<StormDisplayGroup>,
-    selectedKey: String?,
-    pageColour: Color,
-    isActive: Boolean,
-    onSelect: (String) -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    if (groups.isEmpty()) return
-    var expanded by rememberSaveable { mutableStateOf(false) }
-    val selected = groups.firstOrNull { it.key == selectedKey } ?: groups.first()
-
-    LaunchedEffect(isActive) {
-        if (!isActive) expanded = false
-    }
-
-    MetroFloatingIsland(
-        expanded = expanded,
-        accent = pageColour,
-        modifier = modifier,
-        collapsedContent = {
-            Box(
-                Modifier
-                    .width(5.dp)
-                    .height(18.dp)
-                    .clip(RoundedCornerShape(3.dp))
-                    .background(pageColour),
-            )
-            Text(
-                text = selected.displayName,
-                color = Color.White,
-                fontSize = 12.sp,
-                fontWeight = FontWeight.Medium,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier
-                    .padding(start = 8.dp)
-                    .weight(1f, fill = false),
-            )
-            Text(
-                text = "${selected.agencyCount}/4",
-                color = LocalMetroSubText.current,
-                fontSize = 10.sp,
-                modifier = Modifier.padding(start = 8.dp),
-            )
-            if (groups.size > 1) {
-                Text(
-                    text = "切換",
-                    color = pageColour,
-                    fontSize = 12.sp,
-                    modifier = Modifier
-                        .clickable { expanded = true }
-                        .padding(start = 10.dp, top = 8.dp, bottom = 8.dp),
-                )
-            }
-        },
-        expandedContent = {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(
-                    text = "風暴焦點",
-                    color = Color.White,
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.Medium,
-                )
-                Spacer(Modifier.weight(1f))
-                Text(
-                    text = "${groups.size} 個活躍系統",
-                    color = LocalMetroSubText.current,
-                    fontSize = 10.sp,
-                )
-                Text(
-                    text = "收起",
-                    color = pageColour,
-                    fontSize = 12.sp,
-                    modifier = Modifier
-                        .clickable { expanded = false }
-                        .padding(start = 12.dp, top = 8.dp, bottom = 8.dp),
-                )
-            }
-            Spacer(Modifier.height(6.dp))
-            Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
-                groups.take(5).forEach { group ->
-                    StormFocusRow(
-                        group = group,
-                        selected = group.key == selected.key,
-                        pageColour = pageColour,
-                        onClick = {
-                            onSelect(group.key)
-                            expanded = false
-                        },
-                    )
-                }
-            }
-        },
-    )
-}
-
-@Composable
-private fun StormFocusRow(
-    group: StormDisplayGroup,
-    selected: Boolean,
-    pageColour: Color,
-    onClick: () -> Unit,
-) {
-    val shape = RoundedCornerShape(14.dp)
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(shape)
-            .background(if (selected) pageColour.copy(alpha = 0.14f) else Color.Black.copy(alpha = 0.26f), shape)
-            .border(
-                width = 1.dp,
-                color = if (selected) pageColour.copy(alpha = 0.68f) else Color.White.copy(alpha = 0.10f),
-                shape = shape,
-            )
-            .clickable(onClick = onClick)
-            .padding(horizontal = 10.dp, vertical = 8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Column(Modifier.weight(1f)) {
-            Text(
-                text = group.displayName,
-                color = Color.White,
-                fontSize = 12.sp,
-                fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                STORM_FOCUS_AGENCY_PRIORITY.forEach { agency ->
-                    if (group.tracksByAgency[agency].orEmpty().isNotEmpty()) {
-                        Text(
-                            text = agency.name,
-                            color = stormFocusAgencyColour(agency),
-                            fontSize = 9.sp,
-                            fontWeight = FontWeight.SemiBold,
-                        )
-                    }
-                }
-            }
-        }
-        Text(
-            text = group.nearestHongKongKm?.let { "最近香港 ${it.toInt()} km" } ?: "距港未提供",
-            color = LocalMetroSubText.current,
-            fontSize = 9.sp,
-            maxLines = 1,
-        )
-    }
-}
-
 private fun stormFocusSpecificNameKeys(track: StormTrack): Set<String> = buildSet {
     listOf(track.nameEn, track.nameZh).forEach { raw ->
         val normalized = stormFocusNormalizeName(raw) ?: return@forEach
@@ -350,13 +163,6 @@ private fun stormFocusDistanceKm(lat1: Double, lon1: Double, lat2: Double, lon2:
     val a = sin(dLat / 2.0) * sin(dLat / 2.0) +
         cos(firstLat) * cos(secondLat) * sin(dLon / 2.0) * sin(dLon / 2.0)
     return 2.0 * FOCUS_EARTH_RADIUS_KM * asin(sqrt(a.coerceIn(0.0, 1.0)))
-}
-
-private fun stormFocusAgencyColour(agency: StormAgency): Color = when (agency) {
-    StormAgency.HKO -> Color.White
-    StormAgency.CMA -> Color(0xFFFF4B55)
-    StormAgency.JMA -> Color(0xFF00D8FF)
-    StormAgency.CWA -> Color(0xFFFFEA00)
 }
 
 private val STORM_FOCUS_AGENCY_PRIORITY = listOf(
