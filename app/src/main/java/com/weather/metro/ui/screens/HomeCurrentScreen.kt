@@ -556,33 +556,28 @@ private fun HomeToolActions(
         horizontalArrangement = Arrangement.spacedBy(7.dp),
     ) {
         HomeToolAction(
-            seed = "home-radar",
-            title = "雷達",
-            status = "即時觀測",
-            pageColour = pageColour,
-            modifier = Modifier.weight(1f),
-            onClick = onOpenRadar,
+  seed = "home-radar",
+  title = "降雨雷達",
+  status = "即時觀測",
+  pageColour = pageColour,
+  modifier = Modifier.weight(1f),
+  onClick = onOpenRadar,
         )
         HomeToolAction(
-            seed = "home-forecast-map",
-            title = "2小時",
-            status = "降雨預測",
-            pageColour = pageColour,
-            modifier = Modifier.weight(1f),
-            onClick = onOpenForecastMap,
+  seed = "home-forecast-map",
+  title = "兩小時降雨",
+  status = "短臨預報",
+  pageColour = pageColour,
+  modifier = Modifier.weight(1f),
+  onClick = onOpenForecastMap,
         )
         HomeToolAction(
-            seed = "home-storm",
-            title = "風暴",
-            status = when {
-                stormState.isRefreshing -> "更新中"
-                stormState.activeTrackCount > 0 -> "有活動"
-                stormState.successfulSourceCount > 0 -> "目前平靜"
-                else -> "路徑"
-            },
-            pageColour = pageColour,
-            modifier = Modifier.weight(1f),
-            onClick = onOpenStorm,
+  seed = "home-storm",
+  title = "熱帶氣旋",
+  status = if (stormState.isRefreshing) "路徑追蹤 · 更新中" else "路徑追蹤",
+  pageColour = pageColour,
+  modifier = Modifier.weight(1f),
+  onClick = onOpenStorm,
         )
     }
 }
