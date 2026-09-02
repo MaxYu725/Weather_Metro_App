@@ -42,6 +42,7 @@ import com.weather.metro.domain.rain.RainLocationTrendSample
 import com.weather.metro.ui.AppNavigationRequest
 import com.weather.metro.ui.components.ExpandableMetroTile
 import com.weather.metro.ui.components.HkoRemoteImage
+import com.weather.metro.ui.components.MetroGlassContextSurface
 import com.weather.metro.ui.components.MetroProgress
 import com.weather.metro.ui.components.MetroSectionLabel
 import com.weather.metro.ui.components.MetroStat
@@ -108,10 +109,15 @@ fun HomeCurrentScreen(
         overscrollEffect = null,
     ) {
         item {
-            Row(
-                modifier = Modifier.fillMaxWidth().padding(bottom = 4.dp),
-                verticalAlignment = Alignment.CenterVertically,
+            val syncAccent = if (snapshot.isStale) Color(0xFFF09609) else pageColour
+            MetroGlassContextSurface(
+                accent = syncAccent,
+                modifier = Modifier.fillMaxWidth(),
             ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
                 if (refreshing) {
                     Box(Modifier.width(54.dp)) { MetroProgress(colour = pageColour) }
                 } else {
@@ -138,6 +144,7 @@ fun HomeCurrentScreen(
                     fontSize = 13.sp,
                     modifier = if (refreshing) Modifier else Modifier.clickable(onClick = onRefresh),
                 )
+                }
             }
         }
 
@@ -165,7 +172,7 @@ fun HomeCurrentScreen(
                                 fontSize = 12.sp,
                             )
                         }
-                        Text(if (heroExpanded) "−" else "+", color = Color.White, fontSize = 25.sp)
+                        HomeDetailBadge(heroExpanded, pageColour)
                     }
                     Spacer(Modifier.height(if (heroExpanded) 6.dp else 14.dp))
                     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
@@ -260,7 +267,7 @@ fun HomeCurrentScreen(
                             fontWeight = FontWeight.Light,
                             modifier = Modifier.weight(1f),
                         )
-                        Text(if (localForecastExpanded) "−" else "+", color = Color.White, fontSize = 25.sp)
+                        HomeDetailBadge(localForecastExpanded, pageColour)
                     }
                     Spacer(Modifier.height(9.dp))
                     Text(
@@ -314,6 +321,23 @@ fun HomeCurrentScreen(
                     onNavigationHandled = onNavigationHandled,
                 ) { scrollToItem(8) }
             }
+        }
+    }
+}
+
+@Composable
+private fun HomeDetailBadge(expanded: Boolean, pageColour: Color) {
+    MetroGlassContextSurface(accent = pageColour) {
+        Box(
+            modifier = Modifier.width(42.dp).height(28.dp),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(
+                text = if (expanded) "收起" else "詳情",
+                color = Color.White.copy(alpha = 0.86f),
+                fontSize = 10.sp,
+                maxLines = 1,
+            )
         }
     }
 }
