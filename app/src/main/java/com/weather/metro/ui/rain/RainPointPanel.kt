@@ -72,10 +72,9 @@ fun RainPointPanel(
         ) { status ->
             when (status) {
                 RainResourceStatus.IDLE -> EmptyPointState(pageColour, onRefresh)
-                RainResourceStatus.LOADING -> LoadingPointState(
-                    pageColour = pageColour,
-                    hasRetainedData = state.pointForecast.value != null,
-                )
+                RainResourceStatus.LOADING -> if (state.pointForecast.value == null) {
+                    LoadingPointState(pageColour)
+                }
                 RainResourceStatus.ERROR -> ErrorPointState(
                     pageColour = pageColour,
                     message = state.pointForecast.errorMessage ?: "定點降雨暫時無法載入",
@@ -354,10 +353,10 @@ private fun EmptyPointState(pageColour: Color, onRefresh: () -> Unit) {
 }
 
 @Composable
-private fun LoadingPointState(pageColour: Color, hasRetainedData: Boolean) {
+private fun LoadingPointState(pageColour: Color) {
     ToolLoadingPanel(
-        title = if (hasRetainedData) "正在更新定點降雨" else "正在載入定點降雨",
-        detail = if (hasRetainedData) "保留最近資料，正在取得最新格點" else "正在配對位置與香港天文台格點",
+        title = "正在載入定點降雨",
+        detail = "正在配對位置與香港天文台格點",
         accent = pageColour,
         modifier = Modifier.fillMaxWidth(),
     )
