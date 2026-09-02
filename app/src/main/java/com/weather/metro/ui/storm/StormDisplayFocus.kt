@@ -18,7 +18,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.rememberSaveable
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -99,7 +99,7 @@ internal fun buildStormDisplayGroups(
     }
 
     val usedKeys = mutableSetOf<String>()
-    return groups.mapIndexed { index, group ->
+    return groups.map { group ->
         val representative = STORM_FOCUS_AGENCY_PRIORITY.firstNotNullOfOrNull { group.tracks[it] }
             ?: group.tracks.values.first()
         val baseKey = group.nameKeys.firstOrNull()
