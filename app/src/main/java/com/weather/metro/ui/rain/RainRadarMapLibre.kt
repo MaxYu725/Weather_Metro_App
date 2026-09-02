@@ -51,6 +51,8 @@ import com.weather.metro.domain.rain.RainRadarFrame
 import com.weather.metro.domain.rain.RainRadarTimeline
 import com.weather.metro.ui.components.MetroFloatingIsland
 import com.weather.metro.ui.components.MetroGlassContextSurface
+import com.weather.metro.ui.layout.metroSafeBottom
+import com.weather.metro.ui.layout.metroSafeTop
 import com.weather.metro.ui.theme.LocalMetroAccent
 import com.weather.metro.ui.theme.LocalReduceMotion
 import com.weather.metro.ui.tools.ToolLoadingPanel
@@ -220,7 +222,9 @@ fun RainRadarMapLibrePanel(
                 playing = false
                 onRefresh()
             },
-            modifier = Modifier.align(Alignment.TopCenter),
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .metroSafeTop(),
         )
 
         AnimatedVisibility(
@@ -231,6 +235,7 @@ fun RainRadarMapLibrePanel(
                 slideOutVertically(tween(if (reduceMotion) 100 else 180)) { height -> height / 5 },
             modifier = Modifier
                 .align(Alignment.BottomCenter)
+                .metroSafeBottom()
                 .padding(start = 10.dp, end = 10.dp, bottom = 10.dp),
         ) {
             val activeTimeline = timeline ?: return@AnimatedVisibility
@@ -467,6 +472,7 @@ private fun RadarMapLibreSurface(
             map = map,
             modifier = Modifier
                 .align(Alignment.TopStart)
+                .metroSafeTop()
                 .padding(start = 16.dp, top = 82.dp),
         )
     }
