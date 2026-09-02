@@ -168,46 +168,37 @@ internal fun StormLivePanel(
             modifier = Modifier.fillMaxSize(),
         )
 
-        Column(
+        StormTopControlHub(
+            groups = stormGroups,
+            selectedKey = focusedGroup?.key,
+            state = state,
+            pageColour = pageColour,
+            isActive = isActive,
+            refreshing = state.isRefreshing,
+            hkoEnabled = hkoEnabled,
+            cmaEnabled = cmaEnabled,
+            jmaEnabled = jmaEnabled,
+            cwaEnabled = cwaEnabled,
+            onBack = onBack,
+            onRefresh = onRefresh,
+            onSelectStorm = { key ->
+                if (selectedStormKey != key) {
+                    selectedStormKey = key
+                    selectedPointRef = null
+                    bottomHudExpanded = false
+                    fitToken += 1
+                }
+            },
+            onToggleHko = { hkoEnabled = !hkoEnabled },
+            onToggleCma = { cmaEnabled = !cmaEnabled },
+            onToggleJma = { jmaEnabled = !jmaEnabled },
+            onToggleCwa = { cwaEnabled = !cwaEnabled },
             modifier = Modifier
                 .align(Alignment.TopCenter)
                 .fillMaxWidth()
-                .metroSafeTop(),
-        ) {
-            StormTopBar(
-                pageColour = pageColour,
-                refreshing = state.isRefreshing,
-                onBack = onBack,
-                onRefresh = onRefresh,
-                modifier = Modifier.fillMaxWidth(),
-            )
-            StormTopControlHub(
-                groups = stormGroups,
-                selectedKey = focusedGroup?.key,
-                state = state,
-                pageColour = pageColour,
-                isActive = isActive,
-                hkoEnabled = hkoEnabled,
-                cmaEnabled = cmaEnabled,
-                jmaEnabled = jmaEnabled,
-                cwaEnabled = cwaEnabled,
-                onSelectStorm = { key ->
-                    if (selectedStormKey != key) {
-                        selectedStormKey = key
-                        selectedPointRef = null
-                        bottomHudExpanded = false
-                        fitToken += 1
-                    }
-                },
-                onToggleHko = { hkoEnabled = !hkoEnabled },
-                onToggleCma = { cmaEnabled = !cmaEnabled },
-                onToggleJma = { jmaEnabled = !jmaEnabled },
-                onToggleCwa = { cwaEnabled = !cwaEnabled },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 8.dp),
-            )
-        }
+                .metroSafeTop()
+                .padding(start = 8.dp, end = 8.dp, top = 4.dp),
+        )
 
         StormBottomIsland(
             expanded = bottomHudExpanded,
@@ -231,63 +222,19 @@ internal fun StormLivePanel(
 }
 
 @Composable
-private fun StormTopBar(
-    pageColour: Color,
-    refreshing: Boolean,
-    onBack: () -> Unit,
-    onRefresh: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    Row(
-        modifier = modifier
-            .height(52.dp)
-            .padding(horizontal = 16.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text(
-            text = "‹ tools",
-            color = pageColour,
-            fontSize = 16.sp,
-            modifier = Modifier
-                .clickable(onClick = onBack)
-                .padding(top = 10.dp, end = 14.dp, bottom = 10.dp),
-        )
-        Column {
-            Text(
-                text = "熱帶氣旋",
-                color = Color.White,
-                fontSize = 21.sp,
-                fontWeight = FontWeight.Light,
-            )
-            Text(
-                text = "HKO · CMA · JMA · CWA",
-                color = LocalMetroSubText.current,
-                fontSize = 9.sp,
-            )
-        }
-        Spacer(Modifier.weight(1f))
-        Text(
-            text = if (refreshing) "更新中" else "更新",
-            color = if (refreshing) LocalMetroSubText.current else pageColour,
-            fontSize = 14.sp,
-            modifier = Modifier
-                .clickable(enabled = !refreshing, onClick = onRefresh)
-                .padding(start = 14.dp, top = 10.dp, bottom = 10.dp),
-        )
-    }
-}
-
-@Composable
 private fun StormTopControlHub(
     groups: List<StormDisplayGroup>,
     selectedKey: String?,
     state: StormHostState,
     pageColour: Color,
     isActive: Boolean,
+    refreshing: Boolean,
     hkoEnabled: Boolean,
     cmaEnabled: Boolean,
     jmaEnabled: Boolean,
     cwaEnabled: Boolean,
+    onBack: () -> Unit,
+    onRefresh: () -> Unit,
     onSelectStorm: (String) -> Unit,
     onToggleHko: () -> Unit,
     onToggleCma: () -> Unit,
@@ -314,63 +261,74 @@ private fun StormTopControlHub(
         accent = pageColour,
         modifier = modifier,
         collapsedContent = {
+            Text(
+                text = "‹",
+                color = pageColour,
+                fontSize = 23.sp,
+                fontWeight = FontWeight.Light,
+                modifier = Modifier
+                    .clickable(onClick = onBack)
+                    .padding(end = 8.dp, top = 4.dp, bottom = 4.dp),
+            )
             Box(
                 Modifier
-                    .width(5.dp)
+                    .width(4.dp)
                     .height(18.dp)
                     .clip(RoundedCornerShape(3.dp))
                     .background(pageColour),
             )
             Column(
                 modifier = Modifier
-                    .padding(start = 8.dp)
-                    .weight(1f, fill = false),
+                    .padding(start = 7.dp)
+                    .weight(1f),
             ) {
                 Text(
-                    text = selected?.displayName ?: "暫無活躍熱帶氣旋",
+                    text = selected?.displayName ?: "熱帶氣旋",
                     color = Color.White,
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.Medium,
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.SemiBold,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
-                selected?.nearestHongKongKm?.let { distance ->
-                    Text(
-                        text = "最近香港 ${distance.roundToInt()} km",
-                        color = LocalMetroSubText.current,
-                        fontSize = 9.sp,
-                        maxLines = 1,
-                    )
-                }
+                Text(
+                    text = selected?.nearestHongKongKm?.let { "最近香港 ${it.roundToInt()} km" } ?: "HKO · CMA · JMA · CWA",
+                    color = LocalMetroSubText.current,
+                    fontSize = 8.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
             }
             Row(
-                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                horizontalArrangement = Arrangement.spacedBy(3.dp),
                 verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier.padding(start = 8.dp),
+                modifier = Modifier.padding(start = 6.dp),
             ) {
                 agencyStates.forEach { (agency, enabled) ->
                     Box(
                         Modifier
                             .width(4.dp)
-                            .height(13.dp)
+                            .height(12.dp)
                             .clip(RoundedCornerShape(2.dp))
                             .background(if (enabled) agencyColour(agency) else Color(0xFF4A4A4A)),
                     )
                 }
             }
+            Text("$enabledCount/4", color = LocalMetroSubText.current, fontSize = 9.sp, modifier = Modifier.padding(start = 5.dp))
             Text(
-                text = "$enabledCount/4",
-                color = LocalMetroSubText.current,
-                fontSize = 10.sp,
-                modifier = Modifier.padding(start = 7.dp),
-            )
-            Text(
-                text = if (groups.size > 1) "切換 / 來源" else "來源",
+                text = "控制",
                 color = pageColour,
-                fontSize = 12.sp,
+                fontSize = 11.sp,
                 modifier = Modifier
                     .clickable { expanded = true }
-                    .padding(start = 9.dp, top = 8.dp, bottom = 8.dp),
+                    .padding(start = 7.dp, top = 7.dp, bottom = 7.dp),
+            )
+            Text(
+                text = if (refreshing) "…" else "更新",
+                color = if (refreshing) LocalMetroSubText.current else pageColour,
+                fontSize = 11.sp,
+                modifier = Modifier
+                    .clickable(enabled = !refreshing, onClick = onRefresh)
+                    .padding(start = 7.dp, top = 7.dp, bottom = 7.dp),
             )
         },
         expandedContent = {
@@ -378,6 +336,14 @@ private fun StormTopControlHub(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
+                Text(
+                    text = "‹ tools",
+                    color = pageColour,
+                    fontSize = 12.sp,
+                    modifier = Modifier
+                        .clickable(onClick = onBack)
+                        .padding(end = 10.dp, top = 6.dp, bottom = 6.dp),
+                )
                 Column(Modifier.weight(1f)) {
                     Text(
                         text = selected?.displayName ?: "熱帶氣旋",
@@ -395,12 +361,20 @@ private fun StormTopControlHub(
                     )
                 }
                 Text(
+                    text = if (refreshing) "更新中" else "更新",
+                    color = if (refreshing) LocalMetroSubText.current else pageColour,
+                    fontSize = 11.sp,
+                    modifier = Modifier
+                        .clickable(enabled = !refreshing, onClick = onRefresh)
+                        .padding(start = 8.dp, top = 6.dp, bottom = 6.dp),
+                )
+                Text(
                     text = "收起",
                     color = pageColour,
-                    fontSize = 12.sp,
+                    fontSize = 11.sp,
                     modifier = Modifier
                         .clickable { expanded = false }
-                        .padding(start = 12.dp, top = 8.dp, bottom = 8.dp),
+                        .padding(start = 9.dp, top = 6.dp, bottom = 6.dp),
                 )
             }
 
