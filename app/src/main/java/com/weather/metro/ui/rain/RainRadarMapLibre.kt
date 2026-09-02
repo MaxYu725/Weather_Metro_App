@@ -33,7 +33,6 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -51,6 +50,9 @@ import com.weather.metro.domain.rain.RainRadarFrame
 import com.weather.metro.domain.rain.RainRadarTimeline
 import com.weather.metro.ui.components.MetroFloatingIsland
 import com.weather.metro.ui.components.MetroGlassContextSurface
+import com.weather.metro.ui.components.MetroToolTopBar
+import com.weather.metro.ui.layout.metroSafeBottom
+import com.weather.metro.ui.layout.metroSafeTop
 import com.weather.metro.ui.theme.LocalMetroAccent
 import com.weather.metro.ui.theme.LocalReduceMotion
 import com.weather.metro.ui.tools.ToolLoadingPanel
@@ -220,7 +222,10 @@ fun RainRadarMapLibrePanel(
                 playing = false
                 onRefresh()
             },
-            modifier = Modifier.align(Alignment.TopCenter),
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .metroSafeTop()
+                .padding(start = 8.dp, end = 8.dp, top = 4.dp),
         )
 
         AnimatedVisibility(
@@ -231,6 +236,7 @@ fun RainRadarMapLibrePanel(
                 slideOutVertically(tween(if (reduceMotion) 100 else 180)) { height -> height / 5 },
             modifier = Modifier
                 .align(Alignment.BottomCenter)
+                .metroSafeBottom()
                 .padding(start = 10.dp, end = 10.dp, bottom = 10.dp),
         ) {
             val activeTimeline = timeline ?: return@AnimatedVisibility
@@ -467,6 +473,7 @@ private fun RadarMapLibreSurface(
             map = map,
             modifier = Modifier
                 .align(Alignment.TopStart)
+                .metroSafeTop()
                 .padding(start = 16.dp, top = 82.dp),
         )
     }
@@ -481,60 +488,22 @@ private fun RadarTopHud(
     onRefresh: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    Row(
-        modifier = modifier
-            .fillMaxWidth()
-            .background(
-                brush = Brush.verticalGradient(
-                    colors = listOf(
-                        Color.Black.copy(alpha = 0.78f),
-                        Color.Black.copy(alpha = 0.46f),
-                        accent.copy(alpha = 0.08f),
-                        Color.Transparent,
-                    ),
-                ),
-            )
-            .padding(start = 14.dp, end = 14.dp, top = 10.dp, bottom = 18.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
-    ) {
-        RadarHeaderAction("‹ tools", accent, onBack)
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = timeline?.let { "雷達 · ${it.rangeKm} km · ${it.heightKm} km高" } ?: "雷達",
-                color = Color.White,
-                fontSize = 16.sp,
-                fontWeight = FontWeight.Medium,
-            )
-            Text(
-                text = when {
-                    timeline == null -> "MapLibre native raster"
-                    state.timeline.isStale -> "已保留上次成功雷達資料"
-                    state.mode == RainRadarMode.TEST -> "TEST 模擬動畫 · ${timeline.frames.size} 幀"
-                    state.timeline.status == RainResourceStatus.LOADING -> "正在更新 HKO 即時雷達…"
-                    else -> "HKO 即時觀測 · ${timeline.frames.size} 幀"
-                },
-                color = RADAR_MAPLIBRE_MUTED,
-                fontSize = 11.sp,
-            )
-        }
-        RadarHeaderAction("更新", accent, onRefresh)
-    }
-}
-
-@Composable
-private fun RadarHeaderAction(label: String, accent: Color, onClick: () -> Unit) {
-    MetroGlassContextSurface(
+    val refreshing = state.timeline.status == RainResourceStatus.LOADING
+    MetroToolTopBar(
+        title = timeline?.let { "雷達 · ${it.rangeKm} km · ${it.heightKm} km 高" } ?: "雷達",
+        subtitle = when {
+            timeline == null -> "HKO 即時雷達"
+            state.timeline.isStale -> "已保留上次成功雷達資料"
+            state.mode == RainRadarMode.TEST -> "TEST 模擬動畫 · ${timeline.frames.size} 幀"
+            refreshing -> "正在更新 HKO 即時雷達…"
+            else -> "HKO 即時觀測 · ${timeline.frames.size} 幀"
+        },
         accent = accent,
-        modifier = Modifier.clickable(onClick = onClick),
-    ) {
-        Text(
-            text = label,
-            color = accent,
-            fontSize = 13.sp,
-            modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
-        )
-    }
+        onBack = onBack,
+        onRefresh = onRefresh,
+        refreshing = refreshing,
+        modifier = modifier,
+    )
 }
 
 @Composable

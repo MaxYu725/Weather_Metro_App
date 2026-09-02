@@ -55,18 +55,6 @@ fun RainPointPanel(
         modifier = modifier,
         verticalArrangement = Arrangement.spacedBy(9.dp),
     ) {
-        Text(
-            text = state.location?.label ?: "目前位置",
-            color = Color.White,
-            fontSize = 24.sp,
-            fontWeight = FontWeight.Light,
-        )
-        Text(
-            text = "香港天文台格點降雨預報 · 每格為 30 分鐘累積雨量",
-            color = LocalMetroSubText.current,
-            fontSize = 11.sp,
-        )
-
         RadiusSelector(
             selectedRadiusKm = selectedRadiusKm,
             pageColour = pageColour,

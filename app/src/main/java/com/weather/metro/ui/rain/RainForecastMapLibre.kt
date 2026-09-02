@@ -38,7 +38,6 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
@@ -58,6 +57,9 @@ import com.weather.metro.domain.rain.RainForecastSource
 import com.weather.metro.domain.rain.RainForecastTimeline
 import com.weather.metro.ui.components.MetroFloatingIsland
 import com.weather.metro.ui.components.MetroGlassContextSurface
+import com.weather.metro.ui.components.MetroToolTopBar
+import com.weather.metro.ui.layout.metroSafeBottom
+import com.weather.metro.ui.layout.metroSafeTop
 import com.weather.metro.ui.theme.LocalReduceMotion
 import com.weather.metro.ui.tools.ToolLoadingPanel
 import com.weather.metro.ui.tools.destroyAfterToolTransition
@@ -89,8 +91,6 @@ private val MAPLIBRE_WARNING = Color(0xFFFFB300)
 private const val MAPLIBRE_RAIN_SOURCE = "weather-metro-rain-image"
 private const val MAPLIBRE_RAIN_LAYER = "weather-metro-rain-layer"
 private const val MAPLIBRE_TIMELINE_VISIBLE_WINDOW = 1
-// MapLibre Native uses a 512 px world-tile scale while the Canvas renderer uses 256 px.
-// Offset MapLibre camera zoom by -1 so the A/B views cover the same geographic extent.
 private const val MAPLIBRE_ZOOM_OFFSET_FROM_CANVAS = -1.0
 private const val MAPLIBRE_DEFAULT_ZOOM = FORECAST_DEFAULT_MAP_ZOOM + MAPLIBRE_ZOOM_OFFSET_FROM_CANVAS
 private const val MAPLIBRE_MIN_ZOOM = FORECAST_MIN_MAP_ZOOM + MAPLIBRE_ZOOM_OFFSET_FROM_CANVAS
@@ -306,7 +306,10 @@ fun RainForecastMapLibrePanel(
                 failedPlaybackIndexes = emptySet()
                 onRefresh()
             },
-            modifier = Modifier.align(Alignment.TopCenter),
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .metroSafeTop()
+                .padding(start = 8.dp, end = 8.dp, top = 4.dp),
         )
 
         AnimatedVisibility(
@@ -317,6 +320,7 @@ fun RainForecastMapLibrePanel(
                 slideOutVertically(tween(if (reduceMotion) 100 else 180)) { height -> height / 5 },
             modifier = Modifier
                 .align(Alignment.BottomCenter)
+                .metroSafeBottom()
                 .padding(start = 14.dp, end = 14.dp, bottom = 14.dp),
         ) {
             val activeTimeline = timeline ?: return@AnimatedVisibility
@@ -592,6 +596,7 @@ private fun MapLibreForecastSurface(
             accent = markerColour,
             modifier = Modifier
                 .align(Alignment.TopStart)
+                .metroSafeTop()
                 .padding(start = 16.dp, top = 82.dp),
         )
     }
@@ -702,8 +707,8 @@ private fun MapLibreMapControl(label: String, accent: Color, onClick: () -> Unit
     MetroGlassContextSurface(
         accent = accent,
         modifier = Modifier
-  .size(42.dp)
-  .clickable(onClick = onClick),
+            .size(42.dp)
+            .clickable(onClick = onClick),
     ) {
         Text(label, color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.Light)
     }
@@ -720,67 +725,20 @@ private fun MapLibreTopHud(
     val location = state.location?.label ?: "目前位置"
     val refreshing = state.forecast.status == RainResourceStatus.LOADING
     val timeline = state.forecast.value
-    Row(
-        modifier = modifier
-  .fillMaxWidth()
-  .background(
-      brush = Brush.verticalGradient(
-colors = listOf(
-    Color.Black.copy(alpha = 0.78f),
-    Color.Black.copy(alpha = 0.46f),
-    accent.copy(alpha = 0.08f),
-    Color.Transparent,
-),
-      ),
-  )
-  .padding(start = 14.dp, end = 14.dp, top = 10.dp, bottom = 18.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
-    ) {
-        MapLibreHeaderAction("‹ 返回", accent, onBack)
-        Column(modifier = Modifier.weight(1f)) {
-  Text(
-      text = "兩小時降雨 · $location",
-      color = Color.White,
-      fontSize = 16.sp,
-      fontWeight = FontWeight.Medium,
-      maxLines = 1,
-      overflow = TextOverflow.Ellipsis,
-  )
-  Text(
-      text = when {
-timeline == null -> "HKO 短臨預報"
-state.forecast.isStale -> "已保留上次成功預報"
-refreshing -> "正在更新 HKO SWIRLS…"
-else -> "HKO SWIRLS · ${timeline.cadenceMinutes} 分鐘一格 · ${timeline.accumulationMinutes} 分鐘累積"
-      },
-      color = MAPLIBRE_MUTED,
-      fontSize = 10.sp,
-      maxLines = 1,
-      overflow = TextOverflow.Ellipsis,
-  )
-        }
-        MapLibreHeaderAction("更新", accent, onRefresh)
-    }
-}
-
-@Composable
-private fun MapLibreHeaderAction(
-    label: String,
-    accent: Color,
-    onClick: () -> Unit,
-) {
-    MetroGlassContextSurface(
+    MetroToolTopBar(
+        title = "兩小時降雨 · $location",
+        subtitle = when {
+            timeline == null -> "HKO 短臨預報"
+            state.forecast.isStale -> "已保留上次成功預報"
+            refreshing -> "正在更新 HKO SWIRLS…"
+            else -> "HKO SWIRLS · ${timeline.cadenceMinutes} 分鐘一格 · ${timeline.accumulationMinutes} 分鐘累積"
+        },
         accent = accent,
-        modifier = Modifier.clickable(onClick = onClick),
-    ) {
-        Text(
-  text = label,
-  color = accent,
-  fontSize = 12.sp,
-  modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
-        )
-    }
+        onBack = onBack,
+        onRefresh = onRefresh,
+        refreshing = refreshing,
+        modifier = modifier,
+    )
 }
 
 @Composable
@@ -988,10 +946,10 @@ private fun MapLibreCompactButton(
         modifier = Modifier.clickable(enabled = enabled, onClick = onClick),
     ) {
         Text(
-  text = label,
-  color = if (enabled) accent else MAPLIBRE_MUTED.copy(alpha = 0.45f),
-  fontSize = 10.sp,
-  modifier = Modifier.padding(horizontal = 7.dp, vertical = 7.dp),
+            text = label,
+            color = if (enabled) accent else MAPLIBRE_MUTED.copy(alpha = 0.45f),
+            fontSize = 10.sp,
+            modifier = Modifier.padding(horizontal = 7.dp, vertical = 7.dp),
         )
     }
 }
@@ -1006,8 +964,8 @@ private fun MapLibreMiniButton(
     MetroGlassContextSurface(
         accent = if (enabled) accent else Color.White.copy(alpha = 0.08f),
         modifier = Modifier
-  .size(26.dp)
-  .clickable(enabled = enabled, onClick = onClick),
+            .size(26.dp)
+            .clickable(enabled = enabled, onClick = onClick),
     ) {
         Text(label, color = if (enabled) accent else MAPLIBRE_MUTED.copy(alpha = 0.45f), fontSize = 14.sp)
     }

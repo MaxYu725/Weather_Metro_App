@@ -156,8 +156,7 @@ fun WeatherMetroRoot(
             rainState.pointForecast.status,
         ) {
             val location = rainState.location
-            val currentIsActive =
-                activePage == PageColourSlot.CURRENT && activeTool == null && location != null
+            val currentIsActive = activePage == PageColourSlot.CURRENT && activeTool == null && location != null
             if (!currentIsActive) {
                 locationTrendViewModel.cancelRefresh()
                 return@LaunchedEffect
@@ -229,7 +228,6 @@ fun WeatherMetroRoot(
                         } else {
                             Spacer(Modifier.height(10.dp))
                         }
-
                         PivotHeader(
                             current = activePage.label,
                             next = pages[(pageIndex + 1) % pages.size].label,
@@ -252,7 +250,6 @@ fun WeatherMetroRoot(
                     MetroPageTheme(pageColour) {
                         when (page) {
                             PageColourSlot.TOOLS -> Unit
-
                             PageColourSlot.SETTINGS -> SettingsScreen(
                                 settings = settings,
                                 notificationDiagnostics = notificationDiagnostics,
@@ -266,10 +263,8 @@ fun WeatherMetroRoot(
                                     viewModel.setNotificationsEnabled(enabled)
                                     if (enabled) requestNotificationPermission()
                                 },
-                                onLocationHeavyRainNotificationsChange =
-                                    viewModel::setLocationHeavyRainNotificationsEnabled,
-                                onPersonalizedRainNotificationsChange =
-                                    viewModel::setPersonalizedRainNotificationsEnabled,
+                                onLocationHeavyRainNotificationsChange = viewModel::setLocationHeavyRainNotificationsEnabled,
+                                onPersonalizedRainNotificationsChange = viewModel::setPersonalizedRainNotificationsEnabled,
                                 onRefreshNotificationDiagnostics = viewModel::refreshNotificationDiagnostics,
                                 onOpenNotificationSettings = openNotificationSettings,
                                 onClearCache = {
@@ -280,15 +275,11 @@ fun WeatherMetroRoot(
                                     stormViewModel.clearCache()
                                 },
                             )
-
                             PageColourSlot.CURRENT,
                             PageColourSlot.FORECAST,
                             -> when (val state = loadState) {
                                 WeatherLoadState.Loading -> LoadingPage()
-                                is WeatherLoadState.Error -> ErrorPage(
-                                    message = state.message,
-                                    retry = viewModel::refresh,
-                                )
+                                is WeatherLoadState.Error -> ErrorPage(message = state.message, retry = viewModel::refresh)
                                 is WeatherLoadState.Ready -> if (page == PageColourSlot.CURRENT) {
                                     HomeCurrentScreen(
                                         snapshot = state.snapshot,
@@ -413,9 +404,7 @@ private fun PivotHeader(current: String, next: String, reduceMotion: Boolean) {
 private fun LoadingPage() {
     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Box(Modifier.width(220.dp)) {
-                MetroProgress()
-            }
+            Box(Modifier.width(220.dp)) { MetroProgress() }
             Spacer(Modifier.height(14.dp))
             Text(
                 "正在取得香港天文台資料…",
@@ -439,9 +428,7 @@ private fun ErrorPage(message: String, retry: () -> Unit) {
                 "retry",
                 color = MaterialTheme.colorScheme.primary,
                 fontSize = 20.sp,
-                modifier = Modifier
-                    .clickable(onClick = retry)
-                    .padding(vertical = 12.dp),
+                modifier = Modifier.clickable(onClick = retry).padding(vertical = 12.dp),
             )
         }
     }
