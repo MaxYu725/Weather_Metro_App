@@ -20,125 +20,32 @@ jobs:
         run: |
           python - <<'PY'
           from pathlib import Path
-
           path = Path('app/src/main/java/com/weather/metro/ui/screens/HomeCurrentScreen.kt')
           text = path.read_text()
           if 'import com.weather.metro.ui.components.MetroGlassContextSurface' in text:
               print('Current V3.2 patch already applied')
               raise SystemExit(0)
-
-          old_import = 'import com.weather.metro.ui.components.ExpandableMetroTile\nimport com.weather.metro.ui.components.HkoRemoteImage\n'
-          new_import = 'import com.weather.metro.ui.components.ExpandableMetroTile\nimport com.weather.metro.ui.components.HkoRemoteImage\nimport com.weather.metro.ui.components.MetroGlassContextSurface\n'
-          assert text.count(old_import) == 1, 'unexpected import anchor'
-          text = text.replace(old_import, new_import, 1)
-
-          old_status = '''        item {
-            Row(
-                modifier = Modifier.fillMaxWidth().padding(bottom = 4.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                if (refreshing) {
-                    Box(Modifier.width(54.dp)) { MetroProgress(colour = pageColour) }
-                } else {
-                    Box(
-                        Modifier
-                            .size(8.dp)
-                            .background(if (snapshot.isStale) Color(0xFFF09609) else Color(0xFF00C853)),
-                    )
-                    Spacer(Modifier.width(8.dp))
-                }
-                Text(
-                    text = when {
-                        refreshing -> "正在更新香港天文台資料"
-                        snapshot.isStale -> "顯示離線快取"
-                        else -> "香港天文台資料已同步"
-                    },
-                    color = LocalMetroSubText.current,
-                    fontSize = 12.sp,
-                    modifier = Modifier.weight(1f),
-                )
-                Text(
-                    if (refreshing) "updating" else "refresh",
-                    color = pageColour,
-                    fontSize = 13.sp,
-                    modifier = if (refreshing) Modifier else Modifier.clickable(onClick = onRefresh),
-                )
-            }
-        }
-'''
-          new_status = '''        item {
-            val syncAccent = if (snapshot.isStale) Color(0xFFF09609) else pageColour
-            MetroGlassContextSurface(
-                accent = syncAccent,
-                modifier = Modifier.fillMaxWidth(),
-                contentAlignment = Alignment.CenterStart,
-            ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    if (refreshing) {
-                        Box(Modifier.width(44.dp)) { MetroProgress(colour = pageColour) }
-                    } else {
-                        Box(
-                            Modifier
-                                .size(8.dp)
-                                .background(if (snapshot.isStale) Color(0xFFF09609) else Color(0xFF00C853)),
-                        )
-                        Spacer(Modifier.width(8.dp))
-                    }
-                    Text(
-                        text = when {
-                            refreshing -> "正在更新香港天文台資料"
-                            snapshot.isStale -> "顯示離線快取"
-                            else -> "香港天文台資料已同步"
-                        },
-                        color = Color.White.copy(alpha = 0.78f),
-                        fontSize = 12.sp,
-                        modifier = Modifier.weight(1f),
-                    )
-                    Text(
-                        if (refreshing) "updating" else "refresh",
-                        color = if (refreshing) Color.White.copy(alpha = 0.48f) else pageColour,
-                        fontSize = 12.sp,
-                        modifier = if (refreshing) Modifier else Modifier.clickable(onClick = onRefresh),
-                    )
-                }
-            }
-        }
-'''
-          assert text.count(old_status) == 1, 'unexpected sync status block'
-          text = text.replace(old_status, new_status, 1)
-
-          hero_old = '                        Text(if (heroExpanded) "−" else "+", color = Color.White, fontSize = 25.sp)\n'
-          assert text.count(hero_old) == 1, 'unexpected hero detail control'
-          text = text.replace(hero_old, '                        HomeDetailBadge(heroExpanded, pageColour)\n', 1)
-
-          forecast_old = '                        Text(if (localForecastExpanded) "−" else "+", color = Color.White, fontSize = 25.sp)\n'
-          assert text.count(forecast_old) == 1, 'unexpected local forecast detail control'
-          text = text.replace(forecast_old, '                        HomeDetailBadge(localForecastExpanded, pageColour)\n', 1)
-
+          old = 'import com.weather.metro.ui.components.ExpandableMetroTile\nimport com.weather.metro.ui.components.HkoRemoteImage\n'
+          new = 'import com.weather.metro.ui.components.ExpandableMetroTile\nimport com.weather.metro.ui.components.HkoRemoteImage\nimport com.weather.metro.ui.components.MetroGlassContextSurface\n'
+          assert text.count(old) == 1
+          text = text.replace(old, new, 1)
+          old = '        item {\n            Row(\n                modifier = Modifier.fillMaxWidth().padding(bottom = 4.dp),\n                verticalAlignment = Alignment.CenterVertically,\n            ) {'
+          new = '        item {\n            val syncAccent = if (snapshot.isStale) Color(0xFFF09609) else pageColour\n            MetroGlassContextSurface(\n                accent = syncAccent,\n                modifier = Modifier.fillMaxWidth(),\n            ) {\n                Row(\n                    modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),\n                    verticalAlignment = Alignment.CenterVertically,\n                ) {'
+          assert text.count(old) == 1
+          text = text.replace(old, new, 1)
+          old = '                    modifier = if (refreshing) Modifier else Modifier.clickable(onClick = onRefresh),\n                )\n            }\n        }\n\n        item {\n            ExpandableMetroTile('
+          new = '                    modifier = if (refreshing) Modifier else Modifier.clickable(onClick = onRefresh),\n                )\n                }\n            }\n        }\n\n        item {\n            ExpandableMetroTile('
+          assert text.count(old) == 1
+          text = text.replace(old, new, 1)
+          old = '                        Text(if (heroExpanded) "−" else "+", color = Color.White, fontSize = 25.sp)\n'
+          assert text.count(old) == 1
+          text = text.replace(old, '                        HomeDetailBadge(heroExpanded, pageColour)\n', 1)
+          old = '                        Text(if (localForecastExpanded) "−" else "+", color = Color.White, fontSize = 25.sp)\n'
+          assert text.count(old) == 1
+          text = text.replace(old, '                        HomeDetailBadge(localForecastExpanded, pageColour)\n', 1)
           anchor = 'private data class HomeRainSample(\n'
-          helper = '''@Composable
-private fun HomeDetailBadge(expanded: Boolean, pageColour: Color) {
-    MetroGlassContextSurface(accent = pageColour) {
-        Box(
-            modifier = Modifier.width(42.dp).height(28.dp),
-            contentAlignment = Alignment.Center,
-        ) {
-            Text(
-                text = if (expanded) "收起" else "詳情",
-                color = Color.White.copy(alpha = 0.86f),
-                fontSize = 10.sp,
-                maxLines = 1,
-            )
-        }
-    }
-}
-
-private data class HomeRainSample(
-'''
-          assert text.count(anchor) == 1, 'unexpected helper anchor'
+          helper = '@Composable\nprivate fun HomeDetailBadge(expanded: Boolean, pageColour: Color) {\n    MetroGlassContextSurface(accent = pageColour) {\n        Box(\n            modifier = Modifier.width(42.dp).height(28.dp),\n            contentAlignment = Alignment.Center,\n        ) {\n            Text(\n                text = if (expanded) "收起" else "詳情",\n                color = Color.White.copy(alpha = 0.86f),\n                fontSize = 10.sp,\n                maxLines = 1,\n            )\n        }\n    }\n}\n\nprivate data class HomeRainSample(\n'
+          assert text.count(anchor) == 1
           text = text.replace(anchor, helper, 1)
           path.write_text(text)
           PY
