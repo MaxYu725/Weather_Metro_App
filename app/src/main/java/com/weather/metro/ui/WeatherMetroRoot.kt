@@ -23,7 +23,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.PagerDefaults
 import androidx.compose.foundation.pager.rememberPagerState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -44,7 +43,6 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.weather.metro.data.settings.PageColourSlot
 import com.weather.metro.data.tools.RainRadarMode
 import com.weather.metro.domain.WeatherLoadState
-import com.weather.metro.ui.components.MetroGlassContextSurface
 import com.weather.metro.ui.components.MetroProgress
 import com.weather.metro.ui.layout.metroSafeTop
 import com.weather.metro.ui.map.HongKongBackdrop
@@ -229,12 +227,11 @@ fun WeatherMetroRoot(
                         if (showWeatherProgress) {
                             MetroProgress(colour = activePageColour)
                         } else {
-                            Spacer(Modifier.height(3.dp))
+                            Spacer(Modifier.height(10.dp))
                         }
                         PivotHeader(
                             current = activePage.label,
                             next = pages[(pageIndex + 1) % pages.size].label,
-                            accent = activePageColour,
                             reduceMotion = reduceMotion,
                         )
                     }
@@ -363,62 +360,42 @@ fun WeatherMetroRoot(
 }
 
 @Composable
-private fun PivotHeader(current: String, next: String, accent: Color, reduceMotion: Boolean) {
-    MetroGlassContextSurface(
-        accent = accent,
+private fun PivotHeader(current: String, next: String, reduceMotion: Boolean) {
+    Box(
         modifier = Modifier
             .fillMaxWidth()
             .metroSafeTop()
-            .padding(start = 8.dp, end = 8.dp, top = 4.dp),
+            .height(76.dp)
+            .padding(start = 22.dp),
         contentAlignment = Alignment.CenterStart,
     ) {
         AnimatedContent(
             targetState = current to next,
             transitionSpec = {
                 if (reduceMotion) fadeIn(tween(120)) togetherWith fadeOut(tween(100))
-                else fadeIn(tween(360)) togetherWith fadeOut(tween(280))
+                else fadeIn(tween(420)) togetherWith fadeOut(tween(320))
             },
             label = "pivot header",
         ) { (active, upcoming) ->
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(62.dp)
-                    .padding(horizontal = 12.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Box(
-                    Modifier
-                        .width(4.dp)
-                        .height(24.dp)
-                        .background(accent, RoundedCornerShape(3.dp)),
-                )
-                Spacer(Modifier.width(10.dp))
+            Row(verticalAlignment = Alignment.Bottom) {
                 Text(
                     text = active,
                     color = Color.White,
-                    fontSize = 25.sp,
-                    lineHeight = 29.sp,
+                    fontSize = 52.sp,
+                    lineHeight = 56.sp,
                     fontWeight = FontWeight.Light,
-                    letterSpacing = (-0.5).sp,
+                    letterSpacing = (-1.5).sp,
                     maxLines = 1,
                 )
-                Spacer(Modifier.width(12.dp))
+                Spacer(Modifier.width(18.dp))
                 Text(
                     text = upcoming,
-                    color = Color.White.copy(alpha = 0.26f),
-                    fontSize = 21.sp,
-                    lineHeight = 25.sp,
+                    color = Color(0xFF3D3D3D),
+                    fontSize = 47.sp,
+                    lineHeight = 52.sp,
                     fontWeight = FontWeight.Light,
                     maxLines = 1,
                     overflow = TextOverflow.Clip,
-                )
-                Spacer(Modifier.weight(1f))
-                Text(
-                    text = "滑動",
-                    color = LocalMetroSubText.current,
-                    fontSize = 9.sp,
-                    maxLines = 1,
                 )
             }
         }
