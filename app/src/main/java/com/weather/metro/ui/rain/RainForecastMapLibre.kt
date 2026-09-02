@@ -38,7 +38,6 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
@@ -58,6 +57,7 @@ import com.weather.metro.domain.rain.RainForecastSource
 import com.weather.metro.domain.rain.RainForecastTimeline
 import com.weather.metro.ui.components.MetroFloatingIsland
 import com.weather.metro.ui.components.MetroGlassContextSurface
+import com.weather.metro.ui.components.MetroToolTopBar
 import com.weather.metro.ui.layout.metroSafeBottom
 import com.weather.metro.ui.layout.metroSafeTop
 import com.weather.metro.ui.theme.LocalReduceMotion
@@ -308,7 +308,8 @@ fun RainForecastMapLibrePanel(
             },
             modifier = Modifier
                 .align(Alignment.TopCenter)
-                .metroSafeTop(),
+                .metroSafeTop()
+                .padding(start = 8.dp, end = 8.dp, top = 4.dp),
         )
 
         AnimatedVisibility(
@@ -724,67 +725,20 @@ private fun MapLibreTopHud(
     val location = state.location?.label ?: "目前位置"
     val refreshing = state.forecast.status == RainResourceStatus.LOADING
     val timeline = state.forecast.value
-    Row(
-        modifier = modifier
-            .fillMaxWidth()
-            .background(
-                brush = Brush.verticalGradient(
-                    colors = listOf(
-                        Color.Black.copy(alpha = 0.78f),
-                        Color.Black.copy(alpha = 0.46f),
-                        accent.copy(alpha = 0.08f),
-                        Color.Transparent,
-                    ),
-                ),
-            )
-            .padding(start = 14.dp, end = 14.dp, top = 10.dp, bottom = 18.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
-    ) {
-        MapLibreHeaderAction("‹ 返回", accent, onBack)
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = "兩小時降雨 · $location",
-                color = Color.White,
-                fontSize = 16.sp,
-                fontWeight = FontWeight.Medium,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-            Text(
-                text = when {
-                    timeline == null -> "HKO 短臨預報"
-                    state.forecast.isStale -> "已保留上次成功預報"
-                    refreshing -> "正在更新 HKO SWIRLS…"
-                    else -> "HKO SWIRLS · ${timeline.cadenceMinutes} 分鐘一格 · ${timeline.accumulationMinutes} 分鐘累積"
-                },
-                color = MAPLIBRE_MUTED,
-                fontSize = 10.sp,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-        }
-        MapLibreHeaderAction("更新", accent, onRefresh)
-    }
-}
-
-@Composable
-private fun MapLibreHeaderAction(
-    label: String,
-    accent: Color,
-    onClick: () -> Unit,
-) {
-    MetroGlassContextSurface(
+    MetroToolTopBar(
+        title = "兩小時降雨 · $location",
+        subtitle = when {
+            timeline == null -> "HKO 短臨預報"
+            state.forecast.isStale -> "已保留上次成功預報"
+            refreshing -> "正在更新 HKO SWIRLS…"
+            else -> "HKO SWIRLS · ${timeline.cadenceMinutes} 分鐘一格 · ${timeline.accumulationMinutes} 分鐘累積"
+        },
         accent = accent,
-        modifier = Modifier.clickable(onClick = onClick),
-    ) {
-        Text(
-            text = label,
-            color = accent,
-            fontSize = 12.sp,
-            modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
-        )
-    }
+        onBack = onBack,
+        onRefresh = onRefresh,
+        refreshing = refreshing,
+        modifier = modifier,
+    )
 }
 
 @Composable
