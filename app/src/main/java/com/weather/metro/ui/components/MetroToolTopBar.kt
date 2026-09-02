@@ -55,7 +55,6 @@ fun MetroToolTopBar(
     refreshing: Boolean = false,
     trailingContent: @Composable RowScope.() -> Unit = {},
 ) {
-    val reduceMotion = LocalReduceMotion.current
     MetroGlassContextSurface(
         accent = accent,
         modifier = modifier.fillMaxWidth(),
@@ -113,48 +112,67 @@ fun MetroToolTopBar(
             }
             trailingContent()
             onRefresh?.let { refresh ->
-                val interactionSource = remember { MutableInteractionSource() }
-                Box(
-                    modifier = Modifier
-                        .width(52.dp)
-                        .height(40.dp)
-                        .metroPressMotion(
-                            interactionSource = interactionSource,
-                            preset = MetroPressPreset.CompactControl,
-                            enabled = !refreshing,
-                        )
-                        .clickable(
-                            enabled = !refreshing,
-                            interactionSource = interactionSource,
-                            indication = null,
-                            onClick = refresh,
-                        ),
-                    contentAlignment = Alignment.CenterEnd,
-                ) {
-                    AnimatedContent(
-                        targetState = refreshing,
-                        transitionSpec = {
-                            if (reduceMotion) {
-                                fadeIn(tween(100)) togetherWith fadeOut(tween(80))
-                            } else {
-                                val enterOffset: (Int) -> Int = { height -> if (targetState) height / 3 else -height / 3 }
-                                val exitOffset: (Int) -> Int = { height -> if (targetState) -height / 3 else height / 3 }
-                                (fadeIn(tween(160)) + slideInVertically(tween(180), initialOffsetY = enterOffset)) togetherWith
-                                    (fadeOut(tween(120)) + slideOutVertically(tween(150), targetOffsetY = exitOffset))
-                            }
-                        },
-                        contentKey = { it },
-                        label = "tool refresh state",
-                    ) { isRefreshing ->
-                        Text(
-                            text = if (isRefreshing) "更新中" else "更新",
-                            color = if (isRefreshing) LocalMetroSubText.current else accent,
-                            fontSize = 11.sp,
-                            maxLines = 1,
-                        )
-                    }
-                }
+                MetroRefreshAction(
+                    refreshing = refreshing,
+                    accent = accent,
+                    onRefresh = refresh,
+                )
             }
+        }
+    }
+}
+
+/**
+ * Stable-width refresh affordance used by all fullscreen tool headers.
+ * The text moves instead of the surrounding layout so a refresh never nudges the title or controls.
+ */
+@Composable
+fun MetroRefreshAction(
+    refreshing: Boolean,
+    accent: Color,
+    onRefresh: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val reduceMotion = LocalReduceMotion.current
+    val interactionSource = remember { MutableInteractionSource() }
+    Box(
+        modifier = modifier
+            .width(48.dp)
+            .height(32.dp)
+            .metroPressMotion(
+                interactionSource = interactionSource,
+                preset = MetroPressPreset.CompactControl,
+                enabled = !refreshing,
+            )
+            .clickable(
+                enabled = !refreshing,
+                interactionSource = interactionSource,
+                indication = null,
+                onClick = onRefresh,
+            ),
+        contentAlignment = Alignment.CenterEnd,
+    ) {
+        AnimatedContent(
+            targetState = refreshing,
+            transitionSpec = {
+                if (reduceMotion) {
+                    fadeIn(tween(100)) togetherWith fadeOut(tween(80))
+                } else {
+                    val enterOffset: (Int) -> Int = { height -> if (targetState) height / 3 else -height / 3 }
+                    val exitOffset: (Int) -> Int = { height -> if (targetState) -height / 3 else height / 3 }
+                    (fadeIn(tween(160)) + slideInVertically(tween(180), initialOffsetY = enterOffset)) togetherWith
+                        (fadeOut(tween(120)) + slideOutVertically(tween(150), targetOffsetY = exitOffset))
+                }
+            },
+            contentKey = { it },
+            label = "tool refresh state",
+        ) { isRefreshing ->
+            Text(
+                text = if (isRefreshing) "更新中" else "更新",
+                color = if (isRefreshing) LocalMetroSubText.current else accent,
+                fontSize = 11.sp,
+                maxLines = 1,
+            )
         }
     }
 }
