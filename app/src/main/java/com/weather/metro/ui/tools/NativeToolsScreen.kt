@@ -54,6 +54,7 @@ import androidx.lifecycle.repeatOnLifecycle
 import com.weather.metro.data.tools.RainRadarMode
 import com.weather.metro.ui.components.MetroSectionLabel
 import com.weather.metro.ui.components.MetroTile
+import com.weather.metro.ui.components.MetroToolTopBar
 import com.weather.metro.ui.layout.metroSafeTop
 import com.weather.metro.ui.map.HongKongBackdrop
 import com.weather.metro.ui.map.HongKongMapAttribution
@@ -386,11 +387,17 @@ private fun PointToolScreen(
     Box(modifier = Modifier.fillMaxSize()) {
         HongKongBackdrop(modifier = Modifier.fillMaxSize())
         LazyColumn(
-            modifier = Modifier.fillMaxSize().metroSafeTop(),
-            contentPadding = androidx.compose.foundation.layout.PaddingValues(start = 22.dp, end = 16.dp, bottom = 64.dp),
+            modifier = Modifier
+                .fillMaxSize()
+                .metroSafeTop(),
+            contentPadding = androidx.compose.foundation.layout.PaddingValues(
+                start = 22.dp,
+                top = 78.dp,
+                end = 16.dp,
+                bottom = 64.dp,
+            ),
             verticalArrangement = Arrangement.spacedBy(9.dp),
         ) {
-            item { ToolBackButton(pageColour, onBack) }
             item {
                 RainPointPanel(
                     state = rainState,
@@ -401,6 +408,18 @@ private fun PointToolScreen(
                 )
             }
         }
+        MetroToolTopBar(
+            title = rainState.location?.label ?: "目前位置",
+            subtitle = "定點降雨 · HKO 格點預報 · 每格 30 分鐘累積",
+            accent = pageColour,
+            onBack = onBack,
+            onRefresh = onRefresh,
+            refreshing = rainState.pointForecast.status == RainResourceStatus.LOADING,
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .metroSafeTop()
+                .padding(start = 8.dp, end = 8.dp, top = 4.dp),
+        )
         HongKongMapAttribution(modifier = Modifier.align(Alignment.BottomEnd))
     }
 }
@@ -444,7 +463,7 @@ private fun RadarMapLibreToolScreen(
             modifier = Modifier
                 .align(Alignment.TopCenter)
                 .metroSafeTop()
-                .padding(top = 72.dp),
+                .padding(top = 74.dp),
         )
     }
 }
@@ -500,18 +519,6 @@ private fun StormLiveToolScreen(
         onBack = onBack,
         onCancelRequests = onCancelRequests,
         modifier = Modifier.fillMaxSize(),
-    )
-}
-
-@Composable
-private fun ToolBackButton(pageColour: Color, onBack: () -> Unit) {
-    Text(
-        "‹ back",
-        color = pageColour,
-        fontSize = 16.sp,
-        modifier = Modifier
-            .clickable(onClick = onBack)
-            .padding(start = 0.dp, top = 8.dp, end = 16.dp, bottom = 8.dp),
     )
 }
 
