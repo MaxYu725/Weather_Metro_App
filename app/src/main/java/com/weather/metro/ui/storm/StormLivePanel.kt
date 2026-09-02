@@ -151,6 +151,7 @@ internal fun StormLivePanel(
         StormMapLibreSurface(
             tracksByAgency = tracksByAgency,
             enabledAgencies = enabledAgencies,
+            selectedPointRef = selectedPointRef,
             fitToken = fitToken,
             onPointSelected = { ref ->
                 selectedPointRef = ref
