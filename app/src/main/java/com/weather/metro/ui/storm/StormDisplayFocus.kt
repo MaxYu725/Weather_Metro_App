@@ -79,7 +79,8 @@ internal fun buildStormDisplayGroups(
                 groups.firstOrNull { candidate ->
                     val candidateHasSpecificName = candidate.nameKeys.isNotEmpty()
                     if (keys.isNotEmpty() && candidateHasSpecificName) return@firstOrNull false
-                    val other = stormFocusCurrentPoint(candidate.tracks.values.firstOrNull() ?: return@firstOrNull false)
+                    val candidateTrack = candidate.tracks.values.firstOrNull() ?: return@firstOrNull false
+                    val other = stormFocusCurrentPoint(candidateTrack) ?: return@firstOrNull false
                     stormFocusTimeCompatible(point, other) &&
                         stormFocusDistanceKm(point.latitude, point.longitude, other.latitude, other.longitude) < FOCUS_PROXIMITY_KM
                 }
