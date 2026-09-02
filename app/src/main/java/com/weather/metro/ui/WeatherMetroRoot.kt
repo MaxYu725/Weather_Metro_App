@@ -44,7 +44,6 @@ import com.weather.metro.data.settings.PageColourSlot
 import com.weather.metro.data.tools.RainRadarMode
 import com.weather.metro.domain.WeatherLoadState
 import com.weather.metro.ui.components.MetroProgress
-import com.weather.metro.ui.layout.metroSafeTop
 import com.weather.metro.ui.map.HongKongBackdrop
 import com.weather.metro.ui.map.HongKongMapAttribution
 import com.weather.metro.ui.rain.RainHostViewModel
@@ -226,6 +225,8 @@ fun WeatherMetroRoot(
                     Column {
                         if (showWeatherProgress) {
                             MetroProgress(colour = activePageColour)
+                        } else {
+                            Spacer(Modifier.height(10.dp))
                         }
                         PivotHeader(
                             current = activePage.label,
@@ -362,8 +363,7 @@ private fun PivotHeader(current: String, next: String, reduceMotion: Boolean) {
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .metroSafeTop()
-            .height(64.dp)
+            .height(76.dp)
             .padding(start = 22.dp),
         contentAlignment = Alignment.CenterStart,
     ) {
