@@ -226,8 +226,6 @@ fun WeatherMetroRoot(
                     Column {
                         if (showWeatherProgress) {
                             MetroProgress(colour = activePageColour)
-                        } else {
-                            Spacer(Modifier.height(10.dp))
                         }
                         PivotHeader(
                             current = activePage.label,
@@ -365,7 +363,7 @@ private fun PivotHeader(current: String, next: String, reduceMotion: Boolean) {
         modifier = Modifier
             .fillMaxWidth()
             .metroSafeTop()
-            .height(76.dp)
+            .height(64.dp)
             .padding(start = 22.dp),
         contentAlignment = Alignment.CenterStart,
     ) {
