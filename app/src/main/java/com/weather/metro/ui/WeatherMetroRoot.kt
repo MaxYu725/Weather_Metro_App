@@ -135,7 +135,6 @@ fun WeatherMetroRoot(
         val pagerState = rememberPagerState(initialPage = alignedInitialPage) { Int.MAX_VALUE }
         val pageIndex = pagerState.currentPage.mod(pages.size)
         val activePage = pages[pageIndex]
-        val activePageColour = argbColor(settings.pageColours.colour(activePage))
         val toolsColour = argbColor(settings.pageColours.colour(PageColourSlot.TOOLS))
         val reduceMotion = LocalReduceMotion.current
         var activeTool by remember { mutableStateOf<NativeToolDestination?>(null) }
@@ -218,16 +217,8 @@ fun WeatherMetroRoot(
                         fadeOut(tween(180)) + shrinkVertically(tween(360))
                     },
                 ) {
-                    val showWeatherProgress = pageRequiresWeatherData(activePage) && (
-                        loadState is WeatherLoadState.Loading ||
-                            (loadState as? WeatherLoadState.Ready)?.refreshing == true
-                        )
                     Column {
-                        if (showWeatherProgress) {
-                            MetroProgress(colour = activePageColour)
-                        } else {
-                            Spacer(Modifier.height(10.dp))
-                        }
+                        PrimaryDataStatus(loadState)
                         PivotHeader(
                             current = activePage.label,
                             next = pages[(pageIndex + 1) % pages.size].label,
@@ -287,8 +278,6 @@ fun WeatherMetroRoot(
                                         locationTrendState = locationTrendState,
                                         stormState = stormState,
                                         pageColour = pageColour,
-                                        refreshing = state.refreshing,
-                                        onRefresh = viewModel::refresh,
                                         onRequestLocation = requestLocationPermission,
                                         onOpenPointRain = { activeTool = NativeToolDestination.POINT },
                                         onOpenRadar = { activeTool = NativeToolDestination.RADAR },
@@ -355,6 +344,54 @@ fun WeatherMetroRoot(
                 HongKongMapAttribution(modifier = Modifier.align(Alignment.BottomEnd))
             }
         }
+    }
+}
+
+@Composable
+private fun PrimaryDataStatus(state: WeatherLoadState) {
+    val statusText: String
+    val statusColour: Color
+    when (state) {
+        WeatherLoadState.Loading -> {
+            statusText = "正在取得香港天文台資料"
+            statusColour = Color(0xFF8A8A8A)
+        }
+        is WeatherLoadState.Error -> {
+            statusText = if (state.cached != null) "資料更新失敗 · 顯示快取" else "香港天文台資料暫時無法更新"
+            statusColour = if (state.cached != null) Color(0xFFF09609) else Color(0xFFE51400)
+        }
+        is WeatherLoadState.Ready -> when {
+            state.refreshing -> {
+                statusText = "正在更新香港天文台資料"
+                statusColour = Color(0xFF8A8A8A)
+            }
+            state.snapshot.isStale -> {
+                statusText = "顯示離線快取"
+                statusColour = Color(0xFFF09609)
+            }
+            else -> {
+                statusText = "香港天文台資料已同步"
+                statusColour = Color(0xFF00C853)
+            }
+        }
+    }
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(20.dp)
+            .padding(start = 22.dp, end = 16.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(Modifier.width(6.dp).height(6.dp).background(statusColour))
+        Spacer(Modifier.width(8.dp))
+        Text(
+            text = statusText,
+            color = LocalMetroSubText.current,
+            fontSize = 10.sp,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
     }
 }
 
