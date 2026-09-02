@@ -23,6 +23,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.PagerDefaults
 import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -227,11 +228,12 @@ fun WeatherMetroRoot(
                         if (showWeatherProgress) {
                             MetroProgress(colour = activePageColour)
                         } else {
-                            Spacer(Modifier.height(10.dp))
+                            Spacer(Modifier.height(3.dp))
                         }
                         PivotHeader(
                             current = activePage.label,
                             next = pages[(pageIndex + 1) % pages.size].label,
+                            accent = activePageColour,
                             reduceMotion = reduceMotion,
                         )
                     }
@@ -360,13 +362,13 @@ fun WeatherMetroRoot(
 }
 
 @Composable
-private fun PivotHeader(current: String, next: String, reduceMotion: Boolean) {
+private fun PivotHeader(current: String, next: String, accent: Color, reduceMotion: Boolean) {
     Box(
         modifier = Modifier
             .fillMaxWidth()
             .metroSafeTop()
-            .height(76.dp)
-            .padding(start = 22.dp),
+            .height(68.dp)
+            .padding(start = 18.dp),
         contentAlignment = Alignment.CenterStart,
     ) {
         AnimatedContent(
@@ -377,22 +379,29 @@ private fun PivotHeader(current: String, next: String, reduceMotion: Boolean) {
             },
             label = "pivot header",
         ) { (active, upcoming) ->
-            Row(verticalAlignment = Alignment.Bottom) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(
+                    Modifier
+                        .width(4.dp)
+                        .height(30.dp)
+                        .background(accent, RoundedCornerShape(3.dp)),
+                )
+                Spacer(Modifier.width(10.dp))
                 Text(
                     text = active,
                     color = Color.White,
-                    fontSize = 52.sp,
-                    lineHeight = 56.sp,
+                    fontSize = 48.sp,
+                    lineHeight = 52.sp,
                     fontWeight = FontWeight.Light,
-                    letterSpacing = (-1.5).sp,
+                    letterSpacing = (-1.3).sp,
                     maxLines = 1,
                 )
-                Spacer(Modifier.width(18.dp))
+                Spacer(Modifier.width(14.dp))
                 Text(
                     text = upcoming,
                     color = Color(0xFF3D3D3D),
-                    fontSize = 47.sp,
-                    lineHeight = 52.sp,
+                    fontSize = 44.sp,
+                    lineHeight = 48.sp,
                     fontWeight = FontWeight.Light,
                     maxLines = 1,
                     overflow = TextOverflow.Clip,
