@@ -134,6 +134,8 @@ fun MetroRefreshAction(
     onRefresh: () -> Unit,
     modifier: Modifier = Modifier,
     width: Dp = 48.dp,
+    idleLabel: String = "更新",
+    refreshingLabel: String = "更新中",
 ) {
     val reduceMotion = LocalReduceMotion.current
     val interactionSource = remember { MutableInteractionSource() }
@@ -170,7 +172,7 @@ fun MetroRefreshAction(
             label = "tool refresh state",
         ) { isRefreshing ->
             Text(
-                text = if (isRefreshing) "更新中" else "更新",
+                text = if (isRefreshing) refreshingLabel else idleLabel,
                 color = if (isRefreshing) LocalMetroSubText.current else accent,
                 fontSize = 11.sp,
                 maxLines = 1,
