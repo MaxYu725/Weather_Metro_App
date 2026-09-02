@@ -125,7 +125,7 @@ fun RainPointPanel(
                                 }
                                 Spacer(Modifier.width(8.dp))
                                 RainPointActionBadge(
-                                    label = "更新",
+                                    refreshing = state.pointForecast.status == RainResourceStatus.LOADING,
                                     pageColour = pageColour,
                                     onClick = onRefresh,
                                 )
@@ -229,11 +229,12 @@ private fun RadiusSelector(
 
 @Composable
 private fun RainPointActionBadge(
-    label: String,
+    refreshing: Boolean,
     pageColour: Color,
     onClick: () -> Unit,
 ) {
     val interactionSource = remember { MutableInteractionSource() }
+    val reduceMotion = LocalReduceMotion.current
     MetroGlassContextSurface(
         accent = pageColour,
         modifier = Modifier
@@ -242,19 +243,35 @@ private fun RainPointActionBadge(
             .metroPressMotion(
                 interactionSource = interactionSource,
                 preset = MetroPressPreset.CompactControl,
+                enabled = !refreshing,
             )
             .clickable(
+                enabled = !refreshing,
                 interactionSource = interactionSource,
                 indication = LocalIndication.current,
                 onClick = onClick,
             ),
     ) {
-        Text(
-            text = label,
-            color = Color.White.copy(alpha = 0.90f),
-            fontSize = 10.sp,
-            maxLines = 1,
-        )
+        AnimatedContent(
+            targetState = refreshing,
+            transitionSpec = {
+                if (reduceMotion) {
+                    fadeIn(tween(100)) togetherWith fadeOut(tween(80))
+                } else {
+                    (fadeIn(tween(150)) + slideInVertically(tween(170)) { height -> height / 3 }) togetherWith
+                        (fadeOut(tween(110)) + slideOutVertically(tween(140)) { height -> -height / 3 })
+                }
+            },
+            contentKey = { it },
+            label = "point refresh state",
+        ) { isRefreshing ->
+            Text(
+                text = if (isRefreshing) "更新中" else "更新",
+                color = if (isRefreshing) LocalMetroSubText.current else Color.White.copy(alpha = 0.90f),
+                fontSize = 10.sp,
+                maxLines = 1,
+            )
+        }
     }
 }
 
