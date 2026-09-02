@@ -49,6 +49,7 @@ import com.weather.metro.domain.storm.StormPoint
 import com.weather.metro.domain.storm.StormPointType
 import com.weather.metro.domain.storm.StormTrack
 import com.weather.metro.ui.components.MetroFloatingIsland
+import com.weather.metro.ui.components.MetroRefreshAction
 import com.weather.metro.ui.layout.metroSafeBottom
 import com.weather.metro.ui.layout.metroSafeTop
 import com.weather.metro.ui.motion.MetroPressPreset
@@ -342,13 +343,12 @@ private fun StormTopControlHub(
                     .clickable { expanded = true }
                     .padding(start = 7.dp, top = 7.dp, bottom = 7.dp),
             )
-            Text(
-                text = if (refreshing) "…" else "更新",
-                color = if (refreshing) LocalMetroSubText.current else pageColour,
-                fontSize = 11.sp,
-                modifier = Modifier
-                    .clickable(enabled = !refreshing, onClick = onRefresh)
-                    .padding(start = 7.dp, top = 7.dp, bottom = 7.dp),
+            MetroRefreshAction(
+                refreshing = refreshing,
+                accent = pageColour,
+                onRefresh = onRefresh,
+                width = 34.dp,
+                refreshingLabel = "…",
             )
         },
         expandedContent = {
@@ -380,13 +380,11 @@ private fun StormTopControlHub(
                         maxLines = 1,
                     )
                 }
-                Text(
-                    text = if (refreshing) "更新中" else "更新",
-                    color = if (refreshing) LocalMetroSubText.current else pageColour,
-                    fontSize = 11.sp,
-                    modifier = Modifier
-                        .clickable(enabled = !refreshing, onClick = onRefresh)
-                        .padding(start = 8.dp, top = 6.dp, bottom = 6.dp),
+                MetroRefreshAction(
+                    refreshing = refreshing,
+                    accent = pageColour,
+                    onRefresh = onRefresh,
+                    width = 44.dp,
                 )
                 Text(
                     text = "收起",

@@ -1,7 +1,15 @@
 package com.weather.metro.ui.components
 
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -16,14 +24,19 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.weather.metro.ui.motion.MetroPressPreset
+import com.weather.metro.ui.motion.metroPressMotion
 import com.weather.metro.ui.theme.LocalMetroSubText
+import com.weather.metro.ui.theme.LocalReduceMotion
 
 /**
  * Shared top chrome for fullscreen tools.
@@ -100,15 +113,70 @@ fun MetroToolTopBar(
             }
             trailingContent()
             onRefresh?.let { refresh ->
-                Text(
-                    text = if (refreshing) "更新中" else "更新",
-                    color = if (refreshing) LocalMetroSubText.current else accent,
-                    fontSize = 11.sp,
-                    modifier = Modifier
-                        .clickable(enabled = !refreshing, onClick = refresh)
-                        .padding(start = 10.dp, top = 10.dp, end = 4.dp, bottom = 10.dp),
+                MetroRefreshAction(
+                    refreshing = refreshing,
+                    accent = accent,
+                    onRefresh = refresh,
                 )
             }
+        }
+    }
+}
+
+/**
+ * Stable-width refresh affordance used by fullscreen tool headers.
+ * The text moves instead of the surrounding layout so a refresh never nudges the title or controls.
+ */
+@Composable
+fun MetroRefreshAction(
+    refreshing: Boolean,
+    accent: Color,
+    onRefresh: () -> Unit,
+    modifier: Modifier = Modifier,
+    width: Dp = 48.dp,
+    idleLabel: String = "更新",
+    refreshingLabel: String = "更新中",
+) {
+    val reduceMotion = LocalReduceMotion.current
+    val interactionSource = remember { MutableInteractionSource() }
+    Box(
+        modifier = modifier
+            .width(width)
+            .height(32.dp)
+            .metroPressMotion(
+                interactionSource = interactionSource,
+                preset = MetroPressPreset.CompactControl,
+                enabled = !refreshing,
+            )
+            .clickable(
+                enabled = !refreshing,
+                interactionSource = interactionSource,
+                indication = null,
+                onClick = onRefresh,
+            ),
+        contentAlignment = Alignment.CenterEnd,
+    ) {
+        AnimatedContent(
+            targetState = refreshing,
+            transitionSpec = {
+                if (reduceMotion) {
+                    fadeIn(tween(100)) togetherWith fadeOut(tween(80))
+                } else {
+                    val enterOffset: (Int) -> Int = { height -> if (targetState) height / 3 else -height / 3 }
+                    val exitOffset: (Int) -> Int = { height -> if (targetState) -height / 3 else height / 3 }
+                    (fadeIn(tween(160)) + slideInVertically(tween(180), initialOffsetY = enterOffset)) togetherWith
+                        (fadeOut(tween(120)) + slideOutVertically(tween(150), targetOffsetY = exitOffset))
+                }
+            },
+            contentKey = { it },
+            label = "tool refresh state",
+        ) { isRefreshing ->
+            Text(
+                text = if (isRefreshing) refreshingLabel else idleLabel,
+                color = if (isRefreshing) LocalMetroSubText.current else accent,
+                fontSize = 11.sp,
+                maxLines = 1,
+            )
         }
     }
 }

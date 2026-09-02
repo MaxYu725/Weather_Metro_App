@@ -2,11 +2,14 @@ package com.weather.metro.ui
 
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
-import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
@@ -35,6 +38,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -46,13 +50,16 @@ import com.weather.metro.domain.WeatherLoadState
 import com.weather.metro.ui.components.MetroProgress
 import com.weather.metro.ui.map.HongKongBackdrop
 import com.weather.metro.ui.map.HongKongMapAttribution
+import com.weather.metro.ui.rain.RainHostState
 import com.weather.metro.ui.rain.RainHostViewModel
 import com.weather.metro.ui.rain.RainLocationTrendViewModel
+import com.weather.metro.ui.rain.RainRadarHostState
 import com.weather.metro.ui.rain.RainRadarHostViewModel
 import com.weather.metro.ui.rain.RainResourceStatus
 import com.weather.metro.ui.screens.ForecastScreen
 import com.weather.metro.ui.screens.HomeCurrentScreen
 import com.weather.metro.ui.screens.SettingsScreen
+import com.weather.metro.ui.storm.StormHostState
 import com.weather.metro.ui.storm.StormHostViewModel
 import com.weather.metro.ui.theme.LocalMetroSubText
 import com.weather.metro.ui.theme.LocalReduceMotion
@@ -61,6 +68,8 @@ import com.weather.metro.ui.theme.WeatherMetroTheme
 import com.weather.metro.ui.theme.argbColor
 import com.weather.metro.ui.tools.NativeToolDestination
 import com.weather.metro.ui.tools.NativeToolsScreen
+import com.weather.metro.ui.tools.ToolLoadingPanel
+import kotlinx.coroutines.delay
 
 private val pages = listOf(
     PageColourSlot.CURRENT,
@@ -204,27 +213,16 @@ fun WeatherMetroRoot(
         ) {
             HongKongBackdrop(Modifier.fillMaxSize())
             Column(modifier = Modifier.fillMaxSize()) {
-                AnimatedVisibility(
-                    visible = activeTool == null,
-                    enter = if (reduceMotion) {
-                        fadeIn(tween(120))
-                    } else {
-                        fadeIn(tween(220, delayMillis = 80)) + expandVertically(tween(360))
-                    },
-                    exit = if (reduceMotion) {
-                        fadeOut(tween(100))
-                    } else {
-                        fadeOut(tween(180)) + shrinkVertically(tween(360))
-                    },
-                ) {
-                    Column {
-                        PrimaryDataStatus(loadState)
-                        PivotHeader(
-                            current = activePage.label,
-                            next = pages[(pageIndex + 1) % pages.size].label,
-                            reduceMotion = reduceMotion,
-                        )
-                    }
+                Column {
+                    PrimaryDataStatus(
+                        state = loadState,
+                        onRefresh = viewModel::refresh,
+                    )
+                    PivotHeader(
+                        current = activePage.label,
+                        next = pages[(pageIndex + 1) % pages.size].label,
+                        reduceMotion = reduceMotion,
+                    )
                 }
 
                 HorizontalPager(
@@ -300,42 +298,87 @@ fun WeatherMetroRoot(
                 }
             }
 
-            activeTool?.let { destination ->
-                MetroPageTheme(toolsColour) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .background(Color(0xFF080B0D)),
-                    ) {
-                        NativeToolsScreen(
-                            pageColour = toolsColour,
-                            rainState = rainState,
-                            radarState = productionRadarState,
-                            stormState = stormState,
-                            isActive = true,
-                            onFullscreenChanged = {},
-                            onRefreshPoint = rainViewModel::refreshPointForecast,
-                            onEnsurePointFresh = rainViewModel::refreshPointForecastIfStale,
-                            onCancelPointRefresh = rainViewModel::cancelPointRefresh,
-                            onRefreshRadar = radarViewModel::refreshRadar,
-                            onSelectRadarFrame = radarViewModel::selectFrame,
-                            onSelectRadarRange = radarViewModel::selectRange,
-                            onSelectRadarHeight = radarViewModel::selectHeight,
-                            onSelectRadarMode = radarViewModel::selectMode,
-                            onRadarOpacityChange = radarViewModel::setOpacity,
-                            onRadarPlaybackSpeedChange = radarViewModel::setPlaybackSpeed,
-                            onJumpRadarToLatest = radarViewModel::jumpToLatest,
-                            onCancelRadarRequests = radarViewModel::cancelRequests,
-                            onRefreshForecast = rainViewModel::refreshForecast,
-                            onEnsureForecastFresh = rainViewModel::refreshForecastIfStale,
-                            onLoadForecastFrame = rainViewModel::loadForecastFrame,
-                            onCancelForecastRequests = rainViewModel::cancelForecastRequests,
-                            onRefreshStorm = stormViewModel::refreshLive,
-                            onEnsureStormFresh = { stormViewModel.refreshLiveIfStale() },
-                            onCancelStormRequests = stormViewModel::cancelRequests,
-                            entryDestination = destination,
-                            onExitRequested = { activeTool = null },
-                        )
+            AnimatedContent(
+                targetState = activeTool,
+                transitionSpec = {
+                    if (reduceMotion) {
+                        fadeIn(tween(120)) togetherWith fadeOut(tween(100))
+                    } else {
+                        when {
+                            initialState == null && targetState != null -> (
+                                fadeIn(tween(180, delayMillis = 35)) +
+                                    slideInHorizontally(
+                                        animationSpec = tween(430, easing = FastOutSlowInEasing),
+                                        initialOffsetX = { width -> width },
+                                    )
+                                ) togetherWith fadeOut(tween(90))
+                            initialState != null && targetState == null -> fadeIn(tween(120, delayMillis = 45)) togetherWith (
+                                fadeOut(tween(170)) +
+                                    slideOutHorizontally(
+                                        animationSpec = tween(380, easing = FastOutSlowInEasing),
+                                        targetOffsetX = { width -> width },
+                                    )
+                                )
+                            else -> fadeIn(tween(200)) togetherWith fadeOut(tween(160))
+                        }
+                    }
+                },
+                contentKey = { it?.route ?: "primary" },
+                label = "root tool destination",
+                modifier = Modifier.fillMaxSize(),
+            ) { destination ->
+                if (destination == null) {
+                    Box(Modifier.fillMaxSize())
+                } else {
+                    MetroPageTheme(toolsColour) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .background(Color(0xFF080B0D)),
+                        ) {
+                            NativeToolsScreen(
+                                pageColour = toolsColour,
+                                rainState = rainState,
+                                radarState = productionRadarState,
+                                stormState = stormState,
+                                isActive = true,
+                                onFullscreenChanged = {},
+                                onRefreshPoint = rainViewModel::refreshPointForecast,
+                                onEnsurePointFresh = rainViewModel::refreshPointForecastIfStale,
+                                onCancelPointRefresh = rainViewModel::cancelPointRefresh,
+                                onRefreshRadar = radarViewModel::refreshRadar,
+                                onSelectRadarFrame = radarViewModel::selectFrame,
+                                onSelectRadarRange = radarViewModel::selectRange,
+                                onSelectRadarHeight = radarViewModel::selectHeight,
+                                onSelectRadarMode = radarViewModel::selectMode,
+                                onRadarOpacityChange = radarViewModel::setOpacity,
+                                onRadarPlaybackSpeedChange = radarViewModel::setPlaybackSpeed,
+                                onJumpRadarToLatest = radarViewModel::jumpToLatest,
+                                onCancelRadarRequests = radarViewModel::cancelRequests,
+                                onRefreshForecast = rainViewModel::refreshForecast,
+                                onEnsureForecastFresh = rainViewModel::refreshForecastIfStale,
+                                onLoadForecastFrame = rainViewModel::loadForecastFrame,
+                                onCancelForecastRequests = rainViewModel::cancelForecastRequests,
+                                onRefreshStorm = stormViewModel::refreshLive,
+                                onEnsureStormFresh = { stormViewModel.refreshLiveIfStale() },
+                                onCancelStormRequests = stormViewModel::cancelRequests,
+                                entryDestination = destination,
+                                onExitRequested = { activeTool = null },
+                            )
+
+                            ToolRevealGuard(
+                                destination = destination,
+                                dataReady = toolDestinationDataReady(
+                                    destination = destination,
+                                    rainState = rainState,
+                                    radarState = productionRadarState,
+                                    stormState = stormState,
+                                ),
+                                accent = toolsColour,
+                                reduceMotion = reduceMotion,
+                                modifier = Modifier.fillMaxSize(),
+                            )
+                        }
                     }
                 }
             }
@@ -347,8 +390,82 @@ fun WeatherMetroRoot(
     }
 }
 
+private fun toolDestinationDataReady(
+    destination: NativeToolDestination,
+    rainState: RainHostState,
+    radarState: RainRadarHostState,
+    stormState: StormHostState,
+): Boolean = when (destination) {
+    NativeToolDestination.POINT ->
+        rainState.pointForecast.value != null || rainState.pointForecast.status == RainResourceStatus.ERROR
+    NativeToolDestination.RADAR ->
+        (radarState.timeline.value != null && radarState.selectedFrame != null) ||
+            radarState.timeline.status == RainResourceStatus.ERROR
+    NativeToolDestination.FORECAST ->
+        (rainState.forecast.value != null && rainState.forecastFrame.value != null) ||
+            rainState.forecast.status == RainResourceStatus.ERROR
+    NativeToolDestination.STORM ->
+        stormState.cacheRestored && (
+            !stormState.isRefreshing || stormState.sources.values.any { it.storms.isNotEmpty() }
+        )
+}
+
 @Composable
-private fun PrimaryDataStatus(state: WeatherLoadState) {
+private fun ToolRevealGuard(
+    destination: NativeToolDestination,
+    dataReady: Boolean,
+    accent: Color,
+    reduceMotion: Boolean,
+    modifier: Modifier = Modifier,
+) {
+    var revealed by remember(destination) { mutableStateOf(false) }
+
+    LaunchedEffect(destination, dataReady, reduceMotion) {
+        if (!dataReady) {
+            revealed = false
+        } else {
+            delay(if (reduceMotion) 40L else 240L)
+            revealed = true
+        }
+    }
+
+    AnimatedVisibility(
+        visible = !revealed,
+        enter = fadeIn(tween(if (reduceMotion) 60 else 100)),
+        exit = fadeOut(tween(if (reduceMotion) 80 else 220)),
+        modifier = modifier,
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color(0xFF080B0D)),
+            contentAlignment = Alignment.Center,
+        ) {
+            ToolLoadingPanel(
+                title = when (destination) {
+                    NativeToolDestination.POINT -> "正在載入定點降雨"
+                    NativeToolDestination.RADAR -> "正在載入雷達"
+                    NativeToolDestination.FORECAST -> "正在載入兩小時降雨"
+                    NativeToolDestination.STORM -> "正在載入熱帶氣旋"
+                },
+                detail = when (destination) {
+                    NativeToolDestination.POINT -> "正在準備目前位置的最新格點資料"
+                    NativeToolDestination.RADAR -> "正在準備最新觀測與地圖畫面"
+                    NativeToolDestination.FORECAST -> "正在準備預報資料與地圖畫面"
+                    NativeToolDestination.STORM -> "正在整合官方路徑與地圖畫面"
+                },
+                accent = accent,
+                modifier = Modifier.fillMaxWidth(),
+            )
+        }
+    }
+}
+
+@Composable
+private fun PrimaryDataStatus(
+    state: WeatherLoadState,
+    onRefresh: () -> Unit,
+) {
     val statusText: String
     val statusColour: Color
     when (state) {
@@ -375,22 +492,53 @@ private fun PrimaryDataStatus(state: WeatherLoadState) {
             }
         }
     }
+    val refreshing = state == WeatherLoadState.Loading ||
+        (state is WeatherLoadState.Ready && state.refreshing)
+    val reduceMotion = LocalReduceMotion.current
 
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .height(20.dp)
-            .padding(start = 22.dp, end = 16.dp),
+            .height(32.dp)
+            .padding(start = 22.dp, top = 10.dp, end = 28.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Box(Modifier.width(6.dp).height(6.dp).background(statusColour))
-        Spacer(Modifier.width(8.dp))
+        AnimatedContent(
+            targetState = statusText to statusColour,
+            transitionSpec = {
+                if (reduceMotion) {
+                    fadeIn(tween(100)) togetherWith fadeOut(tween(80))
+                } else {
+                    (fadeIn(tween(160)) + slideInVertically(tween(180)) { height -> height / 3 }) togetherWith
+                        (fadeOut(tween(120)) + slideOutVertically(tween(150)) { height -> -height / 3 })
+                }
+            },
+            contentKey = { it.first },
+            label = "primary data status",
+            modifier = Modifier.weight(1f),
+        ) { (text, colour) ->
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(Modifier.width(6.dp).height(6.dp).background(colour))
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    text = text,
+                    color = LocalMetroSubText.current,
+                    fontSize = 10.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
         Text(
-            text = statusText,
-            color = LocalMetroSubText.current,
+            text = if (refreshing) "更新中" else "refresh",
+            color = if (refreshing) LocalMetroSubText.current else MaterialTheme.colorScheme.primary,
             fontSize = 10.sp,
+            textAlign = TextAlign.End,
             maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier
+                .width(52.dp)
+                .clickable(enabled = !refreshing, onClick = onRefresh)
+                .padding(vertical = 2.dp),
         )
     }
 }
@@ -400,7 +548,7 @@ private fun PivotHeader(current: String, next: String, reduceMotion: Boolean) {
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .height(76.dp)
+            .height(64.dp)
             .padding(start = 22.dp),
         contentAlignment = Alignment.CenterStart,
     ) {

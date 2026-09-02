@@ -72,10 +72,9 @@ fun RainPointPanel(
         ) { status ->
             when (status) {
                 RainResourceStatus.IDLE -> EmptyPointState(pageColour, onRefresh)
-                RainResourceStatus.LOADING -> LoadingPointState(
-                    pageColour = pageColour,
-                    hasRetainedData = state.pointForecast.value != null,
-                )
+                RainResourceStatus.LOADING -> if (state.pointForecast.value == null) {
+                    LoadingPointState(pageColour)
+                }
                 RainResourceStatus.ERROR -> ErrorPointState(
                     pageColour = pageColour,
                     message = state.pointForecast.errorMessage ?: "定點降雨暫時無法載入",
@@ -125,7 +124,7 @@ fun RainPointPanel(
                                 }
                                 Spacer(Modifier.width(8.dp))
                                 RainPointActionBadge(
-                                    label = "更新",
+                                    refreshing = state.pointForecast.status == RainResourceStatus.LOADING,
                                     pageColour = pageColour,
                                     onClick = onRefresh,
                                 )
@@ -229,11 +228,12 @@ private fun RadiusSelector(
 
 @Composable
 private fun RainPointActionBadge(
-    label: String,
+    refreshing: Boolean,
     pageColour: Color,
     onClick: () -> Unit,
 ) {
     val interactionSource = remember { MutableInteractionSource() }
+    val reduceMotion = LocalReduceMotion.current
     MetroGlassContextSurface(
         accent = pageColour,
         modifier = Modifier
@@ -242,19 +242,35 @@ private fun RainPointActionBadge(
             .metroPressMotion(
                 interactionSource = interactionSource,
                 preset = MetroPressPreset.CompactControl,
+                enabled = !refreshing,
             )
             .clickable(
+                enabled = !refreshing,
                 interactionSource = interactionSource,
                 indication = LocalIndication.current,
                 onClick = onClick,
             ),
     ) {
-        Text(
-            text = label,
-            color = Color.White.copy(alpha = 0.90f),
-            fontSize = 10.sp,
-            maxLines = 1,
-        )
+        AnimatedContent(
+            targetState = refreshing,
+            transitionSpec = {
+                if (reduceMotion) {
+                    fadeIn(tween(100)) togetherWith fadeOut(tween(80))
+                } else {
+                    (fadeIn(tween(150)) + slideInVertically(tween(170)) { height -> height / 3 }) togetherWith
+                        (fadeOut(tween(110)) + slideOutVertically(tween(140)) { height -> -height / 3 })
+                }
+            },
+            contentKey = { it },
+            label = "point refresh state",
+        ) { isRefreshing ->
+            Text(
+                text = if (isRefreshing) "更新中" else "更新",
+                color = if (isRefreshing) LocalMetroSubText.current else Color.White.copy(alpha = 0.90f),
+                fontSize = 10.sp,
+                maxLines = 1,
+            )
+        }
     }
 }
 
@@ -337,10 +353,10 @@ private fun EmptyPointState(pageColour: Color, onRefresh: () -> Unit) {
 }
 
 @Composable
-private fun LoadingPointState(pageColour: Color, hasRetainedData: Boolean) {
+private fun LoadingPointState(pageColour: Color) {
     ToolLoadingPanel(
-        title = if (hasRetainedData) "正在更新定點降雨" else "正在載入定點降雨",
-        detail = if (hasRetainedData) "保留最近資料，正在取得最新格點" else "正在配對位置與香港天文台格點",
+        title = "正在載入定點降雨",
+        detail = "正在配對位置與香港天文台格點",
         accent = pageColour,
         modifier = Modifier.fillMaxWidth(),
     )
