@@ -1,13 +1,7 @@
 package com.weather.metro.ui.storm
 
-import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.tween
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.scaleIn
-import androidx.compose.animation.scaleOut
-import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -22,7 +16,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
@@ -40,15 +33,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.layout.onSizeChanged
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.IntOffset
-import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.Lifecycle
@@ -75,7 +64,6 @@ import kotlin.math.sin
 import kotlin.math.sqrt
 
 private val STORM_PANEL = Color(0xEB090909)
-private val STORM_POPUP_PANEL = Color(0xF20D0D0D)
 private const val HONG_KONG_LAT = 22.3023
 private const val HONG_KONG_LON = 114.1746
 private const val EARTH_RADIUS_KM = 6371.0088
@@ -113,7 +101,6 @@ internal fun StormLivePanel(
     var bottomHudExpanded by rememberSaveable { mutableStateOf(false) }
     var selectedStormKey by rememberSaveable { mutableStateOf<String?>(null) }
     var selectedPointRef by remember { mutableStateOf<StormMapPointRef?>(null) }
-    var containerSize by remember { mutableStateOf(IntSize.Zero) }
 
     val enabledAgencies = buildSet {
         if (hkoEnabled) add(StormAgency.HKO)
@@ -132,7 +119,6 @@ internal fun StormLivePanel(
         .filter { it in enabledAgencies }
         .flatMap { tracksByAgency[it].orEmpty() }
     val selectedPoint = resolveStormPointSelection(selectedPointRef, tracksByAgency)
-    val reduceMotion = LocalReduceMotion.current
 
     LaunchedEffect(isActive) {
         if (!isActive) bottomHudExpanded = false
@@ -143,6 +129,7 @@ internal fun StormLivePanel(
         if (nextKey != selectedStormKey) {
             selectedStormKey = nextKey
             selectedPointRef = null
+            bottomHudExpanded = false
             fitToken += 1
         }
     }
@@ -151,20 +138,23 @@ internal fun StormLivePanel(
         val ref = selectedPointRef ?: return@LaunchedEffect
         if (ref.agency !in enabledAgencies || resolveStormPointSelection(ref, tracksByAgency) == null) {
             selectedPointRef = null
+            bottomHudExpanded = false
         }
     }
 
     Box(
         modifier = modifier
             .fillMaxSize()
-            .background(Color.Black)
-            .onSizeChanged { containerSize = it },
+            .background(Color.Black),
     ) {
         StormMapLibreSurface(
             tracksByAgency = tracksByAgency,
             enabledAgencies = enabledAgencies,
             fitToken = fitToken,
-            onPointSelected = { selectedPointRef = it },
+            onPointSelected = { ref ->
+                selectedPointRef = ref
+                bottomHudExpanded = ref != null
+            },
             modifier = Modifier.fillMaxSize(),
         )
 
@@ -184,84 +174,51 @@ internal fun StormLivePanel(
             modifier = Modifier.align(Alignment.TopCenter),
         )
 
-        Column(
+        StormTopControlHub(
+            groups = stormGroups,
+            selectedKey = focusedGroup?.key,
+            state = state,
+            pageColour = pageColour,
+            isActive = isActive,
+            hkoEnabled = hkoEnabled,
+            cmaEnabled = cmaEnabled,
+            jmaEnabled = jmaEnabled,
+            cwaEnabled = cwaEnabled,
+            onSelectStorm = { key ->
+                if (selectedStormKey != key) {
+                    selectedStormKey = key
+                    selectedPointRef = null
+                    bottomHudExpanded = false
+                    fitToken += 1
+                }
+            },
+            onToggleHko = { hkoEnabled = !hkoEnabled },
+            onToggleCma = { cmaEnabled = !cmaEnabled },
+            onToggleJma = { jmaEnabled = !jmaEnabled },
+            onToggleCwa = { cwaEnabled = !cwaEnabled },
             modifier = Modifier
                 .align(Alignment.TopCenter)
                 .fillMaxWidth()
                 .padding(top = 68.dp, start = 8.dp, end = 8.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-        ) {
-            if (stormGroups.isNotEmpty()) {
-                StormFocusControls(
-                    groups = stormGroups,
-                    selectedKey = focusedGroup?.key,
-                    pageColour = pageColour,
-                    isActive = isActive,
-                    onSelect = { key ->
-                        if (selectedStormKey != key) {
-                            selectedStormKey = key
-                            selectedPointRef = null
-                            bottomHudExpanded = false
-                            fitToken += 1
-                        }
-                    },
-                    modifier = Modifier.fillMaxWidth(),
-                )
-                Spacer(Modifier.height(6.dp))
-            }
-
-            StormAgencyControls(
-                state = state,
-                pageColour = pageColour,
-                isActive = isActive,
-                hkoEnabled = hkoEnabled,
-                cmaEnabled = cmaEnabled,
-                jmaEnabled = jmaEnabled,
-                cwaEnabled = cwaEnabled,
-                onToggleHko = { hkoEnabled = !hkoEnabled },
-                onToggleCma = { cmaEnabled = !cmaEnabled },
-                onToggleJma = { jmaEnabled = !jmaEnabled },
-                onToggleCwa = { cwaEnabled = !cwaEnabled },
-                modifier = Modifier.fillMaxWidth(),
-            )
-        }
+        )
 
         StormBottomIsland(
             expanded = bottomHudExpanded,
             onExpandedChange = { bottomHudExpanded = it },
+            selectedPoint = selectedPoint,
             state = state,
             visibleTracks = visibleTracks,
             enabledAgencyCount = enabledAgencies.size,
             pageColour = pageColour,
-            onFit = {
+            onFit = { fitToken += 1 },
+            onDismissPoint = {
                 selectedPointRef = null
-                fitToken += 1
+                bottomHudExpanded = false
             },
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .padding(start = 10.dp, end = 10.dp, bottom = 10.dp),
         )
-
-        AnimatedContent(
-            targetState = selectedPoint,
-            transitionSpec = {
-                val duration = if (reduceMotion) 120 else 200
-                (fadeIn(tween(duration)) + scaleIn(tween(duration), initialScale = 0.96f)) togetherWith
-                    (fadeOut(tween(duration)) + scaleOut(tween(duration), targetScale = 0.98f))
-            },
-            contentKey = { it?.ref },
-            label = "storm point popup",
-            modifier = Modifier.fillMaxSize(),
-        ) { selected ->
-            selected?.let {
-                StormPointPopup(
-                    selected = it,
-                    containerSize = containerSize,
-                    pageColour = pageColour,
-                    onDismiss = { selectedPointRef = null },
-                )
-            }
-        }
     }
 }
 
@@ -315,7 +272,9 @@ private fun StormTopBar(
 }
 
 @Composable
-private fun StormAgencyControls(
+private fun StormTopControlHub(
+    groups: List<StormDisplayGroup>,
+    selectedKey: String?,
     state: StormHostState,
     pageColour: Color,
     isActive: Boolean,
@@ -323,6 +282,7 @@ private fun StormAgencyControls(
     cmaEnabled: Boolean,
     jmaEnabled: Boolean,
     cwaEnabled: Boolean,
+    onSelectStorm: (String) -> Unit,
     onToggleHko: () -> Unit,
     onToggleCma: () -> Unit,
     onToggleJma: () -> Unit,
@@ -330,7 +290,14 @@ private fun StormAgencyControls(
     modifier: Modifier = Modifier,
 ) {
     var expanded by rememberSaveable { mutableStateOf(false) }
+    val selected = groups.firstOrNull { it.key == selectedKey } ?: groups.firstOrNull()
     val enabledCount = listOf(hkoEnabled, cmaEnabled, jmaEnabled, cwaEnabled).count { it }
+    val agencyStates = listOf(
+        StormAgency.HKO to hkoEnabled,
+        StormAgency.CMA to cmaEnabled,
+        StormAgency.JMA to jmaEnabled,
+        StormAgency.CWA to cwaEnabled,
+    )
 
     LaunchedEffect(isActive) {
         if (!isActive) expanded = false
@@ -341,39 +308,63 @@ private fun StormAgencyControls(
         accent = pageColour,
         modifier = modifier,
         collapsedContent = {
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(5.dp),
-                verticalAlignment = Alignment.CenterVertically,
+            Box(
+                Modifier
+                    .width(5.dp)
+                    .height(18.dp)
+                    .clip(RoundedCornerShape(3.dp))
+                    .background(pageColour),
+            )
+            Column(
+                modifier = Modifier
+                    .padding(start = 8.dp)
+                    .weight(1f, fill = false),
             ) {
-                listOf(
-                    StormAgency.HKO to hkoEnabled,
-                    StormAgency.CMA to cmaEnabled,
-                    StormAgency.JMA to jmaEnabled,
-                    StormAgency.CWA to cwaEnabled,
-                ).forEach { (agency, enabled) ->
+                Text(
+                    text = selected?.displayName ?: "暫無活躍熱帶氣旋",
+                    color = Color.White,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Medium,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                selected?.nearestHongKongKm?.let { distance ->
+                    Text(
+                        text = "最近香港 ${distance.roundToInt()} km",
+                        color = LocalMetroSubText.current,
+                        fontSize = 9.sp,
+                        maxLines = 1,
+                    )
+                }
+            }
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.padding(start = 8.dp),
+            ) {
+                agencyStates.forEach { (agency, enabled) ->
                     Box(
                         Modifier
-                            .width(5.dp)
-                            .height(14.dp)
-                            .clip(RoundedCornerShape(3.dp))
+                            .width(4.dp)
+                            .height(13.dp)
+                            .clip(RoundedCornerShape(2.dp))
                             .background(if (enabled) agencyColour(agency) else Color(0xFF4A4A4A)),
                     )
                 }
             }
             Text(
-                text = "$enabledCount/4 機構",
-                color = Color.White,
-                fontSize = 12.sp,
-                fontWeight = FontWeight.Medium,
-                modifier = Modifier.padding(start = 9.dp),
+                text = "$enabledCount/4",
+                color = LocalMetroSubText.current,
+                fontSize = 10.sp,
+                modifier = Modifier.padding(start = 7.dp),
             )
             Text(
-                text = "來源",
+                text = if (groups.size > 1) "切換 / 來源" else "來源",
                 color = pageColour,
                 fontSize = 12.sp,
                 modifier = Modifier
                     .clickable { expanded = true }
-                    .padding(start = 10.dp, top = 8.dp, bottom = 8.dp),
+                    .padding(start = 9.dp, top = 8.dp, bottom = 8.dp),
             )
         },
         expandedContent = {
@@ -381,18 +372,22 @@ private fun StormAgencyControls(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text(
-                    text = "官方來源",
-                    color = Color.White,
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.Medium,
-                )
-                Spacer(Modifier.weight(1f))
-                Text(
-                    text = "$enabledCount/4 已啟用",
-                    color = LocalMetroSubText.current,
-                    fontSize = 10.sp,
-                )
+                Column(Modifier.weight(1f)) {
+                    Text(
+                        text = selected?.displayName ?: "熱帶氣旋",
+                        color = Color.White,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    Text(
+                        text = if (groups.isEmpty()) "沒有活躍系統" else "${groups.size} 個活躍系統 · $enabledCount/4 來源已啟用",
+                        color = LocalMetroSubText.current,
+                        fontSize = 9.sp,
+                        maxLines = 1,
+                    )
+                }
                 Text(
                     text = "收起",
                     color = pageColour,
@@ -402,42 +397,139 @@ private fun StormAgencyControls(
                         .padding(start = 12.dp, top = 8.dp, bottom = 8.dp),
                 )
             }
+
+            if (groups.size > 1) {
+                Spacer(Modifier.height(7.dp))
+                Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                    groups.take(4).forEach { group ->
+                        StormFocusOptionRow(
+                            group = group,
+                            selected = group.key == selected?.key,
+                            pageColour = pageColour,
+                            onClick = { onSelectStorm(group.key) },
+                        )
+                    }
+                }
+            }
+
+            Spacer(Modifier.height(8.dp))
+            Box(Modifier.fillMaxWidth().height(1.dp).background(Color.White.copy(alpha = 0.10f)))
+            Spacer(Modifier.height(7.dp))
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = "官方來源",
+                    color = Color.White,
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Medium,
+                )
+                Spacer(Modifier.weight(1f))
+                Text(
+                    text = "$enabledCount/4 已啟用",
+                    color = LocalMetroSubText.current,
+                    fontSize = 9.sp,
+                )
+            }
             Spacer(Modifier.height(6.dp))
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
             ) {
-                StormAgencyChip(
-                    source = state.sources[StormAgency.HKO] ?: return@Row,
-                    enabled = hkoEnabled,
-                    accent = agencyColour(StormAgency.HKO),
-                    onClick = onToggleHko,
-                    modifier = Modifier.weight(1f),
-                )
-                StormAgencyChip(
-                    source = state.sources[StormAgency.CMA] ?: return@Row,
-                    enabled = cmaEnabled,
-                    accent = agencyColour(StormAgency.CMA),
-                    onClick = onToggleCma,
-                    modifier = Modifier.weight(1f),
-                )
-                StormAgencyChip(
-                    source = state.sources[StormAgency.JMA] ?: return@Row,
-                    enabled = jmaEnabled,
-                    accent = agencyColour(StormAgency.JMA),
-                    onClick = onToggleJma,
-                    modifier = Modifier.weight(1f),
-                )
-                StormAgencyChip(
-                    source = state.sources[StormAgency.CWA] ?: return@Row,
-                    enabled = cwaEnabled,
-                    accent = agencyColour(StormAgency.CWA),
-                    onClick = onToggleCwa,
-                    modifier = Modifier.weight(1f),
-                )
+                state.sources[StormAgency.HKO]?.let { source ->
+                    StormAgencyChip(
+                        source = source,
+                        enabled = hkoEnabled,
+                        accent = agencyColour(StormAgency.HKO),
+                        onClick = onToggleHko,
+                        modifier = Modifier.weight(1f),
+                    )
+                }
+                state.sources[StormAgency.CMA]?.let { source ->
+                    StormAgencyChip(
+                        source = source,
+                        enabled = cmaEnabled,
+                        accent = agencyColour(StormAgency.CMA),
+                        onClick = onToggleCma,
+                        modifier = Modifier.weight(1f),
+                    )
+                }
+                state.sources[StormAgency.JMA]?.let { source ->
+                    StormAgencyChip(
+                        source = source,
+                        enabled = jmaEnabled,
+                        accent = agencyColour(StormAgency.JMA),
+                        onClick = onToggleJma,
+                        modifier = Modifier.weight(1f),
+                    )
+                }
+                state.sources[StormAgency.CWA]?.let { source ->
+                    StormAgencyChip(
+                        source = source,
+                        enabled = cwaEnabled,
+                        accent = agencyColour(StormAgency.CWA),
+                        onClick = onToggleCwa,
+                        modifier = Modifier.weight(1f),
+                    )
+                }
             }
         },
     )
+}
+
+@Composable
+private fun StormFocusOptionRow(
+    group: StormDisplayGroup,
+    selected: Boolean,
+    pageColour: Color,
+    onClick: () -> Unit,
+) {
+    val shape = RoundedCornerShape(14.dp)
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(shape)
+            .background(if (selected) pageColour.copy(alpha = 0.13f) else Color.Black.copy(alpha = 0.24f), shape)
+            .border(
+                1.dp,
+                if (selected) pageColour.copy(alpha = 0.62f) else Color.White.copy(alpha = 0.08f),
+                shape,
+            )
+            .clickable(onClick = onClick)
+            .padding(horizontal = 10.dp, vertical = 7.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text(
+                text = group.displayName,
+                color = Color.White,
+                fontSize = 11.sp,
+                fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                listOf(StormAgency.HKO, StormAgency.CMA, StormAgency.JMA, StormAgency.CWA).forEach { agency ->
+                    if (group.tracksByAgency[agency].orEmpty().isNotEmpty()) {
+                        Text(
+                            text = agency.name,
+                            color = agencyColour(agency),
+                            fontSize = 8.sp,
+                            fontWeight = FontWeight.SemiBold,
+                        )
+                    }
+                }
+            }
+        }
+        Text(
+            text = group.nearestHongKongKm?.let { "${it.roundToInt()} km" } ?: "—",
+            color = LocalMetroSubText.current,
+            fontSize = 9.sp,
+            maxLines = 1,
+        )
+    }
 }
 
 @Composable
@@ -450,20 +542,20 @@ private fun StormAgencyChip(
 ) {
     val reduceMotion = LocalReduceMotion.current
     val interactionSource = remember { MutableInteractionSource() }
-    val shape = RoundedCornerShape(16.dp)
+    val shape = RoundedCornerShape(15.dp)
     val border by animateColorAsState(
         targetValue = if (enabled) accent.copy(alpha = 0.82f) else Color.White.copy(alpha = 0.12f),
         animationSpec = tween(if (reduceMotion) 100 else 180),
         label = "storm agency border",
     )
     val background by animateColorAsState(
-        targetValue = if (enabled) accent.copy(alpha = 0.20f) else Color.Black.copy(alpha = 0.34f),
+        targetValue = if (enabled) accent.copy(alpha = 0.18f) else Color.Black.copy(alpha = 0.34f),
         animationSpec = tween(if (reduceMotion) 100 else 180),
         label = "storm agency background",
     )
     Column(
         modifier = modifier
-            .heightIn(min = 58.dp)
+            .heightIn(min = 52.dp)
             .metroPressMotion(
                 interactionSource = interactionSource,
                 preset = MetroPressPreset.Chip,
@@ -476,22 +568,22 @@ private fun StormAgencyChip(
                 indication = LocalIndication.current,
                 onClick = onClick,
             )
-            .padding(horizontal = 9.dp, vertical = 8.dp),
+            .padding(horizontal = 8.dp, vertical = 7.dp),
         verticalArrangement = Arrangement.SpaceBetween,
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Box(
                 Modifier
-                    .width(5.dp)
-                    .height(20.dp)
-                    .clip(RoundedCornerShape(3.dp))
+                    .width(4.dp)
+                    .height(18.dp)
+                    .clip(RoundedCornerShape(2.dp))
                     .background(if (enabled) accent else Color(0xFF555555)),
             )
-            Spacer(Modifier.width(6.dp))
+            Spacer(Modifier.width(5.dp))
             Text(
                 text = if (enabled) "✓ ${source.agency.name}" else source.agency.name,
                 color = if (enabled) Color.White else Color.White.copy(alpha = 0.42f),
-                fontSize = 12.sp,
+                fontSize = 11.sp,
                 fontWeight = if (enabled) FontWeight.SemiBold else FontWeight.Medium,
                 maxLines = 1,
             )
@@ -499,7 +591,7 @@ private fun StormAgencyChip(
         Text(
             text = sourceStateLabel(source.liveState, source.refreshing),
             color = if (enabled) sourceStateColour(source.liveState, accent) else Color.White.copy(alpha = 0.32f),
-            fontSize = 9.sp,
+            fontSize = 8.sp,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
@@ -510,11 +602,13 @@ private fun StormAgencyChip(
 private fun StormBottomIsland(
     expanded: Boolean,
     onExpandedChange: (Boolean) -> Unit,
+    selectedPoint: StormPointSelection?,
     state: StormHostState,
     visibleTracks: List<StormTrack>,
     enabledAgencyCount: Int,
     pageColour: Color,
     onFit: () -> Unit,
+    onDismissPoint: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val sourceError = state.sources.values
@@ -540,60 +634,69 @@ private fun StormBottomIsland(
 
     MetroFloatingIsland(
         expanded = expanded,
-        accent = pageColour,
+        accent = selectedPoint?.track?.agency?.let(::agencyColour) ?: pageColour,
         modifier = modifier,
         collapsedContent = {
-            Column(Modifier.widthIn(max = 190.dp)) {
-                Text(
-                    text = compactSummary,
-                    color = Color.White,
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.Medium,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                Text(
-                    text = if (state.cacheRestored) "點擊路徑點查看資料" else "正在讀取裝置快取…",
-                    color = LocalMetroSubText.current,
-                    fontSize = 9.sp,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
-            Text(
-                text = "全景",
-                color = pageColour,
-                fontSize = 12.sp,
-                modifier = Modifier
-                    .clickable(onClick = onFit)
-                    .padding(start = 12.dp, top = 8.dp, bottom = 8.dp),
-            )
-            Text(
-                text = "詳情",
-                color = pageColour,
-                fontSize = 12.sp,
-                modifier = Modifier
-                    .clickable { onExpandedChange(true) }
-                    .padding(start = 10.dp, top = 8.dp, bottom = 8.dp),
-            )
-        },
-        expandedContent = {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Column(Modifier.weight(1f)) {
+            if (selectedPoint != null) {
+                Column(
+                    modifier = Modifier
+                        .widthIn(max = 225.dp)
+                        .weight(1f, fill = false),
+                ) {
                     Text(
-                        text = summary,
+                        text = "${trackDisplayName(selectedPoint.track)} · ${selectedPoint.track.agency.name} ${stormPointTypeLabel(selectedPoint)}",
+                        color = agencyColour(selectedPoint.track.agency),
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    Text(
+                        text = "${formatStormPointTime(selectedPoint.point.validAt)} · ${stormPointMetrics(selectedPoint.point)}",
+                        color = LocalMetroSubText.current,
+                        fontSize = 9.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+                Text(
+                    text = "全景",
+                    color = pageColour,
+                    fontSize = 12.sp,
+                    modifier = Modifier
+                        .clickable(onClick = onFit)
+                        .padding(start = 10.dp, top = 8.dp, bottom = 8.dp),
+                )
+                Text(
+                    text = "詳情",
+                    color = pageColour,
+                    fontSize = 12.sp,
+                    modifier = Modifier
+                        .clickable { onExpandedChange(true) }
+                        .padding(start = 8.dp, top = 8.dp, bottom = 8.dp),
+                )
+                Text(
+                    text = "×",
+                    color = pageColour,
+                    fontSize = 16.sp,
+                    modifier = Modifier
+                        .clickable(onClick = onDismissPoint)
+                        .padding(start = 7.dp, top = 6.dp, bottom = 6.dp),
+                )
+            } else {
+                Column(Modifier.widthIn(max = 190.dp)) {
+                    Text(
+                        text = compactSummary,
                         color = Color.White,
                         fontSize = 13.sp,
                         fontWeight = FontWeight.Medium,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
                     )
                     Text(
-                        text = guidance,
+                        text = if (state.cacheRestored) "點擊路徑點查看資料" else "正在讀取裝置快取…",
                         color = LocalMetroSubText.current,
-                        fontSize = 10.sp,
-                        lineHeight = 14.sp,
+                        fontSize = 9.sp,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
@@ -607,127 +710,179 @@ private fun StormBottomIsland(
                         .padding(start = 12.dp, top = 8.dp, bottom = 8.dp),
                 )
                 Text(
-                    text = "收起",
+                    text = "詳情",
                     color = pageColour,
                     fontSize = 12.sp,
                     modifier = Modifier
-                        .clickable { onExpandedChange(false) }
+                        .clickable { onExpandedChange(true) }
                         .padding(start = 10.dp, top = 8.dp, bottom = 8.dp),
                 )
             }
+        },
+        expandedContent = {
+            if (selectedPoint != null) {
+                StormSelectedPointDetail(
+                    selected = selectedPoint,
+                    pageColour = pageColour,
+                    onFit = onFit,
+                    onCollapse = { onExpandedChange(false) },
+                    onDismiss = onDismissPoint,
+                )
+            } else {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text(
+                            text = summary,
+                            color = Color.White,
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Medium,
+                        )
+                        Text(
+                            text = guidance,
+                            color = LocalMetroSubText.current,
+                            fontSize = 10.sp,
+                            lineHeight = 14.sp,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                    Text(
+                        text = "全景",
+                        color = pageColour,
+                        fontSize = 12.sp,
+                        modifier = Modifier
+                            .clickable(onClick = onFit)
+                            .padding(start = 12.dp, top = 8.dp, bottom = 8.dp),
+                    )
+                    Text(
+                        text = "收起",
+                        color = pageColour,
+                        fontSize = 12.sp,
+                        modifier = Modifier
+                            .clickable { onExpandedChange(false) }
+                            .padding(start = 10.dp, top = 8.dp, bottom = 8.dp),
+                    )
+                }
 
-            if (visibleTracks.isNotEmpty()) {
-                Spacer(Modifier.height(5.dp))
-                Text(
-                    text = visibleTracks.take(4).joinToString(" · ") { track ->
-                        "${track.agency.name} ${trackDisplayName(track)}"
-                    },
-                    color = Color.White.copy(alpha = 0.78f),
-                    fontSize = 10.sp,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
-            sourceError?.let { message ->
-                Spacer(Modifier.height(4.dp))
-                Text(
-                    text = message,
-                    color = Color(0xFFFF9E9E),
-                    fontSize = 9.sp,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
+                if (visibleTracks.isNotEmpty()) {
+                    Spacer(Modifier.height(5.dp))
+                    Text(
+                        text = visibleTracks.take(4).joinToString(" · ") { track ->
+                            "${track.agency.name} ${trackDisplayName(track)}"
+                        },
+                        color = Color.White.copy(alpha = 0.78f),
+                        fontSize = 10.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+                sourceError?.let { message ->
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        text = message,
+                        color = Color(0xFFFF9E9E),
+                        fontSize = 9.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
             }
         },
     )
 }
 
 @Composable
-private fun StormPointPopup(
+private fun StormSelectedPointDetail(
     selected: StormPointSelection,
-    containerSize: IntSize,
     pageColour: Color,
+    onFit: () -> Unit,
+    onCollapse: () -> Unit,
     onDismiss: () -> Unit,
 ) {
-    val density = LocalDensity.current
-    var popupSize by remember(selected.ref) { mutableStateOf(IntSize.Zero) }
-    val marginPx = with(density) { 10.dp.toPx() }
-    val gapPx = with(density) { 14.dp.toPx() }
-    val safeTopPx = with(density) { 176.dp.toPx() }
-    val safeBottomPx = with(density) { 92.dp.toPx() }
-    val anchorX = selected.ref.anchorXPx ?: containerSize.width / 2f
-    val anchorY = selected.ref.anchorYPx ?: containerSize.height / 2f
-    val popupWidth = popupSize.width.toFloat()
-    val popupHeight = popupSize.height.toFloat()
-    val maxX = (containerSize.width - popupWidth - marginPx).coerceAtLeast(marginPx)
-    val centeredX = anchorX - popupWidth / 2f
-    val x = centeredX.coerceIn(marginPx, maxX)
-    val preferredAbove = anchorY - popupHeight - gapPx
-    val preferredBelow = anchorY + gapPx
-    val maxY = (containerSize.height - popupHeight - safeBottomPx).coerceAtLeast(safeTopPx)
-    val y = if (preferredAbove >= safeTopPx) preferredAbove else preferredBelow.coerceAtMost(maxY)
-
-    val track = selected.track
-    val point = selected.point
-    val sourceAccent = agencyColour(track.agency)
-    val typeLabel = stormPointTypeLabel(selected)
-    val rows = stormPopupRows(selected)
-
-    Column(
-        modifier = Modifier
-            .offset { IntOffset(x.roundToInt(), y.coerceIn(safeTopPx, maxY).roundToInt()) }
-            .widthIn(min = 240.dp, max = 310.dp)
-            .heightIn(max = 350.dp)
-            .onSizeChanged { popupSize = it }
-            .border(1.dp, Color(0xFF3A3A3A))
-            .background(STORM_POPUP_PANEL)
-            .verticalScroll(rememberScrollState())
-            .padding(horizontal = 12.dp, vertical = 11.dp),
+    val sourceAccent = agencyColour(selected.track.agency)
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.Top,
     ) {
-        Row(verticalAlignment = Alignment.Top) {
+        Column(Modifier.weight(1f)) {
             Text(
-                text = "${trackDisplayName(track)} · ${track.agency.name} $typeLabel",
+                text = "${trackDisplayName(selected.track)} · ${selected.track.agency.name} ${stormPointTypeLabel(selected)}",
                 color = sourceAccent,
-                fontSize = 14.sp,
+                fontSize = 13.sp,
                 fontWeight = FontWeight.Bold,
-                lineHeight = 18.sp,
-                modifier = Modifier.weight(1f),
+                lineHeight = 17.sp,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
             )
             Text(
-                text = "×",
-                color = pageColour,
-                fontSize = 17.sp,
-                modifier = Modifier
-                    .clickable(onClick = onDismiss)
-                    .padding(start = 10.dp, bottom = 4.dp),
+                text = "距離香港約 ${stormDistanceToHongKongKm(selected.point).roundToInt()} 公里",
+                color = LocalMetroSubText.current,
+                fontSize = 9.sp,
+                maxLines = 1,
             )
         }
-        Spacer(Modifier.height(6.dp))
-        Box(Modifier.fillMaxWidth().height(1.dp).background(Color(0xFF333333)))
-        Spacer(Modifier.height(7.dp))
-        rows.forEach { (label, value) ->
-            StormPopupRow(label = label, value = value)
+        Text(
+            text = "全景",
+            color = pageColour,
+            fontSize = 12.sp,
+            modifier = Modifier
+                .clickable(onClick = onFit)
+                .padding(start = 8.dp, top = 6.dp, bottom = 6.dp),
+        )
+        Text(
+            text = "收起",
+            color = pageColour,
+            fontSize = 12.sp,
+            modifier = Modifier
+                .clickable(onClick = onCollapse)
+                .padding(start = 8.dp, top = 6.dp, bottom = 6.dp),
+        )
+        Text(
+            text = "×",
+            color = pageColour,
+            fontSize = 16.sp,
+            modifier = Modifier
+                .clickable(onClick = onDismiss)
+                .padding(start = 7.dp, top = 4.dp, bottom = 4.dp),
+        )
+    }
+    Spacer(Modifier.height(6.dp))
+    Box(Modifier.fillMaxWidth().height(1.dp).background(Color.White.copy(alpha = 0.10f)))
+    Spacer(Modifier.height(6.dp))
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(max = 205.dp)
+            .verticalScroll(rememberScrollState()),
+    ) {
+        stormPopupRows(selected).forEach { (label, value) ->
+            StormDetailRow(label = label, value = value)
         }
     }
 }
 
 @Composable
-private fun StormPopupRow(label: String, value: String) {
+private fun StormDetailRow(label: String, value: String) {
     Row(
-        modifier = Modifier.fillMaxWidth().padding(vertical = 1.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 1.dp),
         verticalAlignment = Alignment.Top,
     ) {
         Text(
             text = "$label：",
             color = LocalMetroSubText.current,
-            fontSize = 11.sp,
-            lineHeight = 16.sp,
+            fontSize = 10.sp,
+            lineHeight = 15.sp,
         )
         Text(
             text = value,
             color = Color.White,
-            fontSize = 11.sp,
-            lineHeight = 16.sp,
+            fontSize = 10.sp,
+            lineHeight = 15.sp,
             modifier = Modifier.weight(1f),
         )
     }
