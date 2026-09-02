@@ -1,0 +1,172 @@
+name: Temporary Point Rain V3.3.1 patch
+
+on:
+  push:
+    branches:
+      - feature/visual-v3.3-point-rain
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feature/visual-v3.3-point-rain
+      - name: Apply guarded V3.3.1 source patch
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          rain = Path('app/src/main/java/com/weather/metro/ui/rain/RainPointPanel.kt')
+          s = rain.read_text()
+          s = s.replace(
+              'import androidx.compose.foundation.LocalIndication\nimport androidx.compose.foundation.clickable\n',
+              'import androidx.compose.foundation.LocalIndication\nimport androidx.compose.foundation.background\nimport androidx.compose.foundation.clickable\n',
+          )
+          s = s.replace(
+              'import androidx.compose.foundation.layout.fillMaxWidth\n',
+              'import androidx.compose.foundation.layout.fillMaxSize\nimport androidx.compose.foundation.layout.fillMaxWidth\n',
+          )
+          s = s.replace(
+              'import androidx.compose.material3.Text\n',
+              'import androidx.compose.foundation.shape.RoundedCornerShape\nimport androidx.compose.material3.Text\n',
+          )
+          old = '''                MetroGlassContextSurface(
+                    accent = if (selected) pageColour else Color.White.copy(alpha = 0.16f),
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(40.dp)
+                        .metroPressMotion(
+                            interactionSource = interactionSource,
+                            preset = MetroPressPreset.CompactControl,
+                        )
+                        .clickable(
+                            interactionSource = interactionSource,
+                            indication = LocalIndication.current,
+                        ) { onRadiusChange(radiusKm) },
+                ) {
+                    Text(
+                        text = "$radiusKm km",
+                        color = if (selected) Color.White else LocalMetroSubText.current,
+                        fontSize = 12.sp,
+                        fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+                    )
+                }
+'''
+          new = '''                MetroGlassContextSurface(
+                    accent = if (selected) pageColour else Color.White.copy(alpha = 0.10f),
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(40.dp)
+                        .metroPressMotion(
+                            interactionSource = interactionSource,
+                            preset = MetroPressPreset.CompactControl,
+                        )
+                        .clickable(
+                            interactionSource = interactionSource,
+                            indication = LocalIndication.current,
+                        ) { onRadiusChange(radiusKm) },
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(
+                                color = if (selected) pageColour.copy(alpha = 0.30f) else Color.Transparent,
+                                shape = RoundedCornerShape(15.dp),
+                            ),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text(
+                            text = if (selected) "✓ $radiusKm km" else "$radiusKm km",
+                            color = if (selected) Color.White else LocalMetroSubText.current,
+                            fontSize = 12.sp,
+                            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+                        )
+                    }
+                }
+'''
+          if old not in s:
+              raise SystemExit('Rain radius selector anchor not found')
+          rain.write_text(s.replace(old, new))
+
+          native = Path('app/src/main/java/com/weather/metro/ui/tools/NativeToolsScreen.kt')
+          n = native.read_text()
+          import_anchor = 'import com.weather.metro.ui.components.MetroTile\n'
+          import_new = import_anchor + 'import com.weather.metro.ui.map.HongKongBackdrop\nimport com.weather.metro.ui.map.HongKongMapAttribution\n'
+          if 'import com.weather.metro.ui.map.HongKongBackdrop' not in n:
+              if import_anchor not in n:
+                  raise SystemExit('Native tools import anchor not found')
+              n = n.replace(import_anchor, import_new, 1)
+          old_point = '''private fun PointToolScreen(
+    pageColour: Color,
+    rainState: RainHostState,
+    selectedRadiusKm: Int,
+    onRadiusChange: (Int) -> Unit,
+    onRefresh: () -> Unit,
+    onBack: () -> Unit,
+) {
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = androidx.compose.foundation.layout.PaddingValues(start = 22.dp, end = 16.dp, bottom = 48.dp),
+        verticalArrangement = Arrangement.spacedBy(9.dp),
+    ) {
+        item { ToolBackButton(pageColour, onBack) }
+        item {
+            RainPointPanel(
+                state = rainState,
+                pageColour = pageColour,
+                selectedRadiusKm = selectedRadiusKm,
+                onRadiusChange = onRadiusChange,
+                onRefresh = onRefresh,
+            )
+        }
+    }
+}
+'''
+          new_point = '''private fun PointToolScreen(
+    pageColour: Color,
+    rainState: RainHostState,
+    selectedRadiusKm: Int,
+    onRadiusChange: (Int) -> Unit,
+    onRefresh: () -> Unit,
+    onBack: () -> Unit,
+) {
+    Box(modifier = Modifier.fillMaxSize()) {
+        HongKongBackdrop(modifier = Modifier.fillMaxSize())
+        LazyColumn(
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = androidx.compose.foundation.layout.PaddingValues(start = 22.dp, end = 16.dp, bottom = 64.dp),
+            verticalArrangement = Arrangement.spacedBy(9.dp),
+        ) {
+            item { ToolBackButton(pageColour, onBack) }
+            item {
+                RainPointPanel(
+                    state = rainState,
+                    pageColour = pageColour,
+                    selectedRadiusKm = selectedRadiusKm,
+                    onRadiusChange = onRadiusChange,
+                    onRefresh = onRefresh,
+                )
+            }
+        }
+        HongKongMapAttribution(modifier = Modifier.align(Alignment.BottomEnd))
+    }
+}
+'''
+          if old_point not in n:
+              raise SystemExit('PointToolScreen anchor not found')
+          native.write_text(n.replace(old_point, new_point, 1))
+          PY
+      - name: Commit V3.3.1 source when changed
+        shell: bash
+        run: |
+          if git diff --quiet; then exit 0; fi
+          git config user.name "MaxYu725"
+          git config user.email "maxyu0725@outlook.com"
+          git add app/src/main/java/com/weather/metro/ui/rain/RainPointPanel.kt app/src/main/java/com/weather/metro/ui/tools/NativeToolsScreen.kt
+          git commit -m "fix: strengthen Point Rain selection and backdrop"
+          git push origin HEAD:feature/visual-v3.3-point-rain
