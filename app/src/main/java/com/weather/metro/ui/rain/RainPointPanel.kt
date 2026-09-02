@@ -2,7 +2,6 @@ package com.weather.metro.ui.rain
 
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
@@ -18,10 +17,12 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.HorizontalDivider
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -32,6 +33,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.weather.metro.ui.components.MetroGlassContextSurface
 import com.weather.metro.ui.components.MetroStat
 import com.weather.metro.ui.components.MetroTile
 import com.weather.metro.ui.motion.MetroPressPreset
@@ -127,20 +129,17 @@ fun RainPointPanel(
                                         lineHeight = 28.sp,
                                         fontWeight = FontWeight.Light,
                                     )
-                                    Spacer(Modifier.height(3.dp))
-                                    Text(
-                                        text = if (state.pointForecast.isStale) "離線／舊資料" else "最新可用資料",
-                                        color = if (state.pointForecast.isStale) Color(0xFFFFC107) else Color.White.copy(alpha = 0.72f),
-                                        fontSize = 10.sp,
+                                    Spacer(Modifier.height(5.dp))
+                                    RainPointStatusBadge(
+                                        stale = state.pointForecast.isStale,
+                                        pageColour = pageColour,
                                     )
                                 }
-                                Text(
-                                    text = "refresh",
-                                    color = Color.White,
-                                    fontSize = 12.sp,
-                                    modifier = Modifier
-                                        .clickable(onClick = onRefresh)
-                                        .padding(start = 12.dp, top = 4.dp, bottom = 8.dp),
+                                Spacer(Modifier.width(8.dp))
+                                RainPointActionBadge(
+                                    label = "更新",
+                                    pageColour = pageColour,
+                                    onClick = onRefresh,
                                 )
                             }
                             Spacer(Modifier.height(10.dp))
@@ -171,36 +170,15 @@ fun RainPointPanel(
                     ) {
                         Column(Modifier.fillMaxWidth()) {
                             Text("未來兩小時", color = Color.White, fontSize = 21.sp, fontWeight = FontWeight.Light)
-                            Text("30 分鐘時段", color = Color.White.copy(alpha = 0.68f), fontSize = 10.sp)
-                            Spacer(Modifier.height(7.dp))
-                            model.periods.forEachIndexed { index, period ->
-                                if (index > 0) {
-                                    HorizontalDivider(color = Color.White.copy(alpha = 0.20f))
-                                }
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(vertical = 8.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                ) {
-                                    Text(
-                                        period.time,
-                                        color = Color.White.copy(alpha = 0.78f),
-                                        fontSize = 13.sp,
-                                        modifier = Modifier.weight(0.75f),
-                                    )
-                                    Text(
-                                        period.amount,
-                                        color = Color.White,
-                                        fontSize = 18.sp,
-                                        fontWeight = FontWeight.Light,
-                                        modifier = Modifier.weight(0.85f),
-                                    )
-                                    Text(
-                                        period.nearby,
-                                        color = Color.White.copy(alpha = 0.68f),
-                                        fontSize = 10.sp,
-                                        modifier = Modifier.weight(1.4f),
+                            Text("每列為 30 分鐘累積雨量", color = Color.White.copy(alpha = 0.68f), fontSize = 10.sp)
+                            Spacer(Modifier.height(8.dp))
+                            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                model.periods.forEach { period ->
+                                    RainPeriodGlassRow(
+                                        time = period.time,
+                                        amount = period.amount,
+                                        nearby = period.nearby,
+                                        pageColour = pageColour,
                                     )
                                 }
                             }
@@ -221,43 +199,134 @@ private fun RadiusSelector(
     Column {
         Text("附近範圍", color = LocalMetroSubText.current, fontSize = 11.sp)
         Spacer(Modifier.height(5.dp))
-        Row(horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             RainHostViewModel.SUPPORTED_POINT_RADII_KM.sorted().forEach { radiusKm ->
                 val selected = selectedRadiusKm == radiusKm
-                val reduceMotion = LocalReduceMotion.current
                 val interactionSource = remember { MutableInteractionSource() }
-                val background by animateColorAsState(
-                    targetValue = if (selected) pageColour else Color(0xFF202020),
-                    animationSpec = tween(if (reduceMotion) 100 else 180),
-                    label = "rain radius background",
-                )
-                val contentColour by animateColorAsState(
-                    targetValue = if (selected) Color.White else LocalMetroSubText.current,
-                    animationSpec = tween(if (reduceMotion) 100 else 180),
-                    label = "rain radius text",
-                )
-                Box(
+                MetroGlassContextSurface(
+                    accent = if (selected) pageColour else Color.White.copy(alpha = 0.10f),
                     modifier = Modifier
                         .weight(1f)
-                        .height(38.dp)
+                        .height(40.dp)
                         .metroPressMotion(
                             interactionSource = interactionSource,
                             preset = MetroPressPreset.CompactControl,
                         )
-                        .background(background)
                         .clickable(
                             interactionSource = interactionSource,
                             indication = LocalIndication.current,
                         ) { onRadiusChange(radiusKm) },
-                    contentAlignment = Alignment.Center,
                 ) {
-                    Text(
-                        text = "$radiusKm km",
-                        color = contentColour,
-                        fontSize = 12.sp,
-                    )
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(
+                                color = if (selected) pageColour.copy(alpha = 0.30f) else Color.Transparent,
+                                shape = RoundedCornerShape(15.dp),
+                            ),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text(
+                            text = if (selected) "✓ $radiusKm km" else "$radiusKm km",
+                            color = if (selected) Color.White else LocalMetroSubText.current,
+                            fontSize = 12.sp,
+                            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+                        )
+                    }
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun RainPointActionBadge(
+    label: String,
+    pageColour: Color,
+    onClick: () -> Unit,
+) {
+    val interactionSource = remember { MutableInteractionSource() }
+    MetroGlassContextSurface(
+        accent = pageColour,
+        modifier = Modifier
+            .width(56.dp)
+            .height(32.dp)
+            .metroPressMotion(
+                interactionSource = interactionSource,
+                preset = MetroPressPreset.CompactControl,
+            )
+            .clickable(
+                interactionSource = interactionSource,
+                indication = LocalIndication.current,
+                onClick = onClick,
+            ),
+    ) {
+        Text(
+            text = label,
+            color = Color.White.copy(alpha = 0.90f),
+            fontSize = 10.sp,
+            maxLines = 1,
+        )
+    }
+}
+
+@Composable
+private fun RainPointStatusBadge(
+    stale: Boolean,
+    pageColour: Color,
+) {
+    MetroGlassContextSurface(
+        accent = if (stale) Color(0xFFFFC107) else pageColour,
+    ) {
+        Box(
+            modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(
+                text = if (stale) "離線／舊資料" else "最新可用資料",
+                color = if (stale) Color(0xFFFFD54F) else Color.White.copy(alpha = 0.78f),
+                fontSize = 9.sp,
+                maxLines = 1,
+            )
+        }
+    }
+}
+
+@Composable
+private fun RainPeriodGlassRow(
+    time: String,
+    amount: String,
+    nearby: String,
+    pageColour: Color,
+) {
+    MetroGlassContextSurface(
+        accent = pageColour.copy(alpha = 0.65f),
+        modifier = Modifier.fillMaxWidth(),
+        contentAlignment = Alignment.CenterStart,
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 11.dp, vertical = 9.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = time,
+                color = Color.White.copy(alpha = 0.74f),
+                fontSize = 12.sp,
+                modifier = Modifier.weight(0.75f),
+            )
+            Text(
+                text = amount,
+                color = Color.White,
+                fontSize = 18.sp,
+                fontWeight = FontWeight.Light,
+                modifier = Modifier.weight(0.85f),
+            )
+            Text(
+                text = nearby,
+                color = Color.White.copy(alpha = 0.66f),
+                fontSize = 10.sp,
+                modifier = Modifier.weight(1.4f),
+            )
         }
     }
 }
@@ -274,7 +343,7 @@ private fun EmptyPointState(pageColour: Color, onRefresh: () -> Unit) {
             Text("載入定點降雨", color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Light)
             Text("使用 Weather App 目前位置", color = LocalMetroSubText.current, fontSize = 11.sp)
             Spacer(Modifier.height(7.dp))
-            Text("load", color = pageColour, fontSize = 13.sp)
+            Text("點按載入 ›", color = Color.White.copy(alpha = 0.78f), fontSize = 11.sp)
         }
     }
 }
@@ -302,7 +371,7 @@ private fun ErrorPointState(pageColour: Color, message: String, onRefresh: () ->
             Spacer(Modifier.height(4.dp))
             Text(message, color = LocalMetroSubText.current, fontSize = 11.sp)
             Spacer(Modifier.height(8.dp))
-            Text("retry", color = pageColour, fontSize = 13.sp)
+            Text("點按重試 ›", color = Color.White.copy(alpha = 0.78f), fontSize = 11.sp)
         }
     }
 }

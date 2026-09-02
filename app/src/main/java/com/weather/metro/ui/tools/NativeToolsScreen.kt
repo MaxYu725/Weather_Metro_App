@@ -54,6 +54,8 @@ import androidx.lifecycle.repeatOnLifecycle
 import com.weather.metro.data.tools.RainRadarMode
 import com.weather.metro.ui.components.MetroSectionLabel
 import com.weather.metro.ui.components.MetroTile
+import com.weather.metro.ui.map.HongKongBackdrop
+import com.weather.metro.ui.map.HongKongMapAttribution
 import com.weather.metro.ui.motion.MetroPressPreset
 import com.weather.metro.ui.motion.metroPressMotion
 import com.weather.metro.ui.rain.RAIN_TOOL_POLICY_TICK_MS
@@ -428,21 +430,25 @@ private fun PointToolScreen(
     onRefresh: () -> Unit,
     onBack: () -> Unit,
 ) {
-    LazyColumn(
-        modifier = Modifier.fillMaxSize(),
-        contentPadding = androidx.compose.foundation.layout.PaddingValues(start = 22.dp, end = 16.dp, bottom = 48.dp),
-        verticalArrangement = Arrangement.spacedBy(9.dp),
-    ) {
-        item { ToolBackButton(pageColour, onBack) }
-        item {
-            RainPointPanel(
-                state = rainState,
-                pageColour = pageColour,
-                selectedRadiusKm = selectedRadiusKm,
-                onRadiusChange = onRadiusChange,
-                onRefresh = onRefresh,
-            )
+    Box(modifier = Modifier.fillMaxSize()) {
+        HongKongBackdrop(modifier = Modifier.fillMaxSize())
+        LazyColumn(
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = androidx.compose.foundation.layout.PaddingValues(start = 22.dp, end = 16.dp, bottom = 64.dp),
+            verticalArrangement = Arrangement.spacedBy(9.dp),
+        ) {
+            item { ToolBackButton(pageColour, onBack) }
+            item {
+                RainPointPanel(
+                    state = rainState,
+                    pageColour = pageColour,
+                    selectedRadiusKm = selectedRadiusKm,
+                    onRadiusChange = onRadiusChange,
+                    onRefresh = onRefresh,
+                )
+            }
         }
+        HongKongMapAttribution(modifier = Modifier.align(Alignment.BottomEnd))
     }
 }
 
