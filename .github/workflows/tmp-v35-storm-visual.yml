@@ -1,0 +1,36 @@
+name: Temporary Storm V3.5 visual patch
+'on':
+  push:
+    branches:
+      - feature/visual-v3.5-storm-routes
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feature/visual-v3.5-storm-routes
+      - name: Apply guarded Storm visual patch
+        shell: bash
+        run: |
+          python3 scripts/tmp_v35_storm_visual.py
+          sed -i '/import androidx.compose.foundation.shape.CircleShape/d' app/src/main/java/com/weather/metro/ui/storm/StormLivePanel.kt
+          if ! grep -q 'import kotlin.math.roundToInt' app/src/main/java/com/weather/metro/ui/storm/StormMapLibre.kt; then
+            sed -i '/import kotlin.math.max/a import kotlin.math.roundToInt' app/src/main/java/com/weather/metro/ui/storm/StormMapLibre.kt
+          fi
+      - name: Commit source when changed
+        shell: bash
+        run: |
+          if git diff --quiet -- app/src/main/java/com/weather/metro/ui/storm/StormLivePanel.kt app/src/main/java/com/weather/metro/ui/storm/StormMapLibre.kt; then
+            echo 'No source changes required'
+            exit 0
+          fi
+          git config user.name 'MaxYu725'
+          git config user.email 'maxyu0725@outlook.com'
+          git add app/src/main/java/com/weather/metro/ui/storm/StormLivePanel.kt app/src/main/java/com/weather/metro/ui/storm/StormMapLibre.kt
+          git commit -m 'feat: modernize Storm agency controls and route hierarchy'
+          git push origin HEAD:feature/visual-v3.5-storm-routes
