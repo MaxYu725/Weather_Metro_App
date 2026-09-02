@@ -43,7 +43,6 @@ import com.weather.metro.ui.AppNavigationRequest
 import com.weather.metro.ui.components.ExpandableMetroTile
 import com.weather.metro.ui.components.HkoRemoteImage
 import com.weather.metro.ui.components.MetroGlassContextSurface
-import com.weather.metro.ui.components.MetroProgress
 import com.weather.metro.ui.components.MetroSectionLabel
 import com.weather.metro.ui.components.MetroStat
 import com.weather.metro.ui.components.MetroTile
@@ -76,8 +75,6 @@ fun HomeCurrentScreen(
     locationTrendState: RainLocationTrendState,
     stormState: StormHostState,
     pageColour: Color,
-    refreshing: Boolean,
-    onRefresh: () -> Unit,
     onRequestLocation: () -> Unit,
     onOpenPointRain: () -> Unit,
     onOpenRadar: () -> Unit,
@@ -90,7 +87,7 @@ fun HomeCurrentScreen(
     var localForecastExpanded by remember { mutableStateOf(false) }
     val current = snapshot.current
     val hasActiveAlerts = snapshot.alerts.isNotEmpty()
-    val localForecastIndex = if (hasActiveAlerts) 4 else 2
+    val localForecastIndex = if (hasActiveAlerts) 3 else 1
     val listState = rememberLazyListState()
     val scope = rememberCoroutineScope()
     val reduceMotion = LocalReduceMotion.current
@@ -109,53 +106,13 @@ fun HomeCurrentScreen(
         overscrollEffect = null,
     ) {
         item {
-            val syncAccent = if (snapshot.isStale) Color(0xFFF09609) else pageColour
-            MetroGlassContextSurface(
-                accent = syncAccent,
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                if (refreshing) {
-                    Box(Modifier.width(54.dp)) { MetroProgress(colour = pageColour) }
-                } else {
-                    Box(
-                        Modifier
-                            .size(8.dp)
-                            .background(if (snapshot.isStale) Color(0xFFF09609) else Color(0xFF00C853)),
-                    )
-                    Spacer(Modifier.width(8.dp))
-                }
-                Text(
-                    text = when {
-                        refreshing -> "正在更新香港天文台資料"
-                        snapshot.isStale -> "顯示離線快取"
-                        else -> "香港天文台資料已同步"
-                    },
-                    color = LocalMetroSubText.current,
-                    fontSize = 12.sp,
-                    modifier = Modifier.weight(1f),
-                )
-                Text(
-                    if (refreshing) "updating" else "refresh",
-                    color = pageColour,
-                    fontSize = 13.sp,
-                    modifier = if (refreshing) Modifier else Modifier.clickable(onClick = onRefresh),
-                )
-                }
-            }
-        }
-
-        item {
             ExpandableMetroTile(
                 seed = "current:${snapshot.location.district}",
                 background = pageColour,
                 expanded = heroExpanded,
                 onExpandedChange = {
                     heroExpanded = it
-                    if (it) scrollToItem(1)
+                    if (it) scrollToItem(0)
                 },
                 collapsed = {
                     Row(verticalAlignment = Alignment.Top, modifier = Modifier.fillMaxWidth()) {
@@ -245,7 +202,7 @@ fun HomeCurrentScreen(
                     pageColour = pageColour,
                     navigationRequest = navigationRequest,
                     onNavigationHandled = onNavigationHandled,
-                ) { scrollToItem(3) }
+                ) { scrollToItem(2) }
             }
         }
 
@@ -319,7 +276,7 @@ fun HomeCurrentScreen(
                     pageColour = pageColour,
                     navigationRequest = navigationRequest,
                     onNavigationHandled = onNavigationHandled,
-                ) { scrollToItem(8) }
+                ) { scrollToItem(7) }
             }
         }
     }
