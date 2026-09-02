@@ -9,6 +9,7 @@ import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.LocalIndication
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
@@ -16,10 +17,12 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -201,7 +204,7 @@ private fun RadiusSelector(
                 val selected = selectedRadiusKm == radiusKm
                 val interactionSource = remember { MutableInteractionSource() }
                 MetroGlassContextSurface(
-                    accent = if (selected) pageColour else Color.White.copy(alpha = 0.16f),
+                    accent = if (selected) pageColour else Color.White.copy(alpha = 0.10f),
                     modifier = Modifier
                         .weight(1f)
                         .height(40.dp)
@@ -214,12 +217,22 @@ private fun RadiusSelector(
                             indication = LocalIndication.current,
                         ) { onRadiusChange(radiusKm) },
                 ) {
-                    Text(
-                        text = "$radiusKm km",
-                        color = if (selected) Color.White else LocalMetroSubText.current,
-                        fontSize = 12.sp,
-                        fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
-                    )
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(
+                                color = if (selected) pageColour.copy(alpha = 0.30f) else Color.Transparent,
+                                shape = RoundedCornerShape(15.dp),
+                            ),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text(
+                            text = if (selected) "✓ $radiusKm km" else "$radiusKm km",
+                            color = if (selected) Color.White else LocalMetroSubText.current,
+                            fontSize = 12.sp,
+                            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+                        )
+                    }
                 }
             }
         }
