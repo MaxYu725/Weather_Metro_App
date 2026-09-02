@@ -56,7 +56,7 @@ class StormMapLibreGeometryTest {
     }
 
     @Test
-    fun mapDataConnectsLatestAnalysisToForecastAndBuildsOverlays() {
+    fun mapDataConnectsLatestAnalysisToForecastAndKeepsOverlaysOutOfCameraBounds() {
         val wind = StormWindRadii(
             level = "15 m/s",
             northEastKm = 100.0,
@@ -79,14 +79,8 @@ class StormMapLibreGeometryTest {
             probabilityRadiusKm = 140.0,
             forecastHour = 24,
         )
-        val track = StormTrack(
-            stableKey = "CWA:test",
+        val track = stormTrack(
             agency = StormAgency.CWA,
-            agencyStormId = "test",
-            internationalNumber = null,
-            nameEn = "TEST",
-            nameZh = "測試",
-            bulletinTime = "2026-08-14T06:00:00Z",
             analysisPoints = listOf(analysis),
             forecastPoints = listOf(forecast),
         )
@@ -104,8 +98,71 @@ class StormMapLibreGeometryTest {
         assertEquals(1, JSONObject(data.forecastPoints).getJSONArray("features").length())
         assertEquals(1, JSONObject(data.probabilityPolygons).getJSONArray("features").length())
         assertEquals(1, JSONObject(data.windPolygons).getJSONArray("features").length())
-        assertTrue(data.boundsCoordinates.size > 10)
+        assertEquals(2, data.boundsCoordinates.size)
     }
+
+    @Test
+    fun preferredHkoPresentationSuppressesOtherAgencyHistoricalTrail() {
+        val first = stormPoint(
+            time = "2026-08-13T18:00:00Z",
+            lat = 18.0,
+            lon = 126.0,
+            type = StormPointType.ANALYSIS,
+        )
+        val latest = stormPoint(
+            time = "2026-08-14T06:00:00Z",
+            lat = 20.0,
+            lon = 130.0,
+            type = StormPointType.ANALYSIS,
+        )
+        val forecast = stormPoint(
+            time = "2026-08-14T18:00:00Z",
+            lat = 21.0,
+            lon = 132.0,
+            type = StormPointType.FORECAST,
+            forecastHour = 12,
+        )
+        val track = stormTrack(
+            agency = StormAgency.CMA,
+            analysisPoints = listOf(first, latest),
+            forecastPoints = listOf(forecast),
+        )
+
+        val data = buildStormAgencyMapData(listOf(track), showFullAnalysisHistory = false)
+        val analysisLines = JSONObject(data.analysisLines).getJSONArray("features")
+        val analysisPoints = JSONObject(data.analysisPoints).getJSONArray("features")
+        val forecastLine = JSONObject(data.forecastLines)
+            .getJSONArray("features")
+            .getJSONObject(0)
+            .getJSONObject("geometry")
+            .getJSONArray("coordinates")
+
+        assertEquals(0, analysisLines.length())
+        assertEquals(1, analysisPoints.length())
+        assertEquals(1, analysisPoints.getJSONObject(0).getJSONObject("properties").getString("index").toInt())
+        assertEquals(130.0, forecastLine.getJSONArray(0).getDouble(0), 0.0001)
+        assertEquals(20.0, forecastLine.getJSONArray(0).getDouble(1), 0.0001)
+        assertEquals(listOf(
+            StormMapCoordinate(20.0, 130.0),
+            StormMapCoordinate(21.0, 132.0),
+        ), data.boundsCoordinates)
+    }
+
+    private fun stormTrack(
+        agency: StormAgency,
+        analysisPoints: List<StormPoint>,
+        forecastPoints: List<StormPoint>,
+    ): StormTrack = StormTrack(
+        stableKey = "${agency.name}:test",
+        agency = agency,
+        agencyStormId = "test",
+        internationalNumber = null,
+        nameEn = "TEST",
+        nameZh = "測試",
+        bulletinTime = "2026-08-14T06:00:00Z",
+        analysisPoints = analysisPoints,
+        forecastPoints = forecastPoints,
+    )
 
     private fun stormPoint(
         time: String,
