@@ -499,8 +499,8 @@ private fun PrimaryDataStatus(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .height(26.dp)
-            .padding(start = 22.dp, top = 6.dp, end = 16.dp),
+            .height(32.dp)
+            .padding(start = 22.dp, top = 10.dp, end = 28.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         AnimatedContent(
@@ -548,7 +548,7 @@ private fun PivotHeader(current: String, next: String, reduceMotion: Boolean) {
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .height(70.dp)
+            .height(64.dp)
             .padding(start = 22.dp),
         contentAlignment = Alignment.CenterStart,
     ) {
