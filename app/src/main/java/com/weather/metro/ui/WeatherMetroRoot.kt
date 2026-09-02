@@ -1,12 +1,16 @@
 package com.weather.metro.ui
 
 import androidx.compose.animation.AnimatedContent
-import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
-import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
@@ -204,27 +208,13 @@ fun WeatherMetroRoot(
         ) {
             HongKongBackdrop(Modifier.fillMaxSize())
             Column(modifier = Modifier.fillMaxSize()) {
-                AnimatedVisibility(
-                    visible = activeTool == null,
-                    enter = if (reduceMotion) {
-                        fadeIn(tween(120))
-                    } else {
-                        fadeIn(tween(220, delayMillis = 80)) + expandVertically(tween(360))
-                    },
-                    exit = if (reduceMotion) {
-                        fadeOut(tween(100))
-                    } else {
-                        fadeOut(tween(180)) + shrinkVertically(tween(360))
-                    },
-                ) {
-                    Column {
-                        PrimaryDataStatus(loadState)
-                        PivotHeader(
-                            current = activePage.label,
-                            next = pages[(pageIndex + 1) % pages.size].label,
-                            reduceMotion = reduceMotion,
-                        )
-                    }
+                Column {
+                    PrimaryDataStatus(loadState)
+                    PivotHeader(
+                        current = activePage.label,
+                        next = pages[(pageIndex + 1) % pages.size].label,
+                        reduceMotion = reduceMotion,
+                    )
                 }
 
                 HorizontalPager(
@@ -300,42 +290,70 @@ fun WeatherMetroRoot(
                 }
             }
 
-            activeTool?.let { destination ->
-                MetroPageTheme(toolsColour) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .background(Color(0xFF080B0D)),
-                    ) {
-                        NativeToolsScreen(
-                            pageColour = toolsColour,
-                            rainState = rainState,
-                            radarState = productionRadarState,
-                            stormState = stormState,
-                            isActive = true,
-                            onFullscreenChanged = {},
-                            onRefreshPoint = rainViewModel::refreshPointForecast,
-                            onEnsurePointFresh = rainViewModel::refreshPointForecastIfStale,
-                            onCancelPointRefresh = rainViewModel::cancelPointRefresh,
-                            onRefreshRadar = radarViewModel::refreshRadar,
-                            onSelectRadarFrame = radarViewModel::selectFrame,
-                            onSelectRadarRange = radarViewModel::selectRange,
-                            onSelectRadarHeight = radarViewModel::selectHeight,
-                            onSelectRadarMode = radarViewModel::selectMode,
-                            onRadarOpacityChange = radarViewModel::setOpacity,
-                            onRadarPlaybackSpeedChange = radarViewModel::setPlaybackSpeed,
-                            onJumpRadarToLatest = radarViewModel::jumpToLatest,
-                            onCancelRadarRequests = radarViewModel::cancelRequests,
-                            onRefreshForecast = rainViewModel::refreshForecast,
-                            onEnsureForecastFresh = rainViewModel::refreshForecastIfStale,
-                            onLoadForecastFrame = rainViewModel::loadForecastFrame,
-                            onCancelForecastRequests = rainViewModel::cancelForecastRequests,
-                            onRefreshStorm = stormViewModel::refreshLive,
-                            onEnsureStormFresh = { stormViewModel.refreshLiveIfStale() },
-                            onCancelStormRequests = stormViewModel::cancelRequests,
-                            entryDestination = destination,
-                            onExitRequested = { activeTool = null },
-                        )
+            AnimatedContent(
+                targetState = activeTool,
+                transitionSpec = {
+                    if (reduceMotion) {
+                        fadeIn(tween(120)) togetherWith fadeOut(tween(100))
+                    } else {
+                        when {
+                            initialState == null && targetState != null -> (
+                                fadeIn(tween(220, delayMillis = 25)) +
+                                    slideInHorizontally(tween(340, easing = FastOutSlowInEasing)) { width -> width / 6 } +
+                                    scaleIn(tween(340, easing = FastOutSlowInEasing), initialScale = 0.985f)
+                                ) togetherWith fadeOut(tween(100))
+                            initialState != null && targetState == null -> fadeIn(tween(100)) togetherWith (
+                                fadeOut(tween(220)) +
+                                    slideOutHorizontally(tween(300, easing = FastOutSlowInEasing)) { width -> width / 5 } +
+                                    scaleOut(tween(300, easing = FastOutSlowInEasing), targetScale = 0.985f)
+                                )
+                            else -> fadeIn(tween(200)) togetherWith fadeOut(tween(160))
+                        }
+                    }
+                },
+                contentKey = { it?.route ?: "primary" },
+                label = "root tool destination",
+                modifier = Modifier.fillMaxSize(),
+            ) { destination ->
+                if (destination == null) {
+                    Box(Modifier.fillMaxSize())
+                } else {
+                    MetroPageTheme(toolsColour) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .background(Color(0xFF080B0D)),
+                        ) {
+                            NativeToolsScreen(
+                                pageColour = toolsColour,
+                                rainState = rainState,
+                                radarState = productionRadarState,
+                                stormState = stormState,
+                                isActive = true,
+                                onFullscreenChanged = {},
+                                onRefreshPoint = rainViewModel::refreshPointForecast,
+                                onEnsurePointFresh = rainViewModel::refreshPointForecastIfStale,
+                                onCancelPointRefresh = rainViewModel::cancelPointRefresh,
+                                onRefreshRadar = radarViewModel::refreshRadar,
+                                onSelectRadarFrame = radarViewModel::selectFrame,
+                                onSelectRadarRange = radarViewModel::selectRange,
+                                onSelectRadarHeight = radarViewModel::selectHeight,
+                                onSelectRadarMode = radarViewModel::selectMode,
+                                onRadarOpacityChange = radarViewModel::setOpacity,
+                                onRadarPlaybackSpeedChange = radarViewModel::setPlaybackSpeed,
+                                onJumpRadarToLatest = radarViewModel::jumpToLatest,
+                                onCancelRadarRequests = radarViewModel::cancelRequests,
+                                onRefreshForecast = rainViewModel::refreshForecast,
+                                onEnsureForecastFresh = rainViewModel::refreshForecastIfStale,
+                                onLoadForecastFrame = rainViewModel::loadForecastFrame,
+                                onCancelForecastRequests = rainViewModel::cancelForecastRequests,
+                                onRefreshStorm = stormViewModel::refreshLive,
+                                onEnsureStormFresh = { stormViewModel.refreshLiveIfStale() },
+                                onCancelStormRequests = stormViewModel::cancelRequests,
+                                entryDestination = destination,
+                                onExitRequested = { activeTool = null },
+                            )
+                        }
                     }
                 }
             }
@@ -375,23 +393,45 @@ private fun PrimaryDataStatus(state: WeatherLoadState) {
             }
         }
     }
+    val reduceMotion = LocalReduceMotion.current
 
-    Row(
+    Box(
         modifier = Modifier
             .fillMaxWidth()
-            .height(20.dp)
-            .padding(start = 22.dp, end = 16.dp),
-        verticalAlignment = Alignment.CenterVertically,
+            .height(20.dp),
     ) {
-        Box(Modifier.width(6.dp).height(6.dp).background(statusColour))
-        Spacer(Modifier.width(8.dp))
-        Text(
-            text = statusText,
-            color = LocalMetroSubText.current,
-            fontSize = 10.sp,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
+        AnimatedContent(
+            targetState = statusText to statusColour,
+            transitionSpec = {
+                if (reduceMotion) {
+                    fadeIn(tween(100)) togetherWith fadeOut(tween(80))
+                } else {
+                    (fadeIn(tween(160)) + slideInVertically(tween(180)) { height -> height / 3 }) togetherWith
+                        (fadeOut(tween(120)) + slideOutVertically(tween(150)) { height -> -height / 3 })
+                }
+            },
+            contentKey = { it.first },
+            label = "primary data status",
+            modifier = Modifier.fillMaxSize(),
+        ) { (text, colour) ->
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(20.dp)
+                    .padding(start = 22.dp, end = 16.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Box(Modifier.width(6.dp).height(6.dp).background(colour))
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    text = text,
+                    color = LocalMetroSubText.current,
+                    fontSize = 10.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
     }
 }
 
