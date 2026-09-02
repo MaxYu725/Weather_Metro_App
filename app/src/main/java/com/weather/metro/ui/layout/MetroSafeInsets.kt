@@ -10,8 +10,8 @@ import androidx.compose.ui.Modifier
 
 /**
  * Global Weather Metro policy for top interactive chrome: respect punch holes,
- * notches and other system-reserved top areas, but keep maps and decorative
- * backdrops edge-to-edge behind that reserved area.
+ * notches and other system-reserved top areas, while maps and decorative
+ * backdrops remain edge-to-edge behind the reserved area.
  */
 @Composable
 fun Modifier.metroSafeTop(): Modifier =
