@@ -56,6 +56,7 @@ import com.weather.metro.domain.LocationInfo
 import com.weather.metro.domain.rain.RainForecastFrame
 import com.weather.metro.domain.rain.RainForecastSource
 import com.weather.metro.domain.rain.RainForecastTimeline
+import com.weather.metro.ui.components.MetroFloatingIsland
 import com.weather.metro.ui.components.MetroGlassContextSurface
 import com.weather.metro.ui.theme.LocalReduceMotion
 import com.weather.metro.ui.tools.ToolLoadingPanel
@@ -147,6 +148,7 @@ fun RainForecastMapLibrePanel(
     val contentReady = timeline != null && frame != null
     val runKey = timeline?.let { "${it.source.name}:${it.issueTime}" }
     var playing by rememberSaveable { mutableStateOf(false) }
+    var controlsExpanded by rememberSaveable { mutableStateOf(false) }
     var recenterRequest by rememberSaveable { mutableStateOf(0) }
     var observedRunKey by rememberSaveable { mutableStateOf<String?>(null) }
     var desiredLeadMinutes by rememberSaveable { mutableStateOf<Int?>(null) }
@@ -159,6 +161,7 @@ fun RainForecastMapLibrePanel(
     LaunchedEffect(isActive) {
         if (!isActive) {
             playing = false
+            controlsExpanded = false
             pendingPlaybackIndex = null
         }
     }
@@ -318,37 +321,88 @@ fun RainForecastMapLibrePanel(
         ) {
             val activeTimeline = timeline ?: return@AnimatedVisibility
             val activeFrame = frame ?: return@AnimatedVisibility
-            MapLibreTimelineHud(
-                timeline = activeTimeline,
-                frame = activeFrame,
-                selectedIndex = state.forecastFrameIndex ?: activeFrame.frameIndex,
-                frameLoading = state.forecastFrame.status == RainResourceStatus.LOADING,
-                isStale = state.forecast.isStale || state.forecastFrame.isStale,
-                playing = playing,
+            val selectedIndex = state.forecastFrameIndex ?: activeFrame.frameIndex
+            val togglePlay = {
+                if (activeTimeline.frames.size >= 2) playing = !playing
+            }
+            MetroFloatingIsland(
+                expanded = controlsExpanded,
                 accent = accent,
-                opacity = displaySettings.opacity,
-                playbackSpeed = displaySettings.playbackSpeed,
-                canRecenter = state.location != null,
-                failedPlaybackIndexes = failedPlaybackIndexes,
-                playbackNotice = playbackNotice,
-                onTogglePlay = {
-                    if (activeTimeline.frames.size >= 2) playing = !playing
+                modifier = if (controlsExpanded) Modifier.fillMaxWidth() else Modifier,
+                collapsedContent = {
+                    Box(
+                        modifier = Modifier
+                            .size(width = 45.dp, height = 46.dp)
+                            .background(accent)
+                            .border(1.dp, accent)
+                            .clickable(onClick = togglePlay),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text(if (playing) "❚❚" else "▶", color = Color.White, fontSize = 14.sp)
+                    }
+                    Spacer(Modifier.size(8.dp))
+                    Column {
+                        Text(
+                            text = formatForecastTime(activeTimeline.frames[selectedIndex].validTime),
+                            color = Color.White,
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.Light,
+                        )
+                        Text(
+                            text = "+${activeTimeline.frames[selectedIndex].leadMinutes} 分 · ${selectedIndex + 1}/${activeTimeline.frames.size}",
+                            color = MAPLIBRE_MUTED,
+                            fontSize = 9.sp,
+                        )
+                    }
+                    Spacer(Modifier.size(8.dp))
+                    MapLibreCompactButton("控制", accent) { controlsExpanded = true }
                 },
-                onSelectFrame = { index ->
-                    playing = false
-                    pendingPlaybackIndex = null
-                    failedPlaybackIndexes = failedPlaybackIndexes - index
-                    playbackNotice = null
-                    desiredLeadMinutes = activeTimeline.frames.getOrNull(index)?.leadMinutes ?: desiredLeadMinutes
-                    onSelectFrame(index)
+                expandedContent = {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            text = "兩小時降雨控制",
+                            color = Color.White.copy(alpha = 0.78f),
+                            fontSize = 11.sp,
+                        )
+                        Spacer(Modifier.weight(1f))
+                        MapLibreCompactButton("收起", accent) { controlsExpanded = false }
+                    }
+                    Spacer(Modifier.size(4.dp))
+                    MapLibreTimelineHud(
+                        timeline = activeTimeline,
+                        frame = activeFrame,
+                        selectedIndex = selectedIndex,
+                        frameLoading = state.forecastFrame.status == RainResourceStatus.LOADING,
+                        isStale = state.forecast.isStale || state.forecastFrame.isStale,
+                        playing = playing,
+                        accent = accent,
+                        opacity = displaySettings.opacity,
+                        playbackSpeed = displaySettings.playbackSpeed,
+                        canRecenter = state.location != null,
+                        failedPlaybackIndexes = failedPlaybackIndexes,
+                        playbackNotice = playbackNotice,
+                        onTogglePlay = togglePlay,
+                        onSelectFrame = { index ->
+                            playing = false
+                            pendingPlaybackIndex = null
+                            failedPlaybackIndexes = failedPlaybackIndexes - index
+                            playbackNotice = null
+                            desiredLeadMinutes = activeTimeline.frames.getOrNull(index)?.leadMinutes ?: desiredLeadMinutes
+                            onSelectFrame(index)
+                        },
+                        onOpacityChange = settingsViewModel::setOpacity,
+                        onPlaybackSpeedChange = { speed ->
+                            playing = false
+                            settingsViewModel.setPlaybackSpeed(speed)
+                        },
+                        onRecenter = { recenterRequest += 1 },
+                        showChrome = false,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
                 },
-                onOpacityChange = settingsViewModel::setOpacity,
-                onPlaybackSpeedChange = { speed ->
-                    playing = false
-                    settingsViewModel.setPlaybackSpeed(speed)
-                },
-                onRecenter = { recenterRequest += 1 },
-                modifier = Modifier.fillMaxWidth(),
             )
         }
     }
@@ -748,6 +802,7 @@ private fun MapLibreTimelineHud(
     onOpacityChange: (Float) -> Unit,
     onPlaybackSpeedChange: (RainForecastPlaybackSpeed) -> Unit,
     onRecenter: () -> Unit,
+    showChrome: Boolean = true,
     modifier: Modifier = Modifier,
 ) {
     val timelineListState = rememberLazyListState()
@@ -758,9 +813,8 @@ private fun MapLibreTimelineHud(
         timelineListState.scrollToItem(centeredAnchor.coerceAtMost(maxAnchor))
     }
 
-    Column(
-        modifier = modifier
-            .fillMaxWidth()
+    val surfaceModifier = if (showChrome) {
+        Modifier
             .background(
                 color = Color.Black.copy(alpha = 0.70f),
                 shape = RoundedCornerShape(18.dp),
@@ -770,7 +824,15 @@ private fun MapLibreTimelineHud(
                 color = Color.White.copy(alpha = 0.22f),
                 shape = RoundedCornerShape(18.dp),
             )
-            .padding(horizontal = 11.dp, vertical = 9.dp),
+            .padding(horizontal = 11.dp, vertical = 9.dp)
+    } else {
+        Modifier
+    }
+
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .then(surfaceModifier),
         verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
