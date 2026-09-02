@@ -10,7 +10,6 @@ permissions:
 
 jobs:
   patch:
-    if: github.event.head_commit.message == 'chore: temporary Current V3.2 patch runner'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -24,6 +23,9 @@ jobs:
 
           path = Path('app/src/main/java/com/weather/metro/ui/screens/HomeCurrentScreen.kt')
           text = path.read_text()
+          if 'import com.weather.metro.ui.components.MetroGlassContextSurface' in text:
+              print('Current V3.2 patch already applied')
+              raise SystemExit(0)
 
           old_import = 'import com.weather.metro.ui.components.ExpandableMetroTile\nimport com.weather.metro.ui.components.HkoRemoteImage\n'
           new_import = 'import com.weather.metro.ui.components.ExpandableMetroTile\nimport com.weather.metro.ui.components.HkoRemoteImage\nimport com.weather.metro.ui.components.MetroGlassContextSurface\n'
@@ -109,17 +111,14 @@ jobs:
           text = text.replace(old_status, new_status, 1)
 
           hero_old = '                        Text(if (heroExpanded) "−" else "+", color = Color.White, fontSize = 25.sp)\n'
-          hero_new = '                        HomeDetailBadge(heroExpanded, pageColour)\n'
           assert text.count(hero_old) == 1, 'unexpected hero detail control'
-          text = text.replace(hero_old, hero_new, 1)
+          text = text.replace(hero_old, '                        HomeDetailBadge(heroExpanded, pageColour)\n', 1)
 
           forecast_old = '                        Text(if (localForecastExpanded) "−" else "+", color = Color.White, fontSize = 25.sp)\n'
-          forecast_new = '                        HomeDetailBadge(localForecastExpanded, pageColour)\n'
           assert text.count(forecast_old) == 1, 'unexpected local forecast detail control'
-          text = text.replace(forecast_old, forecast_new, 1)
+          text = text.replace(forecast_old, '                        HomeDetailBadge(localForecastExpanded, pageColour)\n', 1)
 
-          anchor = '''private data class HomeRainSample(
-'''
+          anchor = 'private data class HomeRainSample(\n'
           helper = '''@Composable
 private fun HomeDetailBadge(expanded: Boolean, pageColour: Color) {
     MetroGlassContextSurface(accent = pageColour) {
@@ -141,12 +140,15 @@ private data class HomeRainSample(
 '''
           assert text.count(anchor) == 1, 'unexpected helper anchor'
           text = text.replace(anchor, helper, 1)
-
           path.write_text(text)
           PY
-      - name: Commit Current V3.2 source
+      - name: Commit Current V3.2 source when changed
         shell: bash
         run: |
+          if git diff --quiet -- app/src/main/java/com/weather/metro/ui/screens/HomeCurrentScreen.kt; then
+            echo "No source changes to commit"
+            exit 0
+          fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add app/src/main/java/com/weather/metro/ui/screens/HomeCurrentScreen.kt
