@@ -99,6 +99,7 @@ internal fun StormLivePanel(
     var jmaEnabled by rememberSaveable { mutableStateOf(true) }
     var cwaEnabled by rememberSaveable { mutableStateOf(true) }
     var fitToken by rememberSaveable { mutableIntStateOf(0) }
+    var topControlCollapseToken by rememberSaveable { mutableIntStateOf(0) }
     var bottomHudExpanded by rememberSaveable { mutableStateOf(false) }
     var selectedStormKey by rememberSaveable { mutableStateOf<String?>(null) }
     var selectedPointRef by remember { mutableStateOf<StormMapPointRef?>(null) }
@@ -156,6 +157,7 @@ internal fun StormLivePanel(
             onPointSelected = { ref ->
                 selectedPointRef = ref
                 bottomHudExpanded = ref != null
+                topControlCollapseToken += 1
             },
             modifier = Modifier.fillMaxSize(),
         )
@@ -174,6 +176,7 @@ internal fun StormLivePanel(
             state = state,
             pageColour = pageColour,
             isActive = isActive,
+            collapseToken = topControlCollapseToken,
             refreshing = state.isRefreshing,
             hkoEnabled = hkoEnabled,
             cmaEnabled = cmaEnabled,
@@ -188,11 +191,24 @@ internal fun StormLivePanel(
                     bottomHudExpanded = false
                     fitToken += 1
                 }
+                topControlCollapseToken += 1
             },
-            onToggleHko = { hkoEnabled = !hkoEnabled },
-            onToggleCma = { cmaEnabled = !cmaEnabled },
-            onToggleJma = { jmaEnabled = !jmaEnabled },
-            onToggleCwa = { cwaEnabled = !cwaEnabled },
+            onToggleHko = {
+                hkoEnabled = !hkoEnabled
+                topControlCollapseToken += 1
+            },
+            onToggleCma = {
+                cmaEnabled = !cmaEnabled
+                topControlCollapseToken += 1
+            },
+            onToggleJma = {
+                jmaEnabled = !jmaEnabled
+                topControlCollapseToken += 1
+            },
+            onToggleCwa = {
+                cwaEnabled = !cwaEnabled
+                topControlCollapseToken += 1
+            },
             modifier = Modifier
                 .align(Alignment.TopCenter)
                 .fillMaxWidth()
@@ -228,6 +244,7 @@ private fun StormTopControlHub(
     state: StormHostState,
     pageColour: Color,
     isActive: Boolean,
+    collapseToken: Int,
     refreshing: Boolean,
     hkoEnabled: Boolean,
     cmaEnabled: Boolean,
@@ -254,6 +271,9 @@ private fun StormTopControlHub(
 
     LaunchedEffect(isActive) {
         if (!isActive) expanded = false
+    }
+    LaunchedEffect(collapseToken) {
+        if (collapseToken > 0) expanded = false
     }
 
     MetroFloatingIsland(
@@ -725,7 +745,6 @@ private fun stormPopupRows(selected: StormPointSelection): List<Pair<String, Str
     val point = selected.point
     val track = selected.track
     return buildList {
-        add("時間" to formatStormPointTime(point.validAt))
         add("位置" to formatStormLatLon(point.latitude, point.longitude))
         add("強度" to stormIntensityDisplayLabel(point))
         add("最高持續風速" to point.windSpeedMs?.let { "${formatNumber(it)} m/s" }.orNotProvided())

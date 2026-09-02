@@ -41,6 +41,7 @@ import org.maplibre.android.style.expressions.Expression.toColor
 import org.maplibre.android.style.layers.CircleLayer
 import org.maplibre.android.style.layers.FillLayer
 import org.maplibre.android.style.layers.LineLayer
+import org.maplibre.android.style.layers.SymbolLayer
 import org.maplibre.android.style.layers.PropertyFactory.circleColor
 import org.maplibre.android.style.layers.PropertyFactory.circleOpacity
 import org.maplibre.android.style.layers.PropertyFactory.circleRadius
@@ -54,6 +55,12 @@ import org.maplibre.android.style.layers.PropertyFactory.lineColor
 import org.maplibre.android.style.layers.PropertyFactory.lineDasharray
 import org.maplibre.android.style.layers.PropertyFactory.lineOpacity
 import org.maplibre.android.style.layers.PropertyFactory.lineWidth
+import org.maplibre.android.style.layers.PropertyFactory.textColor
+import org.maplibre.android.style.layers.PropertyFactory.textField
+import org.maplibre.android.style.layers.PropertyFactory.textHaloColor
+import org.maplibre.android.style.layers.PropertyFactory.textHaloWidth
+import org.maplibre.android.style.layers.PropertyFactory.textOffset
+import org.maplibre.android.style.layers.PropertyFactory.textSize
 import org.maplibre.android.style.sources.GeoJsonSource
 import java.time.Instant
 import kotlin.math.asin
@@ -71,6 +78,9 @@ private const val STORM_EARTH_RADIUS_KM = 6371.0088
 private const val STORM_CIRCLE_SEGMENTS = 48
 private const val STORM_ANALYSIS_MARKER_INTERVAL_HOURS = 6L
 private const val SELECTED_POINT_SOURCE = "storm-selected-point"
+private const val HONG_KONG_REFERENCE_SOURCE = "storm-hong-kong-reference"
+private const val HONG_KONG_REFERENCE_LAT = 22.3023
+private const val HONG_KONG_REFERENCE_LON = 114.1746
 private const val EMPTY_GEO_JSON = "{\"type\":\"FeatureCollection\",\"features\":[]}"
 
 private val STORM_BASE_STYLE = """
@@ -202,6 +212,7 @@ internal fun StormMapLibreSurface(
             readyMap.setStyle(Style.Builder().fromJson(STORM_BASE_STYLE)) { style ->
                 agencySources.clear()
                 StormAgency.entries.forEach { agency -> agencySources[agency] = addAgencyLayers(style, agency) }
+                addHongKongReferenceLayers(style)
                 selectedSource = addSelectedPointLayers(style)
                 styleGeneration += 1
                 updateStormSources(agencySources, latestTracks, latestEnabled)
@@ -246,6 +257,51 @@ internal fun StormMapLibreSurface(
     Box(modifier = modifier.background(Color(0xFF101010))) {
         AndroidView(factory = { mapView }, modifier = Modifier.fillMaxSize())
     }
+}
+
+private fun addHongKongReferenceLayers(style: Style) {
+    val feature = JSONObject()
+        .put("type", "Feature")
+        .put("properties", JSONObject().put("label", "香港"))
+        .put(
+            "geometry",
+            JSONObject()
+                .put("type", "Point")
+                .put("coordinates", JSONArray().put(HONG_KONG_REFERENCE_LON).put(HONG_KONG_REFERENCE_LAT)),
+        )
+    val geoJson = JSONObject()
+        .put("type", "FeatureCollection")
+        .put("features", JSONArray().put(feature))
+        .toString()
+    val source = GeoJsonSource(HONG_KONG_REFERENCE_SOURCE, geoJson)
+    style.addSource(source)
+    style.addLayer(
+        CircleLayer("storm-hong-kong-halo", HONG_KONG_REFERENCE_SOURCE).withProperties(
+            circleColor(AndroidColor.WHITE),
+            circleRadius(8.0f),
+            circleOpacity(0.15f),
+            circleStrokeWidth(0f),
+        ),
+    )
+    style.addLayer(
+        CircleLayer("storm-hong-kong-point", HONG_KONG_REFERENCE_SOURCE).withProperties(
+            circleColor(AndroidColor.rgb(78, 192, 255)),
+            circleRadius(4.2f),
+            circleOpacity(1.0f),
+            circleStrokeColor(AndroidColor.WHITE),
+            circleStrokeWidth(1.6f),
+        ),
+    )
+    style.addLayer(
+        SymbolLayer("storm-hong-kong-label", HONG_KONG_REFERENCE_SOURCE).withProperties(
+            textField("香港"),
+            textSize(10.5f),
+            textColor(AndroidColor.WHITE),
+            textHaloColor(AndroidColor.argb(230, 0, 0, 0)),
+            textHaloWidth(1.2f),
+            textOffset(arrayOf(0f, -1.45f)),
+        ),
+    )
 }
 
 private fun addSelectedPointLayers(style: Style): GeoJsonSource {
