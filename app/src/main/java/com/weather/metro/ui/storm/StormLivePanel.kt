@@ -27,6 +27,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -39,6 +40,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.onSizeChanged
@@ -301,33 +303,23 @@ private fun StormAgencyControls(
         modifier = modifier,
         collapsedContent = {
             Row(
-                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                horizontalArrangement = Arrangement.spacedBy(5.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Box(
-                    Modifier
-                        .width(3.dp)
-                        .height(14.dp)
-                        .background(if (hkoEnabled) agencyColour(StormAgency.HKO) else Color(0xFF555555)),
-                )
-                Box(
-                    Modifier
-                        .width(3.dp)
-                        .height(14.dp)
-                        .background(if (cmaEnabled) agencyColour(StormAgency.CMA) else Color(0xFF555555)),
-                )
-                Box(
-                    Modifier
-                        .width(3.dp)
-                        .height(14.dp)
-                        .background(if (jmaEnabled) agencyColour(StormAgency.JMA) else Color(0xFF555555)),
-                )
-                Box(
-                    Modifier
-                        .width(3.dp)
-                        .height(14.dp)
-                        .background(if (cwaEnabled) agencyColour(StormAgency.CWA) else Color(0xFF555555)),
-                )
+                listOf(
+                    StormAgency.HKO to hkoEnabled,
+                    StormAgency.CMA to cmaEnabled,
+                    StormAgency.JMA to jmaEnabled,
+                    StormAgency.CWA to cwaEnabled,
+                ).forEach { (agency, enabled) ->
+                    Box(
+                        Modifier
+                            .width(5.dp)
+                            .height(14.dp)
+                            .clip(RoundedCornerShape(3.dp))
+                            .background(if (enabled) agencyColour(agency) else Color(0xFF4A4A4A)),
+                    )
+                }
             }
             Text(
                 text = "$enabledCount/4 機構",
@@ -419,51 +411,58 @@ private fun StormAgencyChip(
 ) {
     val reduceMotion = LocalReduceMotion.current
     val interactionSource = remember { MutableInteractionSource() }
+    val shape = RoundedCornerShape(16.dp)
     val border by animateColorAsState(
-        targetValue = if (enabled) accent else Color(0xFF3A3A3A),
+        targetValue = if (enabled) accent.copy(alpha = 0.82f) else Color.White.copy(alpha = 0.12f),
         animationSpec = tween(if (reduceMotion) 100 else 180),
         label = "storm agency border",
     )
     val background by animateColorAsState(
-        targetValue = if (enabled) accent.copy(alpha = 0.12f) else Color(0xB80B0B0B),
+        targetValue = if (enabled) accent.copy(alpha = 0.20f) else Color.Black.copy(alpha = 0.34f),
         animationSpec = tween(if (reduceMotion) 100 else 180),
         label = "storm agency background",
     )
     Column(
         modifier = modifier
+            .heightIn(min = 58.dp)
             .metroPressMotion(
                 interactionSource = interactionSource,
                 preset = MetroPressPreset.Chip,
             )
-            .border(1.dp, border)
-            .background(background)
+            .clip(shape)
+            .background(background, shape)
+            .border(1.dp, border, shape)
             .clickable(
                 interactionSource = interactionSource,
                 indication = LocalIndication.current,
                 onClick = onClick,
             )
-            .padding(horizontal = 7.dp, vertical = 7.dp),
+            .padding(horizontal = 9.dp, vertical = 8.dp),
+        verticalArrangement = Arrangement.SpaceBetween,
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Box(
                 Modifier
-                    .width(3.dp)
-                    .height(18.dp)
+                    .width(5.dp)
+                    .height(20.dp)
+                    .clip(RoundedCornerShape(3.dp))
                     .background(if (enabled) accent else Color(0xFF555555)),
             )
-            Spacer(Modifier.width(5.dp))
+            Spacer(Modifier.width(6.dp))
             Text(
-                text = source.agency.name,
-                color = if (enabled) Color.White else Color(0xFF777777),
+                text = if (enabled) "✓ ${source.agency.name}" else source.agency.name,
+                color = if (enabled) Color.White else Color.White.copy(alpha = 0.42f),
                 fontSize = 12.sp,
-                fontWeight = FontWeight.Medium,
+                fontWeight = if (enabled) FontWeight.SemiBold else FontWeight.Medium,
+                maxLines = 1,
             )
         }
         Text(
             text = sourceStateLabel(source.liveState, source.refreshing),
-            color = if (enabled) sourceStateColour(source.liveState, accent) else Color(0xFF666666),
+            color = if (enabled) sourceStateColour(source.liveState, accent) else Color.White.copy(alpha = 0.32f),
             fontSize = 9.sp,
             maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
         )
     }
 }
@@ -495,7 +494,7 @@ private fun StormBottomIsland(
         else -> "${visibleTracks.size} 路徑 · $enabledAgencyCount/4 來源"
     }
     val guidance = if (state.cacheRestored) {
-        "點擊路徑點查看完整資料 · 路徑線按機構色 · 路徑點按強度色"
+        "實線＝分析 · 虛線＝預報 · 外圈＝機構 · 點色＝強度"
     } else {
         "正在讀取 Storm 裝置快取…"
     }

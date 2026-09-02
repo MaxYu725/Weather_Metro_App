@@ -58,6 +58,7 @@ import kotlin.math.asin
 import kotlin.math.atan2
 import kotlin.math.cos
 import kotlin.math.max
+import kotlin.math.roundToInt
 import kotlin.math.sin
 
 private const val STORM_MAP_MIN_ZOOM = 1.5
@@ -260,34 +261,62 @@ private fun addAgencyLayers(style: Style, agency: StormAgency): StormAgencySourc
 
     style.addLayer(
         FillLayer("$prefix-probability-fill", probabilitySource.id).withProperties(
-            fillColor(color), fillOpacity(0.10f), fillOutlineColor(color), fillAntialias(true),
+            fillColor(color), fillOpacity(0.060f),
+            fillOutlineColor(stormMapColorWithAlpha(color, 0.28f)), fillAntialias(true),
         ),
     )
     style.addLayer(
         FillLayer("$prefix-wind-fill", windSource.id).withProperties(
-            fillColor(color), fillOpacity(0.075f), fillOutlineColor(color), fillAntialias(true),
+            fillColor(color), fillOpacity(0.045f),
+            fillOutlineColor(stormMapColorWithAlpha(color, 0.22f)), fillAntialias(true),
+        ),
+    )
+
+    style.addLayer(
+        LineLayer("$prefix-analysis-line-halo", analysisLineSource.id).withProperties(
+            lineColor(AndroidColor.argb(210, 0, 0, 0)), lineWidth(6.0f), lineOpacity(0.72f),
         ),
     )
     style.addLayer(
         LineLayer("$prefix-analysis-line-layer", analysisLineSource.id).withProperties(
-            lineColor(color), lineWidth(3.0f), lineOpacity(0.95f),
+            lineColor(color), lineWidth(3.2f), lineOpacity(0.98f),
+        ),
+    )
+    style.addLayer(
+        LineLayer("$prefix-forecast-line-halo", forecastLineSource.id).withProperties(
+            lineColor(AndroidColor.argb(188, 0, 0, 0)), lineWidth(4.6f), lineOpacity(0.58f),
+            lineDasharray(arrayOf(1.4f, 1.2f)),
         ),
     )
     style.addLayer(
         LineLayer("$prefix-forecast-line-layer", forecastLineSource.id).withProperties(
-            lineColor(color), lineWidth(2.4f), lineOpacity(0.9f), lineDasharray(arrayOf(1.4f, 1.2f)),
+            lineColor(color), lineWidth(2.2f), lineOpacity(0.80f),
+            lineDasharray(arrayOf(1.4f, 1.2f)),
+        ),
+    )
+
+    style.addLayer(
+        CircleLayer("$prefix-analysis-point-halo", analysisPointSource.id).withProperties(
+            circleColor(color), circleRadius(8.0f), circleOpacity(0.15f),
+            circleStrokeWidth(0f),
+        ),
+    )
+    style.addLayer(
+        CircleLayer("$prefix-forecast-point-halo", forecastPointSource.id).withProperties(
+            circleColor(color), circleRadius(7.0f), circleOpacity(0.10f),
+            circleStrokeWidth(0f),
         ),
     )
     style.addLayer(
         CircleLayer("$prefix-analysis-point-layer", analysisPointSource.id).withProperties(
-            circleColor(toColor(get("color"))), circleRadius(5.2f), circleOpacity(0.98f),
-            circleStrokeColor(AndroidColor.BLACK), circleStrokeWidth(1.4f),
+            circleColor(toColor(get("color"))), circleRadius(5.4f), circleOpacity(0.98f),
+            circleStrokeColor(color), circleStrokeWidth(2.0f),
         ),
     )
     style.addLayer(
         CircleLayer("$prefix-forecast-point-layer", forecastPointSource.id).withProperties(
-            circleColor(toColor(get("color"))), circleRadius(4.8f), circleOpacity(0.96f),
-            circleStrokeColor(AndroidColor.BLACK), circleStrokeWidth(1.3f),
+            circleColor(toColor(get("color"))), circleRadius(4.7f), circleOpacity(0.86f),
+            circleStrokeColor(color), circleStrokeWidth(1.5f),
         ),
     )
 
@@ -300,6 +329,13 @@ private fun addAgencyLayers(style: Style, agency: StormAgency): StormAgencySourc
         windPolygons = windSource,
     )
 }
+
+private fun stormMapColorWithAlpha(color: Int, alpha: Float): Int = AndroidColor.argb(
+    (alpha.coerceIn(0f, 1f) * 255f).roundToInt(),
+    AndroidColor.red(color),
+    AndroidColor.green(color),
+    AndroidColor.blue(color),
+)
 
 private fun stormPointLayerIds(enabledAgencies: Set<StormAgency>): List<String> = buildList {
     enabledAgencies.forEach { agency ->
