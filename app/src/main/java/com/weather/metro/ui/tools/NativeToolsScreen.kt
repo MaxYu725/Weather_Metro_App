@@ -5,6 +5,8 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.SizeTransform
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
@@ -13,8 +15,6 @@ import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
-import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
@@ -54,6 +54,7 @@ import androidx.lifecycle.repeatOnLifecycle
 import com.weather.metro.data.tools.RainRadarMode
 import com.weather.metro.ui.components.MetroSectionLabel
 import com.weather.metro.ui.components.MetroTile
+import com.weather.metro.ui.layout.metroSafeTop
 import com.weather.metro.ui.map.HongKongBackdrop
 import com.weather.metro.ui.map.HongKongMapAttribution
 import com.weather.metro.ui.motion.MetroPressPreset
@@ -170,15 +171,11 @@ fun NativeToolsScreen(
         }
     }
 
-    BackHandler(enabled = destination != DESTINATION_HOME) {
-        closeDestination()
-    }
+    BackHandler(enabled = destination != DESTINATION_HOME) { closeDestination() }
 
     LaunchedEffect(isActive, destination, reduceMotion) {
         if (!isActive) return@LaunchedEffect
-        if (destination == DESTINATION_HOME) {
-            delay(toolsFullscreenReleaseDelayMs(reduceMotion))
-        }
+        if (destination == DESTINATION_HOME) delay(toolsFullscreenReleaseDelayMs(reduceMotion))
         onFullscreenChanged(destination != DESTINATION_HOME)
     }
 
@@ -196,12 +193,8 @@ fun NativeToolsScreen(
             return@LaunchedEffect
         }
         when (destination) {
-            DESTINATION_POINT -> if (rainState.location != null) {
-                onEnsurePointFresh(selectedRadiusKm)
-            }
-            DESTINATION_RADAR -> if (radarState.timeline.status == RainResourceStatus.IDLE) {
-                onRefreshRadar()
-            }
+            DESTINATION_POINT -> if (rainState.location != null) onEnsurePointFresh(selectedRadiusKm)
+            DESTINATION_RADAR -> if (radarState.timeline.status == RainResourceStatus.IDLE) onRefreshRadar()
             DESTINATION_FORECAST -> onEnsureForecastFresh()
         }
     }
@@ -244,9 +237,7 @@ fun NativeToolsScreen(
                     -1 -> (
                         fadeIn(tween(280, delayMillis = 35)) +
                             slideInHorizontally(tween(360, easing = FastOutSlowInEasing)) { width -> -width / 8 }
-                        ) togetherWith (
-                        fadeOut(tween(100))
-                        )
+                        ) togetherWith fadeOut(tween(100))
                     else -> fadeIn(tween(300)) togetherWith fadeOut(tween(240))
                 }
                 transform.using(SizeTransform(clip = false))
@@ -303,22 +294,10 @@ fun NativeToolsScreen(
                 pageColour = pageColour,
                 listState = homeListState,
                 animateReveal = !homeIntroPlayed,
-                onOpenPoint = {
-                    homeIntroPlayed = true
-                    destination = DESTINATION_POINT
-                },
-                onOpenRadar = {
-                    homeIntroPlayed = true
-                    destination = DESTINATION_RADAR
-                },
-                onOpenForecast = {
-                    homeIntroPlayed = true
-                    destination = DESTINATION_FORECAST
-                },
-                onOpenStorm = {
-                    homeIntroPlayed = true
-                    destination = DESTINATION_STORM
-                },
+                onOpenPoint = { homeIntroPlayed = true; destination = DESTINATION_POINT },
+                onOpenRadar = { homeIntroPlayed = true; destination = DESTINATION_RADAR },
+                onOpenForecast = { homeIntroPlayed = true; destination = DESTINATION_FORECAST },
+                onOpenStorm = { homeIntroPlayed = true; destination = DESTINATION_STORM },
             )
         }
     }
@@ -337,21 +316,14 @@ private fun ToolsHome(
     val context = LocalContext.current
     LazyColumn(
         state = listState,
-        modifier = Modifier.fillMaxSize(),
+        modifier = Modifier.fillMaxSize().metroSafeTop(),
         contentPadding = androidx.compose.foundation.layout.PaddingValues(start = 22.dp, end = 16.dp, bottom = 48.dp),
         verticalArrangement = Arrangement.spacedBy(9.dp),
     ) {
         item { ToolHomeReveal(0, animateReveal) { MetroSectionLabel("rain") } }
         item {
             ToolHomeReveal(1, animateReveal) {
-                ToolTile(
-                    seed = "native-point-rain",
-                    title = "定點降雨",
-                    description = "目前位置 · 附近雨勢",
-                    status = "降雨",
-                    background = pageColour,
-                    onClick = onOpenPoint,
-                )
+                ToolTile("native-point-rain", "定點降雨", "目前位置 · 附近雨勢", "降雨", pageColour, onClick = onOpenPoint)
             }
         }
         item {
@@ -378,44 +350,25 @@ private fun ToolsHome(
                 }
             }
         }
-
         item { ToolHomeReveal(3, animateReveal) { MetroSectionLabel("storm") } }
         item {
             ToolHomeReveal(4, animateReveal) {
-                ToolTile(
-                    seed = "native-storm",
-                    title = "熱帶氣旋",
-                    description = "HKO · CMA · JMA · CWA",
-                    status = "live",
-                    background = pageColour,
-                    onClick = onOpenStorm,
-                )
+                ToolTile("native-storm", "熱帶氣旋", "HKO · CMA · JMA · CWA", "live", pageColour, onClick = onOpenStorm)
             }
         }
-
         item { ToolHomeReveal(5, animateReveal) { MetroSectionLabel("official links") } }
         item {
             ToolHomeReveal(6, animateReveal) {
-                OfficialLink(
-                    title = "香港天文台雷達圖像",
-                    onClick = {
-                        context.startActivity(
-                            Intent(Intent.ACTION_VIEW, "https://www.hko.gov.hk/tc/wxinfo/radars/radar-range.htm".toUri()),
-                        )
-                    },
-                )
+                OfficialLink("香港天文台雷達圖像") {
+                    context.startActivity(Intent(Intent.ACTION_VIEW, "https://www.hko.gov.hk/tc/wxinfo/radars/radar-range.htm".toUri()))
+                }
             }
         }
         item {
             ToolHomeReveal(7, animateReveal) {
-                OfficialLink(
-                    title = "閃電位置資訊",
-                    onClick = {
-                        context.startActivity(
-                            Intent(Intent.ACTION_VIEW, "https://maps.weather.gov.hk/llis/llis.htm".toUri()),
-                        )
-                    },
-                )
+                OfficialLink("閃電位置資訊") {
+                    context.startActivity(Intent(Intent.ACTION_VIEW, "https://maps.weather.gov.hk/llis/llis.htm".toUri()))
+                }
             }
         }
     }
@@ -433,7 +386,7 @@ private fun PointToolScreen(
     Box(modifier = Modifier.fillMaxSize()) {
         HongKongBackdrop(modifier = Modifier.fillMaxSize())
         LazyColumn(
-            modifier = Modifier.fillMaxSize(),
+            modifier = Modifier.fillMaxSize().metroSafeTop(),
             contentPadding = androidx.compose.foundation.layout.PaddingValues(start = 22.dp, end = 16.dp, bottom = 64.dp),
             verticalArrangement = Arrangement.spacedBy(9.dp),
         ) {
@@ -490,6 +443,7 @@ private fun RadarMapLibreToolScreen(
             onAutoRefresh = onRefresh,
             modifier = Modifier
                 .align(Alignment.TopCenter)
+                .metroSafeTop()
                 .padding(top = 72.dp),
         )
     }
@@ -575,10 +529,7 @@ private fun ToolTile(
     MetroTile(
         seed = seed,
         background = background,
-        modifier = modifier.metroPressMotion(
-            interactionSource = interactionSource,
-            preset = MetroPressPreset.Tile,
-        ),
+        modifier = modifier.metroPressMotion(interactionSource = interactionSource, preset = MetroPressPreset.Tile),
         onClick = onClick,
         interactionSource = interactionSource,
     ) {
@@ -592,11 +543,7 @@ private fun ToolTile(
 }
 
 @Composable
-private fun ToolHomeReveal(
-    index: Int,
-    animate: Boolean,
-    content: @Composable () -> Unit,
-) {
+private fun ToolHomeReveal(index: Int, animate: Boolean, content: @Composable () -> Unit) {
     if (!animate) {
         Box(Modifier.fillMaxWidth()) { content() }
         return
@@ -614,11 +561,7 @@ private fun ToolHomeReveal(
     }
     AnimatedVisibility(
         visible = visible,
-        enter = if (reduceMotion) {
-            fadeIn(tween(120))
-        } else {
-            fadeIn(tween(280)) + slideInVertically(tween(360)) { height -> height / 4 }
-        },
+        enter = if (reduceMotion) fadeIn(tween(120)) else fadeIn(tween(280)) + slideInVertically(tween(360)) { height -> height / 4 },
     ) {
         Box(Modifier.fillMaxWidth()) { content() }
     }
