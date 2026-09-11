@@ -10,7 +10,7 @@ import kotlin.math.roundToInt
 enum class PageColourSlot(val label: String) {
     CURRENT("current"),
     FORECAST("forecast"),
-    TOOLS("tools"),
+    TOOLS("live weather"),
     SETTINGS("settings"),
 }
 
