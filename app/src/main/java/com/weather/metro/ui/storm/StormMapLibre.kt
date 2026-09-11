@@ -81,6 +81,7 @@ private const val STORM_MAP_MIN_ZOOM = 1.5
 private const val STORM_MAP_MAX_ZOOM = 9.0
 private const val STORM_MAP_INITIAL_ZOOM = 3.1
 private const val STORM_MAP_SINGLE_POINT_ZOOM = 5.5
+private const val STORM_FIT_CONTEXT_ZOOM_OUT = 0.16
 private const val STORM_EARTH_RADIUS_KM = 6371.0088
 private const val STORM_CIRCLE_SEGMENTS = 48
 private const val STORM_ANALYSIS_MARKER_INTERVAL_HOURS = 6L
@@ -490,21 +491,22 @@ private fun fitStormCamera(
         return
     }
 
-    val tallPane = viewportSize.width > 0 && viewportSize.height > viewportSize.width * 1.25f
-    val horizontalPadding = if (tallPane) {
-        max(54, (viewportSize.width * 0.10f).roundToInt())
-    } else {
-        44
+    val hasViewport = viewportSize.width > 0 && viewportSize.height > 0
+    val tallPane = hasViewport && viewportSize.height > viewportSize.width * 1.25f
+    val horizontalPadding = when {
+        tallPane -> max(42, (viewportSize.width * 0.075f).roundToInt())
+        hasViewport -> max(40, (viewportSize.width * 0.065f).roundToInt())
+        else -> 44
     }
-    val topPadding = if (tallPane) {
-        max(150, (viewportSize.height * 0.14f).roundToInt())
-    } else {
-        176
+    val topPadding = when {
+        tallPane -> max(110, (viewportSize.height * 0.105f).roundToInt())
+        hasViewport -> max(112, (viewportSize.height * 0.10f).roundToInt())
+        else -> 132
     }
-    val bottomPadding = if (tallPane) {
-        max(180, (viewportSize.height * 0.17f).roundToInt())
-    } else {
-        190
+    val bottomPadding = when {
+        tallPane -> max(126, (viewportSize.height * 0.125f).roundToInt())
+        hasViewport -> max(128, (viewportSize.height * 0.115f).roundToInt())
+        else -> 148
     }
 
     val builder = LatLngBounds.Builder()
@@ -512,7 +514,12 @@ private fun fitStormCamera(
     map.getCameraForLatLngBounds(
         builder.build(),
         intArrayOf(horizontalPadding, topPadding, horizontalPadding, bottomPadding),
-    )?.let { map.cameraPosition = it }
+    )?.let { fitted ->
+        map.cameraPosition = CameraPosition.Builder()
+            .target(fitted.target)
+            .zoom((fitted.zoom - STORM_FIT_CONTEXT_ZOOM_OUT).coerceIn(STORM_MAP_MIN_ZOOM, STORM_MAP_MAX_ZOOM))
+            .build()
+    }
 }
 
 internal fun buildStormAgencyMapData(

@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -46,6 +47,9 @@ private enum class FoldableSettingsSection(val label: String, val description: S
     ABOUT("about", "版本及資料來源"),
 }
 
+private fun Modifier.foldableDetailCardWidth(): Modifier =
+    widthIn(max = 600.dp).fillMaxWidth(0.92f)
+
 /**
  * Master-detail settings surface for unfolded devices and tablets.
  *
@@ -73,7 +77,11 @@ fun FoldableSettingsScreen(
 ) {
     var selectedSection by rememberSaveable { mutableStateOf(FoldableSettingsSection.APPEARANCE) }
 
-    Row(modifier = Modifier.fillMaxSize()) {
+    Row(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color.Black.copy(alpha = 0.10f)),
+    ) {
         FoldableSettingsNavigation(
             selectedSection = selectedSection,
             pageColour = pageColour,
@@ -245,7 +253,7 @@ private fun FoldableAppearanceSettings(
             }
         }
         item {
-            MetroTile("foldable-text-settings", pageColour, Modifier.fillMaxWidth()) {
+            MetroTile("foldable-text-settings", pageColour, Modifier.foldableDetailCardWidth()) {
                 Column {
                     FoldableSettingTitle("text size", "${(settings.textScale * 100).roundToInt()}%")
                     SettingsGlassSlider(
@@ -354,7 +362,7 @@ private fun FoldableSystemSettings(
     ) {
         item { MetroSectionLabel("diagnostics & system") }
         item {
-            MetroTile("foldable-notification-diagnostics", pageColour, Modifier.fillMaxWidth()) {
+            MetroTile("foldable-notification-diagnostics", pageColour, Modifier.foldableDetailCardWidth()) {
                 Column {
                     FoldableSettingTitle(
                         "notification diagnostics",
@@ -424,7 +432,7 @@ private fun FoldableSystemSettings(
             MetroTile(
                 "foldable-notification-settings",
                 pageColour,
-                Modifier.fillMaxWidth(),
+                Modifier.foldableDetailCardWidth(),
                 onClick = onOpenNotificationSettings,
             ) {
                 Column {
@@ -440,7 +448,7 @@ private fun FoldableSystemSettings(
             MetroTile(
                 "foldable-cache",
                 pageColour,
-                Modifier.fillMaxWidth(),
+                Modifier.foldableDetailCardWidth(),
                 onClick = onClearCache,
             ) {
                 Column {
@@ -481,7 +489,7 @@ private fun FoldableSettingToggle(
     checked: Boolean,
     onChange: (Boolean) -> Unit,
 ) {
-    MetroTile(seed, pageColour, Modifier.fillMaxWidth(), onClick = { onChange(!checked) }) {
+    MetroTile(seed, pageColour, Modifier.foldableDetailCardWidth(), onClick = { onChange(!checked) }) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
                 FoldableSettingTitle(title, description)
