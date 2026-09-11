@@ -3,15 +3,19 @@ package com.weather.metro.ui
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.consumeWindowInsets
+import androidx.compose.foundation.layout.displayCutout
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.material3.MaterialTheme
@@ -239,8 +243,6 @@ internal fun FoldableWeatherLayout(
                 FoldableWeatherHeader(
                     showLiveWeather = showLiveWeather,
                     currentColour = currentColour,
-                    forecastColour = forecastColour,
-                    toolsColour = toolsColour,
                     onShowForecast = ::showForecastPane,
                     onShowLiveWeather = { openLiveWeather() },
                     onOpenSettings = ::openSettingsPane,
@@ -284,37 +286,43 @@ internal fun FoldableWeatherLayout(
                             .fillMaxHeight(),
                     ) {
                         if (showLiveWeather) {
-                            MetroPageTheme(toolsColour) {
-                                key(requestedToolToken) {
-                                    NativeToolsScreen(
-                                        pageColour = toolsColour,
-                                        rainState = rainState,
-                                        radarState = productionRadarState,
-                                        stormState = stormState,
-                                        isActive = true,
-                                        onFullscreenChanged = {},
-                                        onRefreshPoint = rainViewModel::refreshPointForecast,
-                                        onEnsurePointFresh = rainViewModel::refreshPointForecastIfStale,
-                                        onCancelPointRefresh = rainViewModel::cancelPointRefresh,
-                                        onRefreshRadar = radarViewModel::refreshRadar,
-                                        onSelectRadarFrame = radarViewModel::selectFrame,
-                                        onSelectRadarRange = radarViewModel::selectRange,
-                                        onSelectRadarHeight = radarViewModel::selectHeight,
-                                        onSelectRadarMode = radarViewModel::selectMode,
-                                        onRadarOpacityChange = radarViewModel::setOpacity,
-                                        onRadarPlaybackSpeedChange = radarViewModel::setPlaybackSpeed,
-                                        onJumpRadarToLatest = radarViewModel::jumpToLatest,
-                                        onCancelRadarRequests = radarViewModel::cancelRequests,
-                                        onRefreshForecast = rainViewModel::refreshForecast,
-                                        onEnsureForecastFresh = rainViewModel::refreshForecastIfStale,
-                                        onLoadForecastFrame = rainViewModel::loadForecastFrame,
-                                        onCancelForecastRequests = rainViewModel::cancelForecastRequests,
-                                        onRefreshStorm = stormViewModel::refreshLive,
-                                        onEnsureStormFresh = { stormViewModel.refreshLiveIfStale() },
-                                        onCancelStormRequests = stormViewModel::cancelRequests,
-                                        entryDestination = requestedTool,
-                                        onExitRequested = null,
-                                    )
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .consumeWindowInsets(WindowInsets.displayCutout.only(WindowInsetsSides.Top)),
+                            ) {
+                                MetroPageTheme(toolsColour) {
+                                    key(requestedToolToken) {
+                                        NativeToolsScreen(
+                                            pageColour = toolsColour,
+                                            rainState = rainState,
+                                            radarState = productionRadarState,
+                                            stormState = stormState,
+                                            isActive = true,
+                                            onFullscreenChanged = {},
+                                            onRefreshPoint = rainViewModel::refreshPointForecast,
+                                            onEnsurePointFresh = rainViewModel::refreshPointForecastIfStale,
+                                            onCancelPointRefresh = rainViewModel::cancelPointRefresh,
+                                            onRefreshRadar = radarViewModel::refreshRadar,
+                                            onSelectRadarFrame = radarViewModel::selectFrame,
+                                            onSelectRadarRange = radarViewModel::selectRange,
+                                            onSelectRadarHeight = radarViewModel::selectHeight,
+                                            onSelectRadarMode = radarViewModel::selectMode,
+                                            onRadarOpacityChange = radarViewModel::setOpacity,
+                                            onRadarPlaybackSpeedChange = radarViewModel::setPlaybackSpeed,
+                                            onJumpRadarToLatest = radarViewModel::jumpToLatest,
+                                            onCancelRadarRequests = radarViewModel::cancelRequests,
+                                            onRefreshForecast = rainViewModel::refreshForecast,
+                                            onEnsureForecastFresh = rainViewModel::refreshForecastIfStale,
+                                            onLoadForecastFrame = rainViewModel::loadForecastFrame,
+                                            onCancelForecastRequests = rainViewModel::cancelForecastRequests,
+                                            onRefreshStorm = stormViewModel::refreshLive,
+                                            onEnsureStormFresh = { stormViewModel.refreshLiveIfStale() },
+                                            onCancelStormRequests = stormViewModel::cancelRequests,
+                                            entryDestination = requestedTool,
+                                            onExitRequested = null,
+                                        )
+                                    }
                                 }
                             }
                         } else {
@@ -379,8 +387,6 @@ private fun FoldableCurrentPane(
 private fun FoldableWeatherHeader(
     showLiveWeather: Boolean,
     currentColour: Color,
-    forecastColour: Color,
-    toolsColour: Color,
     onShowForecast: () -> Unit,
     onShowLiveWeather: () -> Unit,
     onOpenSettings: () -> Unit,
@@ -429,46 +435,38 @@ private fun FoldableWeatherHeader(
         Row(
             modifier = Modifier
                 .weight(1f)
-                .padding(start = 16.dp, end = 16.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                .fillMaxHeight()
+                .padding(start = 22.dp, end = 16.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            FoldablePaneTab(
-                label = "forecast",
-                selected = !showLiveWeather,
-                accent = forecastColour,
-                onClick = onShowForecast,
-            )
-            FoldablePaneTab(
-                label = "live weather",
-                selected = showLiveWeather,
-                accent = toolsColour,
-                onClick = onShowLiveWeather,
-            )
-            Spacer(Modifier.weight(1f))
-        }
-    }
-}
+            val activeLabel = if (showLiveWeather) "live weather" else "forecast"
+            val nextLabel = if (showLiveWeather) "forecast" else "live weather"
+            val onNext = if (showLiveWeather) onShowForecast else onShowLiveWeather
 
-@Composable
-private fun FoldablePaneTab(
-    label: String,
-    selected: Boolean,
-    accent: Color,
-    onClick: () -> Unit,
-) {
-    MetroGlassContextSurface(
-        accent = if (selected) accent else Color.White.copy(alpha = 0.12f),
-        modifier = Modifier.clickable(onClick = onClick),
-    ) {
-        Text(
-            text = label,
-            color = Color.White.copy(alpha = if (selected) 1f else 0.68f),
-            fontSize = if (selected) 15.sp else 13.sp,
-            fontWeight = if (selected) FontWeight.Medium else FontWeight.Light,
-            modifier = Modifier.padding(horizontal = 11.dp, vertical = 8.dp),
-            maxLines = 1,
-        )
+            Text(
+                text = activeLabel,
+                color = Color.White,
+                fontSize = 42.sp,
+                lineHeight = 46.sp,
+                fontWeight = FontWeight.Light,
+                letterSpacing = (-1.2).sp,
+                maxLines = 1,
+            )
+            Spacer(Modifier.width(18.dp))
+            Text(
+                text = nextLabel,
+                color = Color(0xFF3D3D3D),
+                fontSize = 37.sp,
+                lineHeight = 42.sp,
+                fontWeight = FontWeight.Light,
+                maxLines = 1,
+                overflow = TextOverflow.Clip,
+                modifier = Modifier
+                    .weight(1f)
+                    .clickable(onClick = onNext)
+                    .padding(vertical = 10.dp),
+            )
+        }
     }
 }
 
