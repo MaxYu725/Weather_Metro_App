@@ -10,7 +10,7 @@ class PageColoursTest {
         val colours = PageColours()
         val values = PageColourSlot.entries.map(colours::colour)
 
-        assertEquals(listOf("current", "forecast", "tools", "settings"), PageColourSlot.entries.map { it.label })
+        assertEquals(listOf("current", "forecast", "live weather", "settings"), PageColourSlot.entries.map { it.label })
         assertEquals(PageColourSlot.entries.size, values.distinct().size)
         assertEquals(DefaultPageColours.CURRENT, colours.currentArgb)
         assertEquals(DefaultPageColours.FORECAST, colours.forecastArgb)
