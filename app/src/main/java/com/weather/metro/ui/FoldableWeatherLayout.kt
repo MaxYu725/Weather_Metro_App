@@ -1,11 +1,6 @@
 package com.weather.metro.ui
 
 import androidx.activity.compose.BackHandler
-import androidx.compose.animation.AnimatedContent
-import androidx.compose.animation.core.tween
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -56,7 +51,6 @@ import com.weather.metro.ui.screens.HomeCurrentScreen
 import com.weather.metro.ui.storm.StormHostState
 import com.weather.metro.ui.storm.StormHostViewModel
 import com.weather.metro.ui.theme.LocalMetroSubText
-import com.weather.metro.ui.theme.LocalReduceMotion
 import com.weather.metro.ui.theme.MetroPageTheme
 import com.weather.metro.ui.theme.argbColor
 import com.weather.metro.ui.tools.NativeToolDestination
@@ -94,7 +88,6 @@ internal fun FoldableWeatherLayout(
     val forecastColour = argbColor(settings.pageColours.colour(PageColourSlot.FORECAST))
     val toolsColour = argbColor(settings.pageColours.colour(PageColourSlot.TOOLS))
     val settingsColour = argbColor(settings.pageColours.colour(PageColourSlot.SETTINGS))
-    val reduceMotion = LocalReduceMotion.current
 
     var showSettings by rememberSaveable { mutableStateOf(false) }
     var showLiveWeather by rememberSaveable { mutableStateOf(false) }
@@ -214,10 +207,6 @@ internal fun FoldableWeatherLayout(
             FoldablePrimaryDataStatus(loadState)
 
             if (showSettings) {
-                FoldableSettingsHeader(
-                    pageColour = settingsColour,
-                    onBack = { showSettings = false },
-                )
                 MetroPageTheme(settingsColour) {
                     FoldableSettingsScreen(
                         settings = settings,
@@ -249,7 +238,6 @@ internal fun FoldableWeatherLayout(
             } else {
                 FoldableWeatherHeader(
                     showLiveWeather = showLiveWeather,
-                    reduceMotion = reduceMotion,
                     currentColour = currentColour,
                     forecastColour = forecastColour,
                     toolsColour = toolsColour,
@@ -390,7 +378,6 @@ private fun FoldableCurrentPane(
 @Composable
 private fun FoldableWeatherHeader(
     showLiveWeather: Boolean,
-    reduceMotion: Boolean,
     currentColour: Color,
     forecastColour: Color,
     toolsColour: Color,
@@ -459,21 +446,6 @@ private fun FoldableWeatherHeader(
                 onClick = onShowLiveWeather,
             )
             Spacer(Modifier.weight(1f))
-            AnimatedContent(
-                targetState = if (showLiveWeather) "live" else "forecast",
-                transitionSpec = {
-                    if (reduceMotion) fadeIn(tween(100)) togetherWith fadeOut(tween(80))
-                    else fadeIn(tween(220)) togetherWith fadeOut(tween(160))
-                },
-                label = "foldable right pane label",
-            ) { label ->
-                Text(
-                    label,
-                    color = Color.White.copy(alpha = 0.46f),
-                    fontSize = 11.sp,
-                    maxLines = 1,
-                )
-            }
         }
     }
 }
@@ -497,41 +469,6 @@ private fun FoldablePaneTab(
             modifier = Modifier.padding(horizontal = 11.dp, vertical = 8.dp),
             maxLines = 1,
         )
-    }
-}
-
-@Composable
-private fun FoldableSettingsHeader(
-    pageColour: Color,
-    onBack: () -> Unit,
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(76.dp)
-            .padding(horizontal = 22.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text(
-            "settings",
-            color = Color.White,
-            fontSize = 42.sp,
-            lineHeight = 46.sp,
-            fontWeight = FontWeight.Light,
-            letterSpacing = (-1.2).sp,
-        )
-        Spacer(Modifier.weight(1f))
-        MetroGlassContextSurface(
-            accent = pageColour,
-            modifier = Modifier.clickable(onClick = onBack),
-        ) {
-            Text(
-                "weather ›",
-                color = Color.White.copy(alpha = 0.86f),
-                fontSize = 12.sp,
-                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
-            )
-        }
     }
 }
 
