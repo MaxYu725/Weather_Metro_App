@@ -1,5 +1,6 @@
 package com.weather.metro.ui
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
@@ -23,6 +24,8 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -96,6 +99,7 @@ internal fun FoldableWeatherLayout(
     var showSettings by rememberSaveable { mutableStateOf(false) }
     var showLiveWeather by rememberSaveable { mutableStateOf(false) }
     var requestedToolRoute by rememberSaveable { mutableStateOf<String?>(null) }
+    var requestedToolToken by rememberSaveable { mutableIntStateOf(0) }
     val requestedTool = NativeToolDestination.entries.firstOrNull { it.route == requestedToolRoute }
 
     val productionRadarState = radarState.copy(
@@ -108,23 +112,79 @@ internal fun FoldableWeatherLayout(
         ),
     )
 
+    fun stopLiveWeatherRequests() {
+        rainViewModel.cancelPointRefresh()
+        radarViewModel.cancelRequests()
+        rainViewModel.cancelForecastRequests()
+        stormViewModel.cancelRequests()
+    }
+
     fun openLiveWeather(destination: NativeToolDestination? = null) {
         requestedToolRoute = destination?.route
+        requestedToolToken += 1
         showLiveWeather = true
         showSettings = false
+    }
+
+    fun showForecastPane() {
+        if (showLiveWeather) stopLiveWeatherRequests()
+        showLiveWeather = false
+        requestedToolRoute = null
+    }
+
+    fun openSettingsPane() {
+        if (showLiveWeather) stopLiveWeatherRequests()
+        showSettings = true
+        showLiveWeather = false
+        requestedToolRoute = null
+    }
+
+    BackHandler(enabled = showSettings || showLiveWeather) {
+        if (showSettings) {
+            showSettings = false
+        } else {
+            showForecastPane()
+        }
     }
 
     LaunchedEffect(showSettings) {
         if (showSettings) viewModel.refreshNotificationDiagnostics()
     }
 
+    LaunchedEffect(
+        showSettings,
+        rainState.location?.latitude,
+        rainState.location?.longitude,
+        rainState.pointForecast.status,
+    ) {
+        val location = rainState.location
+        if (showSettings || location == null) {
+            locationTrendViewModel.cancelRefresh()
+            return@LaunchedEffect
+        }
+
+        locationTrendViewModel.bindHostLocation(location)
+        rainViewModel.refreshPointForecastIfStale()
+        val fastPathStatus = rainViewModel.state.value.pointForecast.status
+        if (
+            locationTrendMayRun(
+                page = PageColourSlot.CURRENT,
+                hasActiveTool = false,
+                hasLocation = true,
+                pointStatus = fastPathStatus,
+            )
+        ) {
+            locationTrendViewModel.refreshIfNeeded()
+        } else {
+            locationTrendViewModel.cancelRefresh()
+        }
+    }
+
     LaunchedEffect(navigationRequest?.token) {
         val request = navigationRequest ?: return@LaunchedEffect
         when (request.page) {
             PageColourSlot.SETTINGS -> {
-                showSettings = true
-                showLiveWeather = false
-                requestedToolRoute = null
+                openSettingsPane()
                 if (!request.showAlerts) viewModel.consumeNavigation(request.token)
             }
             PageColourSlot.CURRENT -> {
@@ -133,8 +193,7 @@ internal fun FoldableWeatherLayout(
             }
             PageColourSlot.FORECAST -> {
                 showSettings = false
-                showLiveWeather = false
-                requestedToolRoute = null
+                showForecastPane()
                 viewModel.consumeNavigation(request.token)
             }
             PageColourSlot.TOOLS -> {
@@ -194,16 +253,9 @@ internal fun FoldableWeatherLayout(
                     currentColour = currentColour,
                     forecastColour = forecastColour,
                     toolsColour = toolsColour,
-                    onShowForecast = {
-                        showLiveWeather = false
-                        requestedToolRoute = null
-                    },
+                    onShowForecast = ::showForecastPane,
                     onShowLiveWeather = { openLiveWeather() },
-                    onOpenSettings = {
-                        showSettings = true
-                        showLiveWeather = false
-                        requestedToolRoute = null
-                    },
+                    onOpenSettings = ::openSettingsPane,
                 )
 
                 Row(modifier = Modifier.fillMaxSize()) {
@@ -222,9 +274,7 @@ internal fun FoldableWeatherLayout(
                                 requestLocationPermission = requestLocationPermission,
                                 onOpenPointRain = { openLiveWeather(NativeToolDestination.POINT) },
                                 onOpenRadar = { openLiveWeather(NativeToolDestination.RADAR) },
-                                onOpenForecastMap = {
-                                    openLiveWeather(NativeToolDestination.FORECAST)
-                                },
+                                onOpenForecastMap = { openLiveWeather(NativeToolDestination.FORECAST) },
                                 onOpenStorm = { openLiveWeather(NativeToolDestination.STORM) },
                                 navigationRequest = navigationRequest,
                                 onNavigationHandled = viewModel::consumeNavigation,
@@ -247,35 +297,37 @@ internal fun FoldableWeatherLayout(
                     ) {
                         if (showLiveWeather) {
                             MetroPageTheme(toolsColour) {
-                                NativeToolsScreen(
-                                    pageColour = toolsColour,
-                                    rainState = rainState,
-                                    radarState = productionRadarState,
-                                    stormState = stormState,
-                                    isActive = true,
-                                    onFullscreenChanged = {},
-                                    onRefreshPoint = rainViewModel::refreshPointForecast,
-                                    onEnsurePointFresh = rainViewModel::refreshPointForecastIfStale,
-                                    onCancelPointRefresh = rainViewModel::cancelPointRefresh,
-                                    onRefreshRadar = radarViewModel::refreshRadar,
-                                    onSelectRadarFrame = radarViewModel::selectFrame,
-                                    onSelectRadarRange = radarViewModel::selectRange,
-                                    onSelectRadarHeight = radarViewModel::selectHeight,
-                                    onSelectRadarMode = radarViewModel::selectMode,
-                                    onRadarOpacityChange = radarViewModel::setOpacity,
-                                    onRadarPlaybackSpeedChange = radarViewModel::setPlaybackSpeed,
-                                    onJumpRadarToLatest = radarViewModel::jumpToLatest,
-                                    onCancelRadarRequests = radarViewModel::cancelRequests,
-                                    onRefreshForecast = rainViewModel::refreshForecast,
-                                    onEnsureForecastFresh = rainViewModel::refreshForecastIfStale,
-                                    onLoadForecastFrame = rainViewModel::loadForecastFrame,
-                                    onCancelForecastRequests = rainViewModel::cancelForecastRequests,
-                                    onRefreshStorm = stormViewModel::refreshLive,
-                                    onEnsureStormFresh = { stormViewModel.refreshLiveIfStale() },
-                                    onCancelStormRequests = stormViewModel::cancelRequests,
-                                    entryDestination = requestedTool,
-                                    onExitRequested = null,
-                                )
+                                key(requestedToolToken) {
+                                    NativeToolsScreen(
+                                        pageColour = toolsColour,
+                                        rainState = rainState,
+                                        radarState = productionRadarState,
+                                        stormState = stormState,
+                                        isActive = true,
+                                        onFullscreenChanged = {},
+                                        onRefreshPoint = rainViewModel::refreshPointForecast,
+                                        onEnsurePointFresh = rainViewModel::refreshPointForecastIfStale,
+                                        onCancelPointRefresh = rainViewModel::cancelPointRefresh,
+                                        onRefreshRadar = radarViewModel::refreshRadar,
+                                        onSelectRadarFrame = radarViewModel::selectFrame,
+                                        onSelectRadarRange = radarViewModel::selectRange,
+                                        onSelectRadarHeight = radarViewModel::selectHeight,
+                                        onSelectRadarMode = radarViewModel::selectMode,
+                                        onRadarOpacityChange = radarViewModel::setOpacity,
+                                        onRadarPlaybackSpeedChange = radarViewModel::setPlaybackSpeed,
+                                        onJumpRadarToLatest = radarViewModel::jumpToLatest,
+                                        onCancelRadarRequests = radarViewModel::cancelRequests,
+                                        onRefreshForecast = rainViewModel::refreshForecast,
+                                        onEnsureForecastFresh = rainViewModel::refreshForecastIfStale,
+                                        onLoadForecastFrame = rainViewModel::loadForecastFrame,
+                                        onCancelForecastRequests = rainViewModel::cancelForecastRequests,
+                                        onRefreshStorm = stormViewModel::refreshLive,
+                                        onEnsureStormFresh = { stormViewModel.refreshLiveIfStale() },
+                                        onCancelStormRequests = stormViewModel::cancelRequests,
+                                        entryDestination = requestedTool,
+                                        onExitRequested = null,
+                                    )
+                                }
                             }
                         } else {
                             MetroPageTheme(forecastColour) {
