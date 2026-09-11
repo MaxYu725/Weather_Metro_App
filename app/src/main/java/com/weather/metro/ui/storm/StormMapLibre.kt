@@ -4,6 +4,8 @@ import android.graphics.Color as AndroidColor
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -13,9 +15,14 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -77,35 +84,12 @@ private const val STORM_MAP_SINGLE_POINT_ZOOM = 5.5
 private const val STORM_EARTH_RADIUS_KM = 6371.0088
 private const val STORM_CIRCLE_SEGMENTS = 48
 private const val STORM_ANALYSIS_MARKER_INTERVAL_HOURS = 6L
+private const val STORM_BASE_STYLE_URI = "https://tiles.openfreemap.org/styles/dark"
 private const val SELECTED_POINT_SOURCE = "storm-selected-point"
 private const val HONG_KONG_REFERENCE_SOURCE = "storm-hong-kong-reference"
 private const val HONG_KONG_REFERENCE_LAT = 22.3023
 private const val HONG_KONG_REFERENCE_LON = 114.1746
 private const val EMPTY_GEO_JSON = "{\"type\":\"FeatureCollection\",\"features\":[]}"
-
-private val STORM_BASE_STYLE = """
-{
-  "version": 8,
-  "name": "Weather Metro CARTO Dark Storm",
-  "sources": {
-    "carto-dark": {
-      "type": "raster",
-      "tiles": [
-        "https://a.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png",
-        "https://b.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png",
-        "https://c.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png",
-        "https://d.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png"
-      ],
-      "tileSize": 256,
-      "attribution": "© OpenStreetMap © CARTO"
-    }
-  },
-  "layers": [
-    { "id": "background", "type": "background", "paint": { "background-color": "#101010" } },
-    { "id": "carto-dark-layer", "type": "raster", "source": "carto-dark", "minzoom": 0, "maxzoom": 20 }
-  ]
-}
-""".trimIndent()
 
 internal data class StormMapCoordinate(val latitude: Double, val longitude: Double)
 
@@ -156,6 +140,7 @@ internal fun StormMapLibreSurface(
     var selectedSource by remember { mutableStateOf<GeoJsonSource?>(null) }
     var map by remember { mutableStateOf<MapLibreMap?>(null) }
     var styleGeneration by remember { mutableIntStateOf(0) }
+    var viewportSize by remember { mutableStateOf(IntSize.Zero) }
 
     val mapView = remember(context) {
         MapLibre.getInstance(context.applicationContext)
@@ -209,7 +194,7 @@ internal fun StormMapLibreSurface(
             readyMap.uiSettings.setAttributionEnabled(false)
             readyMap.uiSettings.setRotateGesturesEnabled(false)
             readyMap.uiSettings.setTiltGesturesEnabled(false)
-            readyMap.setStyle(Style.Builder().fromJson(STORM_BASE_STYLE)) { style ->
+            readyMap.setStyle(Style.Builder().fromUri(STORM_BASE_STYLE_URI)) { style ->
                 agencySources.clear()
                 StormAgency.entries.forEach { agency -> agencySources[agency] = addAgencyLayers(style, agency) }
                 addHongKongReferenceLayers(style)
@@ -217,7 +202,7 @@ internal fun StormMapLibreSurface(
                 styleGeneration += 1
                 updateStormSources(agencySources, latestTracks, latestEnabled)
                 selectedSource?.setGeoJson(selectedPointGeoJson(latestSelected, latestTracks))
-                fitStormCamera(readyMap, latestTracks, latestEnabled)
+                fitStormCamera(readyMap, latestTracks, latestEnabled, viewportSize)
             }
             readyMap.addOnMapClickListener { point ->
                 val layerIds = stormPointLayerIds(latestEnabled)
@@ -250,12 +235,24 @@ internal fun StormMapLibreSurface(
         if (styleGeneration > 0) selectedSource?.setGeoJson(selectedPointGeoJson(selectedPointRef, tracksByAgency))
     }
 
-    LaunchedEffect(tracksByAgency, enabledAgencies, fitToken, map, styleGeneration) {
-        if (styleGeneration > 0) map?.let { fitStormCamera(it, tracksByAgency, enabledAgencies) }
+    LaunchedEffect(tracksByAgency, enabledAgencies, fitToken, map, styleGeneration, viewportSize) {
+        if (styleGeneration > 0) map?.let { fitStormCamera(it, tracksByAgency, enabledAgencies, viewportSize) }
     }
 
-    Box(modifier = modifier.background(Color(0xFF101010))) {
+    Box(
+        modifier = modifier
+            .background(Color(0xFF101010))
+            .onSizeChanged { viewportSize = it },
+    ) {
         AndroidView(factory = { mapView }, modifier = Modifier.fillMaxSize())
+        Text(
+            text = "© OpenFreeMap · © OpenStreetMap",
+            color = Color.White.copy(alpha = 0.48f),
+            fontSize = 8.sp,
+            modifier = Modifier
+                .align(Alignment.BottomStart)
+                .padding(start = 8.dp, bottom = 4.dp),
+        )
     }
 }
 
@@ -472,6 +469,7 @@ private fun fitStormCamera(
     map: MapLibreMap,
     tracksByAgency: Map<StormAgency, List<StormTrack>>,
     enabledAgencies: Set<StormAgency>,
+    viewportSize: IntSize = IntSize.Zero,
 ) {
     val hasHkoReference = StormAgency.HKO in enabledAgencies && tracksByAgency[StormAgency.HKO].orEmpty().isNotEmpty()
     val coordinates = enabledAgencies
@@ -491,9 +489,30 @@ private fun fitStormCamera(
             .build()
         return
     }
+
+    val tallPane = viewportSize.width > 0 && viewportSize.height > viewportSize.width * 1.25f
+    val horizontalPadding = if (tallPane) {
+        max(54, (viewportSize.width * 0.10f).roundToInt())
+    } else {
+        44
+    }
+    val topPadding = if (tallPane) {
+        max(150, (viewportSize.height * 0.14f).roundToInt())
+    } else {
+        176
+    }
+    val bottomPadding = if (tallPane) {
+        max(180, (viewportSize.height * 0.17f).roundToInt())
+    } else {
+        190
+    }
+
     val builder = LatLngBounds.Builder()
     coordinates.forEach { point -> builder.include(LatLng(point.latitude, point.longitude)) }
-    map.getCameraForLatLngBounds(builder.build(), intArrayOf(44, 176, 44, 190))?.let { map.cameraPosition = it }
+    map.getCameraForLatLngBounds(
+        builder.build(),
+        intArrayOf(horizontalPadding, topPadding, horizontalPadding, bottomPadding),
+    )?.let { map.cameraPosition = it }
 }
 
 internal fun buildStormAgencyMapData(
