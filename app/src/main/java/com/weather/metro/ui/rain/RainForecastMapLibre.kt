@@ -96,40 +96,7 @@ private const val MAPLIBRE_DEFAULT_ZOOM = FORECAST_DEFAULT_MAP_ZOOM + MAPLIBRE_Z
 private const val MAPLIBRE_MIN_ZOOM = FORECAST_MIN_MAP_ZOOM + MAPLIBRE_ZOOM_OFFSET_FROM_CANVAS
 private const val MAPLIBRE_MAX_ZOOM = FORECAST_MAX_MAP_ZOOM + MAPLIBRE_ZOOM_OFFSET_FROM_CANVAS
 private const val MAPLIBRE_LOCATION_EPSILON = 0.000001
-
-private val MAPLIBRE_BASE_STYLE = """
-{
-  "version": 8,
-  "name": "Weather Metro CARTO Dark",
-  "sources": {
-    "carto-dark": {
-      "type": "raster",
-      "tiles": [
-        "https://a.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png",
-        "https://b.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png",
-        "https://c.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png",
-        "https://d.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png"
-      ],
-      "tileSize": 256,
-      "attribution": "© OpenStreetMap © CARTO"
-    }
-  },
-  "layers": [
-    {
-      "id": "background",
-      "type": "background",
-      "paint": { "background-color": "#101010" }
-    },
-    {
-      "id": "carto-dark-layer",
-      "type": "raster",
-      "source": "carto-dark",
-      "minzoom": 0,
-      "maxzoom": 20
-    }
-  ]
-}
-""".trimIndent()
+private const val MAPLIBRE_BASE_STYLE_URI = "https://tiles.openfreemap.org/styles/dark"
 
 @Composable
 fun RainForecastMapLibrePanel(
@@ -528,7 +495,7 @@ private fun MapLibreForecastSurface(
             readyMap.uiSettings.setAttributionEnabled(false)
             readyMap.uiSettings.setRotateGesturesEnabled(false)
             readyMap.uiSettings.setTiltGesturesEnabled(false)
-            readyMap.setStyle(Style.Builder().fromJson(MAPLIBRE_BASE_STYLE)) { style ->
+            readyMap.setStyle(Style.Builder().fromUri(MAPLIBRE_BASE_STYLE_URI)) { style ->
                 val currentFrame = latestFrame
                 val source = ImageSource(
                     MAPLIBRE_RAIN_SOURCE,
@@ -598,6 +565,15 @@ private fun MapLibreForecastSurface(
                 .align(Alignment.TopStart)
                 .metroSafeTop()
                 .padding(start = 16.dp, top = 82.dp),
+        )
+
+        Text(
+            text = "© OpenFreeMap · © OpenStreetMap",
+            color = Color.White.copy(alpha = 0.48f),
+            fontSize = 8.sp,
+            modifier = Modifier
+                .align(Alignment.BottomStart)
+                .padding(start = 8.dp, bottom = 4.dp),
         )
     }
 }
@@ -917,7 +893,7 @@ private fun MapLibreTimelineHud(
         }
         val stale = if (isStale) " · 舊資料" else ""
         Text(
-            text = "$source · ${timeline.cadenceMinutes} 分鐘一格 · ${timeline.accumulationMinutes} 分鐘累積$loadingMode$stale · MapLibre · © OSM © CARTO",
+            text = "$source · ${timeline.cadenceMinutes} 分鐘一格 · ${timeline.accumulationMinutes} 分鐘累積$loadingMode$stale · MapLibre · © OpenFreeMap © OpenStreetMap",
             color = if (isStale) MAPLIBRE_WARNING else MAPLIBRE_MUTED,
             fontSize = 8.sp,
             maxLines = 1,
