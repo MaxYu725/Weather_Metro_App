@@ -29,7 +29,6 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.weather.metro.R
 import com.weather.metro.ui.theme.LocalMetroAccent
 import com.weather.metro.ui.theme.LocalReduceMotion
 import com.weather.metro.ui.theme.MetroEnvironmentTokens
@@ -44,10 +43,11 @@ import org.maplibre.android.snapshotter.MapSnapshotter
 import java.io.File
 import java.io.FileOutputStream
 
-private const val BACKDROP_CACHE_VERSION = 2
+private const val BACKDROP_CACHE_VERSION = 3
 private const val BACKDROP_MAX_EDGE_PX = 1_600
 private const val BACKDROP_MIN_EDGE_PX = 320
 private const val BACKDROP_REFRESH_MS = 7L * 24L * 60L * 60L * 1_000L
+private const val BACKDROP_STYLE_URI = "https://tiles.openfreemap.org/styles/dark"
 
 internal data class BackdropSnapshotSize(val width: Int, val height: Int)
 
@@ -84,11 +84,6 @@ fun HongKongBackdrop(modifier: Modifier = Modifier) {
             System.currentTimeMillis() - cacheFile.lastModified() < BACKDROP_REFRESH_MS
         if (cacheFresh) return@produceState
 
-        val styleJson = withContext(Dispatchers.IO) {
-            context.resources.openRawResource(R.raw.weather_metro_dark_basemap)
-                .bufferedReader()
-                .use { it.readText() }
-        }
         MapLibre.getInstance(context.applicationContext)
         val hongKongRegion = LatLngBounds.Builder()
             .include(LatLng(22.64, 113.82))
@@ -97,7 +92,7 @@ fun HongKongBackdrop(modifier: Modifier = Modifier) {
         val horizontalPadding = (snapshotSize.width * 0.045f).toInt()
         val verticalPadding = (snapshotSize.height * 0.035f).toInt()
         val options = MapSnapshotter.Options(snapshotSize.width, snapshotSize.height)
-            .withStyleBuilder(Style.Builder().fromJson(styleJson))
+            .withStyleBuilder(Style.Builder().fromUri(BACKDROP_STYLE_URI))
             .withRegion(hongKongRegion)
             .withPadding(horizontalPadding, verticalPadding, horizontalPadding, verticalPadding)
             .withLogo(false)
@@ -187,7 +182,7 @@ fun HongKongBackdrop(modifier: Modifier = Modifier) {
 @Composable
 fun HongKongMapAttribution(modifier: Modifier = Modifier) {
     Text(
-        text = "© OpenStreetMap · © CARTO",
+        text = "© OpenFreeMap · © OpenStreetMap",
         color = Color.White.copy(alpha = MetroEnvironmentTokens.MapAttributionAlpha),
         fontSize = 8.sp,
         modifier = modifier.padding(end = 7.dp, bottom = 3.dp),
