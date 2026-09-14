@@ -89,40 +89,7 @@ private const val RADAR_MAPLIBRE_MIN_ZOOM = 7.5
 private const val RADAR_MAPLIBRE_MAX_ZOOM = 17.0
 private const val RADAR_MAPLIBRE_LOCATION_EPSILON = 0.000001
 private const val RADAR_OPACITY_STEP = 0.10f
-
-private val RADAR_MAPLIBRE_BASE_STYLE = """
-{
-  "version": 8,
-  "name": "Weather Metro CARTO Dark Radar",
-  "sources": {
-    "carto-dark": {
-      "type": "raster",
-      "tiles": [
-        "https://a.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png",
-        "https://b.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png",
-        "https://c.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png",
-        "https://d.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png"
-      ],
-      "tileSize": 256,
-      "attribution": "© OpenStreetMap © CARTO"
-    }
-  },
-  "layers": [
-    {
-      "id": "background",
-      "type": "background",
-      "paint": { "background-color": "#101010" }
-    },
-    {
-      "id": "carto-dark-layer",
-      "type": "raster",
-      "source": "carto-dark",
-      "minzoom": 0,
-      "maxzoom": 20
-    }
-  ]
-}
-""".trimIndent()
+private const val RADAR_MAPLIBRE_BASE_STYLE_URI = "https://tiles.openfreemap.org/styles/dark"
 
 @Composable
 fun RainRadarMapLibrePanel(
@@ -426,7 +393,7 @@ private fun RadarMapLibreSurface(
             readyMap.uiSettings.setAttributionEnabled(false)
             readyMap.uiSettings.setRotateGesturesEnabled(false)
             readyMap.uiSettings.setTiltGesturesEnabled(false)
-            readyMap.setStyle(Style.Builder().fromJson(RADAR_MAPLIBRE_BASE_STYLE)) { style ->
+            readyMap.setStyle(Style.Builder().fromUri(RADAR_MAPLIBRE_BASE_STYLE_URI)) { style ->
                 val currentFrame = latestFrame
                 val source = ImageSource(
                     RADAR_MAPLIBRE_SOURCE,
@@ -475,6 +442,15 @@ private fun RadarMapLibreSurface(
                 .align(Alignment.TopStart)
                 .metroSafeTop()
                 .padding(start = 16.dp, top = 82.dp),
+        )
+
+        Text(
+            text = "© OpenFreeMap · © OpenStreetMap",
+            color = Color.White.copy(alpha = 0.48f),
+            fontSize = 8.sp,
+            modifier = Modifier
+                .align(Alignment.BottomStart)
+                .padding(start = 8.dp, bottom = 4.dp),
         )
     }
 }

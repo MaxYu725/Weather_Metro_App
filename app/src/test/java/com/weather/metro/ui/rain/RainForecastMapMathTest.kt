@@ -61,7 +61,7 @@ class RainForecastMapMathTest {
     }
 
     @Test
-    fun streetViewportProducesBoundedCartoTileSet() {
+    fun streetViewportProducesBoundedOsmTileSet() {
         val tiles = forecastBasemapTiles(
             centerLatitude = 22.4967,
             centerLongitude = 114.1412,
@@ -72,7 +72,7 @@ class RainForecastMapMathTest {
         assertTrue(tiles.isNotEmpty())
         assertTrue(tiles.size < 100)
         assertTrue(tiles.all { it.zoom == 15 })
-        assertTrue(tiles.all { it.url.contains("basemaps.cartocdn.com/dark_all") })
+        assertTrue(tiles.all { it.url.startsWith("https://tile.openstreetmap.org/15/") })
     }
 
     @Test

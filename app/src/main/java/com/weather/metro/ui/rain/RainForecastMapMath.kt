@@ -39,11 +39,7 @@ internal data class ForecastTileSpec(
 ) {
     val key: String get() = "$zoom/$x/$y"
     val url: String
-        get() {
-            val subdomains = charArrayOf('a', 'b', 'c', 'd')
-            val subdomain = subdomains[Math.floorMod(x + y, subdomains.size)]
-            return "https://$subdomain.basemaps.cartocdn.com/dark_all/$zoom/$x/$y.png"
-        }
+        get() = "https://tile.openstreetmap.org/$zoom/$x/$y.png"
 }
 
 internal fun webMercatorPoint(latitude: Double, longitude: Double, zoom: Int): MercatorPoint {

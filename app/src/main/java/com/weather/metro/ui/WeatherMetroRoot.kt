@@ -34,6 +34,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -103,6 +104,8 @@ fun WeatherMetroRoot(
     val locationTrendState by locationTrendViewModel.state.collectAsStateWithLifecycle()
     val radarState by radarViewModel.state.collectAsStateWithLifecycle()
     val stormState by stormViewModel.state.collectAsStateWithLifecycle()
+    val configuration = LocalConfiguration.current
+    val useFoldableDualPane = configuration.screenWidthDp >= FOLDABLE_DUAL_PANE_MIN_WIDTH_DP
     val productionRadarState = radarState.copy(
         contract = radarState.contract.copy(
             value = radarState.contract.value?.let { contract ->
@@ -131,217 +134,238 @@ fun WeatherMetroRoot(
     }
 
     WeatherMetroTheme(settings) {
-        val alignedInitialPage = Int.MAX_VALUE / 2 - (Int.MAX_VALUE / 2 % pages.size)
-        val pagerState = rememberPagerState(initialPage = alignedInitialPage) { Int.MAX_VALUE }
-        val pageIndex = pagerState.currentPage.mod(pages.size)
-        val activePage = pages[pageIndex]
-        val toolsColour = argbColor(settings.pageColours.colour(PageColourSlot.TOOLS))
-        val reduceMotion = LocalReduceMotion.current
-        var activeTool by remember { mutableStateOf<NativeToolDestination?>(null) }
-        val pagerFlingBehavior = PagerDefaults.flingBehavior(
-            state = pagerState,
-            snapAnimationSpec = tween(durationMillis = if (reduceMotion) 180 else 520),
-        )
-
-        LaunchedEffect(pageIndex) {
-            if (activePage == PageColourSlot.SETTINGS) viewModel.refreshNotificationDiagnostics()
-        }
-
-        LaunchedEffect(
-            activePage,
-            activeTool,
-            rainState.location?.latitude,
-            rainState.location?.longitude,
-            rainState.pointForecast.status,
-        ) {
-            val location = rainState.location
-            val currentIsActive = activePage == PageColourSlot.CURRENT && activeTool == null && location != null
-            if (!currentIsActive) {
-                locationTrendViewModel.cancelRefresh()
-                return@LaunchedEffect
-            }
-
-            locationTrendViewModel.bindHostLocation(location)
-            rainViewModel.refreshPointForecastIfStale()
-            val fastPathStatus = rainViewModel.state.value.pointForecast.status
-            if (
-                locationTrendMayRun(
-                    page = activePage,
-                    hasActiveTool = activeTool != null,
-                    hasLocation = true,
-                    pointStatus = fastPathStatus,
-                )
-            ) {
-                locationTrendViewModel.refreshIfNeeded()
-            } else {
-                locationTrendViewModel.cancelRefresh()
-            }
-        }
-
-        LaunchedEffect(navigationRequest?.token) {
-            val request = navigationRequest ?: return@LaunchedEffect
-            val destinationIndex = pages.indexOf(request.page)
-            if (destinationIndex < 0) {
-                viewModel.consumeNavigation(request.token)
-                return@LaunchedEffect
-            }
-            val currentIndex = pagerState.currentPage.mod(pages.size)
-            var delta = destinationIndex - currentIndex
-            if (delta > pages.size / 2) delta -= pages.size
-            if (delta < -pages.size / 2) delta += pages.size
-            val destinationPage = pagerState.currentPage + delta
-            pagerState.animateScrollToPage(
-                destinationPage,
-                animationSpec = tween(if (reduceMotion) 180 else 520),
+        if (useFoldableDualPane) {
+            FoldableWeatherLayout(
+                settings = settings,
+                notificationDiagnostics = notificationDiagnostics,
+                loadState = loadState,
+                navigationRequest = navigationRequest,
+                rainState = rainState,
+                locationTrendState = locationTrendState,
+                radarState = radarState,
+                stormState = stormState,
+                viewModel = viewModel,
+                rainViewModel = rainViewModel,
+                locationTrendViewModel = locationTrendViewModel,
+                radarViewModel = radarViewModel,
+                stormViewModel = stormViewModel,
+                requestLocationPermission = requestLocationPermission,
+                requestNotificationPermission = requestNotificationPermission,
+                openNotificationSettings = openNotificationSettings,
             )
-            if (!request.showAlerts) viewModel.consumeNavigation(request.token)
-        }
+        } else {
+            val alignedInitialPage = Int.MAX_VALUE / 2 - (Int.MAX_VALUE / 2 % pages.size)
+            val pagerState = rememberPagerState(initialPage = alignedInitialPage) { Int.MAX_VALUE }
+            val pageIndex = pagerState.currentPage.mod(pages.size)
+            val activePage = pages[pageIndex]
+            val toolsColour = argbColor(settings.pageColours.colour(PageColourSlot.TOOLS))
+            val reduceMotion = LocalReduceMotion.current
+            var activeTool by remember { mutableStateOf<NativeToolDestination?>(null) }
+            val pagerFlingBehavior = PagerDefaults.flingBehavior(
+                state = pagerState,
+                snapAnimationSpec = tween(durationMillis = if (reduceMotion) 180 else 520),
+            )
 
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(Color(0xFF080B0D)),
-        ) {
-            HongKongBackdrop(Modifier.fillMaxSize())
-            Column(modifier = Modifier.fillMaxSize()) {
-                AnimatedVisibility(
-                    visible = activeTool == null,
-                    enter = if (reduceMotion) {
-                        fadeIn(tween(120))
-                    } else {
-                        fadeIn(tween(220, delayMillis = 80)) + expandVertically(tween(360))
-                    },
-                    exit = if (reduceMotion) {
-                        fadeOut(tween(100))
-                    } else {
-                        fadeOut(tween(180)) + shrinkVertically(tween(360))
-                    },
-                ) {
-                    Column {
-                        PrimaryDataStatus(loadState)
-                        PivotHeader(
-                            current = activePage.label,
-                            next = pages[(pageIndex + 1) % pages.size].label,
-                            reduceMotion = reduceMotion,
-                        )
-                    }
+            LaunchedEffect(pageIndex) {
+                if (activePage == PageColourSlot.SETTINGS) viewModel.refreshNotificationDiagnostics()
+            }
+
+            LaunchedEffect(
+                activePage,
+                activeTool,
+                rainState.location?.latitude,
+                rainState.location?.longitude,
+                rainState.pointForecast.status,
+            ) {
+                val location = rainState.location
+                val currentIsActive = activePage == PageColourSlot.CURRENT && activeTool == null && location != null
+                if (!currentIsActive) {
+                    locationTrendViewModel.cancelRefresh()
+                    return@LaunchedEffect
                 }
 
-                HorizontalPager(
-                    state = pagerState,
-                    beyondViewportPageCount = 1,
-                    key = { it },
-                    flingBehavior = pagerFlingBehavior,
-                    userScrollEnabled = activeTool == null,
-                    modifier = Modifier.fillMaxSize(),
-                ) { virtualPage ->
-                    val index = virtualPage.mod(pages.size)
-                    val page = pages[index]
-                    val pageColour = argbColor(settings.pageColours.colour(page))
-                    MetroPageTheme(pageColour) {
-                        when (page) {
-                            PageColourSlot.TOOLS -> Unit
-                            PageColourSlot.SETTINGS -> SettingsScreen(
-                                settings = settings,
-                                notificationDiagnostics = notificationDiagnostics,
-                                pageColour = pageColour,
-                                onPageColourChange = viewModel::setPageColour,
-                                onTextScaleChange = viewModel::setTextScale,
-                                onReduceMotionChange = viewModel::setReduceMotion,
-                                onHighContrastChange = viewModel::setHighContrast,
-                                onPreciseLocationChange = viewModel::setPreciseLocation,
-                                onNotificationsChange = { enabled ->
-                                    viewModel.setNotificationsEnabled(enabled)
-                                    if (enabled) requestNotificationPermission()
-                                },
-                                onLocationHeavyRainNotificationsChange = viewModel::setLocationHeavyRainNotificationsEnabled,
-                                onPersonalizedRainNotificationsChange = viewModel::setPersonalizedRainNotificationsEnabled,
-                                onRefreshNotificationDiagnostics = viewModel::refreshNotificationDiagnostics,
-                                onOpenNotificationSettings = openNotificationSettings,
-                                onClearCache = {
-                                    viewModel.clearCache()
-                                    rainViewModel.clearCache()
-                                    locationTrendViewModel.cancelRefresh()
-                                    radarViewModel.clearTransientCache()
-                                    stormViewModel.clearCache()
-                                },
+                locationTrendViewModel.bindHostLocation(location)
+                rainViewModel.refreshPointForecastIfStale()
+                val fastPathStatus = rainViewModel.state.value.pointForecast.status
+                if (
+                    locationTrendMayRun(
+                        page = activePage,
+                        hasActiveTool = activeTool != null,
+                        hasLocation = true,
+                        pointStatus = fastPathStatus,
+                    )
+                ) {
+                    locationTrendViewModel.refreshIfNeeded()
+                } else {
+                    locationTrendViewModel.cancelRefresh()
+                }
+            }
+
+            LaunchedEffect(navigationRequest?.token) {
+                val request = navigationRequest ?: return@LaunchedEffect
+                val destinationIndex = pages.indexOf(request.page)
+                if (destinationIndex < 0) {
+                    viewModel.consumeNavigation(request.token)
+                    return@LaunchedEffect
+                }
+                val currentIndex = pagerState.currentPage.mod(pages.size)
+                var delta = destinationIndex - currentIndex
+                if (delta > pages.size / 2) delta -= pages.size
+                if (delta < -pages.size / 2) delta += pages.size
+                val destinationPage = pagerState.currentPage + delta
+                pagerState.animateScrollToPage(
+                    destinationPage,
+                    animationSpec = tween(if (reduceMotion) 180 else 520),
+                )
+                if (!request.showAlerts) viewModel.consumeNavigation(request.token)
+            }
+
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color(0xFF080B0D)),
+            ) {
+                HongKongBackdrop(Modifier.fillMaxSize())
+                Column(modifier = Modifier.fillMaxSize()) {
+                    AnimatedVisibility(
+                        visible = activeTool == null,
+                        enter = if (reduceMotion) {
+                            fadeIn(tween(120))
+                        } else {
+                            fadeIn(tween(220, delayMillis = 80)) + expandVertically(tween(360))
+                        },
+                        exit = if (reduceMotion) {
+                            fadeOut(tween(100))
+                        } else {
+                            fadeOut(tween(180)) + shrinkVertically(tween(360))
+                        },
+                    ) {
+                        Column {
+                            PrimaryDataStatus(loadState)
+                            PivotHeader(
+                                current = activePage.label,
+                                next = pages[(pageIndex + 1) % pages.size].label,
+                                reduceMotion = reduceMotion,
                             )
-                            PageColourSlot.CURRENT,
-                            PageColourSlot.FORECAST,
-                            -> when (val state = loadState) {
-                                WeatherLoadState.Loading -> LoadingPage()
-                                is WeatherLoadState.Error -> ErrorPage(message = state.message, retry = viewModel::refresh)
-                                is WeatherLoadState.Ready -> if (page == PageColourSlot.CURRENT) {
-                                    HomeCurrentScreen(
-                                        snapshot = state.snapshot,
-                                        rainState = rainState,
-                                        locationTrendState = locationTrendState,
-                                        stormState = stormState,
-                                        pageColour = pageColour,
-                                        onRequestLocation = requestLocationPermission,
-                                        onOpenPointRain = { activeTool = NativeToolDestination.POINT },
-                                        onOpenRadar = { activeTool = NativeToolDestination.RADAR },
-                                        onOpenForecastMap = {
-                                            locationTrendViewModel.cancelRefresh()
-                                            activeTool = NativeToolDestination.FORECAST
-                                        },
-                                        onOpenStorm = { activeTool = NativeToolDestination.STORM },
-                                        navigationRequest = navigationRequest?.takeIf {
-                                            it.page == PageColourSlot.CURRENT && it.showAlerts
-                                        },
-                                        onNavigationHandled = viewModel::consumeNavigation,
-                                    )
-                                } else {
-                                    ForecastScreen(state.snapshot, pageColour)
+                        }
+                    }
+
+                    HorizontalPager(
+                        state = pagerState,
+                        beyondViewportPageCount = 1,
+                        key = { it },
+                        flingBehavior = pagerFlingBehavior,
+                        userScrollEnabled = activeTool == null,
+                        modifier = Modifier.fillMaxSize(),
+                    ) { virtualPage ->
+                        val index = virtualPage.mod(pages.size)
+                        val page = pages[index]
+                        val pageColour = argbColor(settings.pageColours.colour(page))
+                        MetroPageTheme(pageColour) {
+                            when (page) {
+                                PageColourSlot.TOOLS -> Unit
+                                PageColourSlot.SETTINGS -> SettingsScreen(
+                                    settings = settings,
+                                    notificationDiagnostics = notificationDiagnostics,
+                                    pageColour = pageColour,
+                                    onPageColourChange = viewModel::setPageColour,
+                                    onTextScaleChange = viewModel::setTextScale,
+                                    onReduceMotionChange = viewModel::setReduceMotion,
+                                    onHighContrastChange = viewModel::setHighContrast,
+                                    onPreciseLocationChange = viewModel::setPreciseLocation,
+                                    onNotificationsChange = { enabled ->
+                                        viewModel.setNotificationsEnabled(enabled)
+                                        if (enabled) requestNotificationPermission()
+                                    },
+                                    onLocationHeavyRainNotificationsChange = viewModel::setLocationHeavyRainNotificationsEnabled,
+                                    onPersonalizedRainNotificationsChange = viewModel::setPersonalizedRainNotificationsEnabled,
+                                    onRefreshNotificationDiagnostics = viewModel::refreshNotificationDiagnostics,
+                                    onOpenNotificationSettings = openNotificationSettings,
+                                    onClearCache = {
+                                        viewModel.clearCache()
+                                        rainViewModel.clearCache()
+                                        locationTrendViewModel.cancelRefresh()
+                                        radarViewModel.clearTransientCache()
+                                        stormViewModel.clearCache()
+                                    },
+                                )
+                                PageColourSlot.CURRENT,
+                                PageColourSlot.FORECAST,
+                                -> when (val state = loadState) {
+                                    WeatherLoadState.Loading -> LoadingPage()
+                                    is WeatherLoadState.Error -> ErrorPage(message = state.message, retry = viewModel::refresh)
+                                    is WeatherLoadState.Ready -> if (page == PageColourSlot.CURRENT) {
+                                        HomeCurrentScreen(
+                                            snapshot = state.snapshot,
+                                            rainState = rainState,
+                                            locationTrendState = locationTrendState,
+                                            stormState = stormState,
+                                            pageColour = pageColour,
+                                            onRequestLocation = requestLocationPermission,
+                                            onOpenPointRain = { activeTool = NativeToolDestination.POINT },
+                                            onOpenRadar = { activeTool = NativeToolDestination.RADAR },
+                                            onOpenForecastMap = {
+                                                locationTrendViewModel.cancelRefresh()
+                                                activeTool = NativeToolDestination.FORECAST
+                                            },
+                                            onOpenStorm = { activeTool = NativeToolDestination.STORM },
+                                            navigationRequest = navigationRequest?.takeIf {
+                                                it.page == PageColourSlot.CURRENT && it.showAlerts
+                                            },
+                                            onNavigationHandled = viewModel::consumeNavigation,
+                                        )
+                                    } else {
+                                        ForecastScreen(state.snapshot, pageColour)
+                                    }
                                 }
                             }
                         }
                     }
                 }
-            }
 
-            activeTool?.let { destination ->
-                MetroPageTheme(toolsColour) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .background(Color(0xFF080B0D)),
-                    ) {
-                        NativeToolsScreen(
-                            pageColour = toolsColour,
-                            rainState = rainState,
-                            radarState = productionRadarState,
-                            stormState = stormState,
-                            isActive = true,
-                            onFullscreenChanged = {},
-                            onRefreshPoint = rainViewModel::refreshPointForecast,
-                            onEnsurePointFresh = rainViewModel::refreshPointForecastIfStale,
-                            onCancelPointRefresh = rainViewModel::cancelPointRefresh,
-                            onRefreshRadar = radarViewModel::refreshRadar,
-                            onSelectRadarFrame = radarViewModel::selectFrame,
-                            onSelectRadarRange = radarViewModel::selectRange,
-                            onSelectRadarHeight = radarViewModel::selectHeight,
-                            onSelectRadarMode = radarViewModel::selectMode,
-                            onRadarOpacityChange = radarViewModel::setOpacity,
-                            onRadarPlaybackSpeedChange = radarViewModel::setPlaybackSpeed,
-                            onJumpRadarToLatest = radarViewModel::jumpToLatest,
-                            onCancelRadarRequests = radarViewModel::cancelRequests,
-                            onRefreshForecast = rainViewModel::refreshForecast,
-                            onEnsureForecastFresh = rainViewModel::refreshForecastIfStale,
-                            onLoadForecastFrame = rainViewModel::loadForecastFrame,
-                            onCancelForecastRequests = rainViewModel::cancelForecastRequests,
-                            onRefreshStorm = stormViewModel::refreshLive,
-                            onEnsureStormFresh = { stormViewModel.refreshLiveIfStale() },
-                            onCancelStormRequests = stormViewModel::cancelRequests,
-                            entryDestination = destination,
-                            onExitRequested = { activeTool = null },
-                        )
+                activeTool?.let { destination ->
+                    MetroPageTheme(toolsColour) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .background(Color(0xFF080B0D)),
+                        ) {
+                            NativeToolsScreen(
+                                pageColour = toolsColour,
+                                rainState = rainState,
+                                radarState = productionRadarState,
+                                stormState = stormState,
+                                isActive = true,
+                                onFullscreenChanged = {},
+                                onRefreshPoint = rainViewModel::refreshPointForecast,
+                                onEnsurePointFresh = rainViewModel::refreshPointForecastIfStale,
+                                onCancelPointRefresh = rainViewModel::cancelPointRefresh,
+                                onRefreshRadar = radarViewModel::refreshRadar,
+                                onSelectRadarFrame = radarViewModel::selectFrame,
+                                onSelectRadarRange = radarViewModel::selectRange,
+                                onSelectRadarHeight = radarViewModel::selectHeight,
+                                onSelectRadarMode = radarViewModel::selectMode,
+                                onRadarOpacityChange = radarViewModel::setOpacity,
+                                onRadarPlaybackSpeedChange = radarViewModel::setPlaybackSpeed,
+                                onJumpRadarToLatest = radarViewModel::jumpToLatest,
+                                onCancelRadarRequests = radarViewModel::cancelRequests,
+                                onRefreshForecast = rainViewModel::refreshForecast,
+                                onEnsureForecastFresh = rainViewModel::refreshForecastIfStale,
+                                onLoadForecastFrame = rainViewModel::loadForecastFrame,
+                                onCancelForecastRequests = rainViewModel::cancelForecastRequests,
+                                onRefreshStorm = stormViewModel::refreshLive,
+                                onEnsureStormFresh = { stormViewModel.refreshLiveIfStale() },
+                                onCancelStormRequests = stormViewModel::cancelRequests,
+                                entryDestination = destination,
+                                onExitRequested = { activeTool = null },
+                            )
+                        }
                     }
                 }
-            }
 
-            if (activeTool == null) {
-                HongKongMapAttribution(modifier = Modifier.align(Alignment.BottomEnd))
+                if (activeTool == null) {
+                    HongKongMapAttribution(modifier = Modifier.align(Alignment.BottomEnd))
+                }
             }
         }
     }
